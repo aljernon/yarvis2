@@ -175,7 +175,7 @@ def convert_db_messages_to_claude_messages(
                 )
 
             is_voice_message = meta.get("is_voice", False)
-            full_message = f"<system>Sent by {USER_ID_MAP.get(msg.user_id, 'unknown user')} at {msg.created_at.isoformat()} {is_voice_message=}</system>\n{msg.message}"
+            full_message = f"<system>Sent by {USER_ID_MAP.get(msg.user_id, f'unknown user ({msg.user_id})')} at {msg.created_at.isoformat()} {is_voice_message=}</system>\n{msg.message}"
             content_chunks.append({"type": "text", "text": full_message})
 
             role_messages.append({"role": "user", "content": content_chunks})
