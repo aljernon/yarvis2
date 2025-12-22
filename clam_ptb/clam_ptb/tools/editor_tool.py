@@ -106,14 +106,48 @@ class EditorTool(LocalTool):
 
 
 def view_command(path: str, view_range: list[int] | None) -> ToolResult:
-    if not os.path.isfile(path):
-        return ToolResult.error(f"File not found: {path}")
-    with open(path, "r") as f:
-        lines = f.readlines()
-        if view_range:
-            start, end = view_range[0] - 1, view_range[1]
-            return ToolResult(text="".join(lines[start:end]))
-        return ToolResult(text="".join(lines))
+    if os.path.isfile(path):
+        with open(path, "r") as f:
+            lines = f.readlines()
+            if view_range:
+                start, end = view_range[0] - 1, view_range[1]
+                return ToolResult(text="".join(lines[start:end]))
+            return ToolResult(text="".join(lines))
+    elif os.path.isdir(path):
+        # List directory contents up to 2 levels deep
+        try:
+            result_lines = []
+            for root, dirs, files in os.walk(path):
+                # Calculate depth relative to the starting path
+                depth = root[len(path) :].count(os.sep)
+                if depth > 2:
+                    continue
+
+                # Skip hidden directories at any level
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+
+                indent = "  " * depth
+                if depth == 0:
+                    result_lines.append(f"{path}:")
+                else:
+                    relative_path = os.path.relpath(root, path)
+                    result_lines.append(f"{indent}{relative_path}/")
+
+                # Add files in current directory (skip hidden files)
+                for file in sorted(files):
+                    if not file.startswith("."):
+                        result_lines.append(f"{indent}  {file}")
+
+                # Add subdirectories
+                for dir_name in sorted(dirs):
+                    if depth < 2:  # Only show subdirs if we're not at max depth
+                        result_lines.append(f"{indent}  {dir_name}/")
+
+            return ToolResult(text="\n".join(result_lines))
+        except PermissionError:
+            return ToolResult.error(f"Permission denied accessing directory: {path}")
+    else:
+        return ToolResult.error(f"Path not found: {path}")
 
 
 def create_command(path: str, file_text: str | None) -> ToolResult:
