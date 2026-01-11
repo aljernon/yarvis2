@@ -5,7 +5,7 @@ set -u
 
 echo "Updating tokens"
 
-rm -f token.pickle
+rm -f token.pickle gmail_token.json
 python -m clam_ptb.tools.gmail_tool
 sleep 5
 python -m clam_ptb.tools.gcal_tools
