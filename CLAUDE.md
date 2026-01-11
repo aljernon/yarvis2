@@ -20,6 +20,9 @@ Clam is a Telegram bot powered by Claude LLM that provides users with an AI assi
 - `clam_ptb/clam_ptb/prompt_consts.py`: Contains system prompts
 - `clam_ptb/clam_ptb/tools/`: Directory containing tool implementations
 
+### Memory / Core knowledge repository
+`core_knowledge` folder is a link to a separate memory repository. It contains .md files with info about both the user and the environment. Some of them are loaded into context all the time and some are loaded contextually
+
 ## Data Structure
 
 ### Database Tables
