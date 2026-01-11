@@ -41,6 +41,7 @@ from clam_ptb.tools.gmail_tool import get_gmail_tools
 from clam_ptb.tools.image_tools import build_image_tools
 from clam_ptb.tools.location import GetLocationTool
 from clam_ptb.tools.mcp_util import MCPClientBase
+from clam_ptb.tools.memory_tools import build_memory_tools
 from clam_ptb.tools.message_search_tool import build_message_search_tools
 from clam_ptb.tools.message_tool import build_message_tools
 from clam_ptb.tools.python_repl import PythonREPLTool
@@ -110,6 +111,7 @@ def get_tools_for_config(
             "chat_send_file",
             "telegram",
             "image_editing",
+            "memory",
         ]
 
         # Add messaging tool only when tool_only_messaging is enabled
@@ -140,6 +142,8 @@ def get_tools_for_config(
             all_local_tool_objects.extend(build_message_tools(bot, chat_id, curr))
         elif tool_class == "image_editing":
             all_local_tool_objects.extend(build_image_tools(chat_id, curr))
+        elif tool_class == "memory":
+            all_local_tool_objects.extend(build_memory_tools())
         else:
             raise ValueError(f"Unknown tool class: {tool_class}")
     return all_local_tool_objects
