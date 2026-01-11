@@ -207,6 +207,12 @@ class AddCalendarEventTool(LocalTool):
                     description="Comma separated list of attendee email addresses",
                     is_required=False,
                 ),
+                ArgSpec(
+                    name="color_id",
+                    type=str,
+                    description="Color ID for the event (1-11). Common values: 8=Gray/Graphite, 1=Lavender, 2=Sage, 3=Grape, 4=Flamingo, 5=Banana, 6=Tangerine, 7=Peacock, 9=Blueberry, 10=Basil, 11=Tomato",
+                    is_required=False,
+                ),
             ],
         )
 
@@ -219,6 +225,7 @@ class AddCalendarEventTool(LocalTool):
         description: str | None = None,
         location: str | None = None,
         attendees: str | None = None,
+        color_id: str | None = None,
         **kwargs,
     ) -> ToolResult:
         assert not kwargs, f"Unknown arguments: {kwargs}"
@@ -233,6 +240,7 @@ class AddCalendarEventTool(LocalTool):
             location=location,
             attendees=attendees.split(",") if attendees else None,
             description=description,
+            color_id=color_id,
         )
         created = self.calendar.add_event(event)
         return ToolResult(f"Created event {created.event_id}: {created.summary}")
@@ -289,6 +297,12 @@ class UpdateCalendarEventTool(LocalTool):
                     description="Comma separated list of attendee email addresses",
                     is_required=False,
                 ),
+                ArgSpec(
+                    name="color_id",
+                    type=str,
+                    description="Color ID for the event (1-11). Common values: 8=Gray/Graphite, 1=Lavender, 2=Sage, 3=Grape, 4=Flamingo, 5=Banana, 6=Tangerine, 7=Peacock, 9=Blueberry, 10=Basil, 11=Tomato",
+                    is_required=False,
+                ),
             ],
         )
 
@@ -302,6 +316,7 @@ class UpdateCalendarEventTool(LocalTool):
         description: str | None = None,
         location: str | None = None,
         attendees: str | None = None,
+        color_id: str | None = None,
         **kwargs,
     ) -> ToolResult:
         assert not kwargs, f"Unknown arguments: {kwargs}"
@@ -332,6 +347,7 @@ class UpdateCalendarEventTool(LocalTool):
             attendees=attendees.split(",")
             if attendees is not None
             else existing.attendees,
+            color_id=color_id or existing.color_id,
         )
         updated = self.calendar.update_event(event)
         return ToolResult(f"Updated event {updated.event_id}: {updated.summary}")
