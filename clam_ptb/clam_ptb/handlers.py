@@ -358,6 +358,105 @@ async def handler_sync(update: Update, context: CallbackContext):
         )
 
 
+@RegisteredCommandHandler.register(description="Show active TODOs from logseq")
+@auth_decorator_complex_chat
+async def handler_todo(update: Update, context: CallbackContext):
+    message = ensure(update.message)
+
+    try:
+        # Pull latest logseq updates
+        subprocess.check_call(["git", "pull"], cwd="/app/logseq")
+
+        # Search for active TODOs and other task items, excluding version and backup files
+        result = subprocess.run(
+            [
+                "grep",
+                "-r",
+                "--include=*.md",
+                "--exclude-dir=version-files",
+                "--exclude-dir=bak",
+                "-n",
+                r"^\s*-\s*\(TODO\|LATER\|DOING\|WAITING\)\s",
+                "/app/logseq/",
+            ],
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split("\n")
+
+            # Group by file and format nicely
+            todos_by_file = {}
+            for line in lines:
+                if ":" in line:
+                    # Split only on first two colons (file:line:content)
+                    parts = line.split(":", 2)
+                    if len(parts) >= 3:
+                        file_path, line_num, content = parts
+                        file_name = os.path.basename(file_path)
+
+                        # Clean up the file name (remove .md extension, format date)
+                        if file_name.endswith(".md"):
+                            file_name = file_name[:-3]
+                        if file_name.startswith("2026_") or file_name.startswith(
+                            "2025_"
+                        ):
+                            # Convert date format to readable
+                            try:
+                                date_obj = datetime.datetime.strptime(
+                                    file_name, "%Y_%m_%d"
+                                )
+                                file_name = date_obj.strftime("%Y-%m-%d")
+                            except ValueError:
+                                pass  # Keep original name if parsing fails
+
+                        if file_name not in todos_by_file:
+                            todos_by_file[file_name] = []
+                        todos_by_file[file_name].append(content.strip())
+
+            # Format response
+            if todos_by_file:
+                response_lines = ["**Active TODOs from Logseq:**\n"]
+
+                # Sort files by date (most recent first)
+                sorted_files = sorted(todos_by_file.keys(), reverse=True)
+
+                for file_name in sorted_files:
+                    response_lines.append(f"**{file_name}:**")
+                    for todo in todos_by_file[file_name]:
+                        response_lines.append(f"  {todo}")
+                    response_lines.append("")  # Empty line between files
+
+                response = "\n".join(response_lines)
+
+                # If response is too long, truncate and mention
+                if len(response) > 3000:
+                    response = (
+                        response[:2800] + "\n\n... (truncated, more TODOs available)"
+                    )
+
+                await reply_maybe_markdown(context.bot, message.chat_id, response)
+            else:
+                await reply_maybe_markdown(
+                    context.bot, message.chat_id, "No active TODOs found in logseq."
+                )
+        else:
+            await reply_maybe_markdown(
+                context.bot, message.chat_id, "No active TODOs found in logseq."
+            )
+
+    except Exception as e:
+        error_traceback = "".join(
+            traceback.format_exception(type(e), e, e.__traceback__)
+        )
+        logger.exception(f"An error occurred in todo handler:\n{error_traceback}")
+
+        error_message = f"An error occurred while fetching TODOs:\n\n{str(e)}"
+        await reply_maybe_markdown(context.bot, message.chat_id, error_message)
+
+
 @RegisteredCommandHandler.register(description="Send reflection invocation")
 @auth_decorator_all_complex_chats
 async def handler_reflect(update: Update, context: CallbackContext):
