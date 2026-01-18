@@ -272,7 +272,7 @@ async def _process_query_with_tools(
             tool_choice=ToolChoiceAutoParam(
                 type="auto", disable_parallel_tool_use=False
             ),
-            thinking_config={"enabled": True, "max_tokens": 8000},
+            # thinking_config={"enabled": True, "max_tokens": 8000},
             # betas=["token-efficient-tools-2025-02-19"],
         )
 
