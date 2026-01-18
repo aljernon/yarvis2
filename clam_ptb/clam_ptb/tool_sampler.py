@@ -272,6 +272,7 @@ async def _process_query_with_tools(
             tool_choice=ToolChoiceAutoParam(
                 type="auto", disable_parallel_tool_use=False
             ),
+            thinking_config={"enabled": True, "max_tokens": 8000},
             # betas=["token-efficient-tools-2025-02-19"],
         )
 
@@ -313,7 +314,7 @@ async def _process_query_with_tools(
             sampling_is_done = asyncio.Event()
 
             async with async_client.beta.messages.stream(
-                max_tokens=4096, **kwargs
+                max_tokens=12000, **kwargs
             ) as stream:
                 # Stream processing in the main task
                 try:
