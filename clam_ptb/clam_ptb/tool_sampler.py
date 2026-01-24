@@ -19,7 +19,7 @@ from anthropic.types import (
     ToolUseBlock,
     ToolUseBlockParam,
 )
-from anthropic.types.beta import BetaTextBlock, BetaThinkingBlock, BetaToolUseBlock
+from anthropic.types.beta import BetaTextBlock, BetaToolUseBlock
 from telegram.ext import ContextTypes, JobQueue
 
 from clam_ptb.chat_config import ChatConfig
@@ -397,12 +397,9 @@ async def _process_query_with_tools(
 
     def convert_result_content_to_input_content(
         result_content: ContentBlock,
-    ) -> TextBlockParam | ToolUseBlockParam | None:
+    ) -> TextBlockParam | ToolUseBlockParam:
         if isinstance(result_content, (TextBlock, BetaTextBlock)):
             return TextBlockParam(type="text", text=result_content.text)
-        elif isinstance(result_content, BetaThinkingBlock):
-            # Thinking blocks are not included in message history
-            return None
         else:
             assert isinstance(
                 result_content, (ToolUseBlock, BetaToolUseBlock)
@@ -441,10 +438,8 @@ async def _process_query_with_tools(
             return [], claude_calls
 
         converted_content = [
-            converted
+            convert_result_content_to_input_content(content)
             for content in partial_sample.content
-            if (converted := convert_result_content_to_input_content(content))
-            is not None
         ]
         extra_messages.append({"role": "assistant", "content": converted_content})
         # No need to call on_update here, as we are already doing it in the stream.
@@ -454,12 +449,6 @@ async def _process_query_with_tools(
             logger.debug(f"Content: {content}")
             if content.type == "text":
                 pass
-            elif content.type == "thinking":
-                # Send thinking blocks to debug chat
-                assert isinstance(content, BetaThinkingBlock), content
-                add_debug_message_to_queue(
-                    f"<details><summary>💭 Claude's thinking</summary>\n\n{content.thinking}\n</details>"
-                )
             elif content.type == "tool_use":
                 assert isinstance(content, (ToolUseBlock, BetaToolUseBlock)), content
 
