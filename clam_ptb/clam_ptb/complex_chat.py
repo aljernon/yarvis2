@@ -4,6 +4,7 @@ import datetime
 import io
 import json
 import logging
+import os
 import time
 from dataclasses import asdict, is_dataclass
 from typing import Any
@@ -181,6 +182,41 @@ async def handle_message_root_user_assistant(
             message=update.message.caption or "",
             meta={
                 IMAGE_B64_META_FIELD: base64.b64encode(image_buffer.getvalue()).decode()
+            },
+        )
+    elif update.message.document:
+        # Handle file uploads
+        document = update.message.document
+        file_ref = await document.get_file()
+
+        # Create /tmp directory if it doesn't exist
+        os.makedirs("/tmp", exist_ok=True)
+
+        # Save file to /tmp with original filename
+        file_path = os.path.join(
+            "/tmp", document.file_name or f"file_{document.file_id}"
+        )
+        await file_ref.download_to_path(file_path)
+
+        logger.info(f"File uploaded: {file_path} (size: {document.file_size} bytes)")
+
+        # Build message informing Claude about the file
+        caption = update.message.caption or ""
+        file_info = f"[File uploaded: {document.file_name} ({document.file_size} bytes) saved to {file_path}]"
+        message_text = f"{file_info}\n{caption}" if caption else file_info
+
+        initial_db_message = DbMessage(
+            chat_id=chat_id,
+            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            user_id=ensure(update.message.from_user).id,
+            message=message_text,
+            meta={
+                "uploaded_file": {
+                    "file_path": file_path,
+                    "file_name": document.file_name,
+                    "file_size": document.file_size,
+                    "mime_type": document.mime_type,
+                }
             },
         )
     else:
