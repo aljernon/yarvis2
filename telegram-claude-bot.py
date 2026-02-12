@@ -159,7 +159,9 @@ def main():
         )  # type: ignore
         application.add_handler(
             MessageHandler(
-                (filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handle_message
+                (filters.TEXT | filters.PHOTO | filters.Document.ALL)
+                & ~filters.COMMAND,
+                handle_message,
             )  # type: ignore
         )
 
