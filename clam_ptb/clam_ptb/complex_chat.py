@@ -221,7 +221,7 @@ async def handle_message_root_user_assistant(
 
         # Save file to /tmp with original filename
         file_path = os.path.join("/tmp", file_name)
-        await file_ref.download_to_path(file_path)
+        await file_ref.download_to_drive(file_path)
 
         logger.info(
             f"{file_type} file uploaded: {file_path} (size: {file_obj.file_size} bytes)"
