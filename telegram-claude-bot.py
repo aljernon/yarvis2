@@ -28,13 +28,21 @@ from clam_ptb.clam_ptb.handlers import (
 async def log_all_updates(update: Update, context):
     """Log all updates for debugging"""
     if update.message:
+        msg = update.message
         logger.info(
-            f"UPDATE RECEIVED - Message details: text={bool(update.message.text)}, "
-            f"photo={bool(update.message.photo)}, "
-            f"document={bool(update.message.document)}, "
-            f"voice={bool(update.message.voice)}, "
-            f"from_user={update.message.from_user.id if update.message.from_user else None}"
+            f"UPDATE RECEIVED - Message details: text={bool(msg.text)}, "
+            f"photo={bool(msg.photo)}, "
+            f"document={bool(msg.document)}, "
+            f"voice={bool(msg.voice)}, "
+            f"audio={bool(msg.audio)}, "
+            f"video={bool(msg.video)}, "
+            f"animation={bool(msg.animation)}, "
+            f"sticker={bool(msg.sticker)}, "
+            f"video_note={bool(msg.video_note)}, "
+            f"from_user={msg.from_user.id if msg.from_user else None}"
         )
+        # Log the message type
+        logger.info(f"Message object: {msg}")
 
 
 from clam_ptb.clam_ptb.logging import setup_logging
