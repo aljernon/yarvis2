@@ -23,6 +23,20 @@ from clam_ptb.clam_ptb.handlers import (
     handle_voice_message,
     handler_interrupt,
 )
+
+
+async def log_all_updates(update: Update, context):
+    """Log all updates for debugging"""
+    if update.message:
+        logger.info(
+            f"UPDATE RECEIVED - Message details: text={bool(update.message.text)}, "
+            f"photo={bool(update.message.photo)}, "
+            f"document={bool(update.message.document)}, "
+            f"voice={bool(update.message.voice)}, "
+            f"from_user={update.message.from_user.id if update.message.from_user else None}"
+        )
+
+
 from clam_ptb.clam_ptb.logging import setup_logging
 from clam_ptb.clam_ptb.ptb_util import (
     set_last_message_id,
@@ -151,6 +165,9 @@ def main():
     with connect() as conn:
         application.bot_data["conn"] = conn
         job_queue = JobQueue()
+
+        # Add logging handler first (group=-1 means it runs before other handlers)
+        application.add_handler(MessageHandler(filters.ALL, log_all_updates), group=-1)  # type: ignore
 
         for handler in HANDLER_REGISTRY:
             application.add_handler(CommandHandler(handler.name, handler.handler))  # type: ignore

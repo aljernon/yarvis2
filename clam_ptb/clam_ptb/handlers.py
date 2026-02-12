@@ -531,6 +531,7 @@ async def handle_voice_message(
 async def handle_message(
     auth: AuthInfo, update: Update, context: CallbackContext
 ) -> None:
+    logger.info(f"handle_message called - update.message: {update.message}")
     return await _handle_message(auth, update, context, is_voice=False)
 
 
