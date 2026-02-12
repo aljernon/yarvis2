@@ -537,6 +537,12 @@ async def handle_message(
 async def _handle_message(
     auth: AuthInfo, update: Update, context: CallbackContext, is_voice: bool
 ) -> None:
+    logger.info(
+        f"_handle_message called - is_voice: {is_voice}, "
+        f"has_document: {bool(update.message and update.message.document)}, "
+        f"has_text: {bool(update.message and update.message.text)}, "
+        f"has_photo: {bool(update.message and update.message.photo)}"
+    )
     if not auth.known_user:
         logging.warning(f"Not answering to unknown user {auth.user=}")
         return

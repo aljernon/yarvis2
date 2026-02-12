@@ -163,6 +163,13 @@ async def handle_message_root_user_assistant(
             )
             set_non_active_invocation(curr, invocation)
 
+    # Debug logging for message type detection
+    logger.info(
+        f"Message type check - text: {bool(update.message.text)}, "
+        f"photo: {bool(update.message.photo)}, "
+        f"document: {bool(update.message.document)}"
+    )
+
     if update.message.text:
         initial_db_message = DbMessage(
             chat_id=chat_id,
