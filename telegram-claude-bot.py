@@ -41,8 +41,8 @@ async def log_all_updates(update: Update, context):
             f"video_note={bool(msg.video_note)}, "
             f"from_user={msg.from_user.id if msg.from_user else None}"
         )
-        # Log the message type
-        logger.info(f"Message object: {msg}")
+        # Log full update for debugging
+        logger.info(f"Full update: {update.to_dict()}")
 
 
 from clam_ptb.clam_ptb.logging import setup_logging
@@ -184,7 +184,13 @@ def main():
         )  # type: ignore
         application.add_handler(
             MessageHandler(
-                (filters.TEXT | filters.PHOTO | filters.Document.ALL)
+                (
+                    filters.TEXT
+                    | filters.PHOTO
+                    | filters.Document.ALL
+                    | filters.AUDIO
+                    | filters.VIDEO
+                )
                 & ~filters.COMMAND,
                 handle_message,
             )  # type: ignore

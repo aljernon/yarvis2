@@ -167,7 +167,9 @@ async def handle_message_root_user_assistant(
     logger.info(
         f"Message type check - text: {bool(update.message.text)}, "
         f"photo: {bool(update.message.photo)}, "
-        f"document: {bool(update.message.document)}"
+        f"document: {bool(update.message.document)}, "
+        f"audio: {bool(update.message.audio)}, "
+        f"video: {bool(update.message.video)}"
     )
 
     if update.message.text:
@@ -191,25 +193,43 @@ async def handle_message_root_user_assistant(
                 IMAGE_B64_META_FIELD: base64.b64encode(image_buffer.getvalue()).decode()
             },
         )
-    elif update.message.document:
-        # Handle file uploads
-        document = update.message.document
-        file_ref = await document.get_file()
+    elif update.message.document or update.message.audio or update.message.video:
+        # Handle file uploads (documents, audio, video)
+        file_obj = (
+            update.message.document or update.message.audio or update.message.video
+        )
+        file_ref = await file_obj.get_file()
 
         # Create /tmp directory if it doesn't exist
         os.makedirs("/tmp", exist_ok=True)
 
+        # Determine file name and type
+        if update.message.document:
+            file_name = file_obj.file_name or f"file_{file_obj.file_id}"
+            file_type = "Document"
+        elif update.message.audio:
+            # Audio files may have title, performer, or just use file_id
+            file_name = (
+                getattr(file_obj, "file_name", None) or f"audio_{file_obj.file_id}.m4a"
+            )
+            file_type = "Audio"
+        else:  # video
+            file_name = (
+                getattr(file_obj, "file_name", None) or f"video_{file_obj.file_id}.mp4"
+            )
+            file_type = "Video"
+
         # Save file to /tmp with original filename
-        file_path = os.path.join(
-            "/tmp", document.file_name or f"file_{document.file_id}"
-        )
+        file_path = os.path.join("/tmp", file_name)
         await file_ref.download_to_path(file_path)
 
-        logger.info(f"File uploaded: {file_path} (size: {document.file_size} bytes)")
+        logger.info(
+            f"{file_type} file uploaded: {file_path} (size: {file_obj.file_size} bytes)"
+        )
 
         # Build message informing Claude about the file
         caption = update.message.caption or ""
-        file_info = f"[File uploaded: {document.file_name} ({document.file_size} bytes) saved to {file_path}]"
+        file_info = f"[{file_type} uploaded: {file_name} ({file_obj.file_size} bytes) saved to {file_path}]"
         message_text = f"{file_info}\n{caption}" if caption else file_info
 
         initial_db_message = DbMessage(
@@ -220,9 +240,10 @@ async def handle_message_root_user_assistant(
             meta={
                 "uploaded_file": {
                     "file_path": file_path,
-                    "file_name": document.file_name,
-                    "file_size": document.file_size,
-                    "mime_type": document.mime_type,
+                    "file_name": file_name,
+                    "file_size": file_obj.file_size,
+                    "mime_type": getattr(file_obj, "mime_type", None),
+                    "file_type": file_type.lower(),
                 }
             },
         )
