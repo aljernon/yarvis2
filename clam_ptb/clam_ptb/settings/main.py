@@ -8,7 +8,7 @@ PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 LOCATION_PATH = PROJECT_ROOT / "locations.json"
 
 DEFAULT_TIMEZONE_STR = "US/Pacific"
-CLAUDE_MODEL_NAME = "claude-sonnet-4-20250514"
+CLAUDE_MODEL_NAME = "claude-opus-4-6"
 DEFAULT_TIMEZONE = pytz.timezone(DEFAULT_TIMEZONE_STR)
 
 
