@@ -9,17 +9,17 @@ from telegram.ext import (
     Application,
 )
 
-from clam_ptb.clam_ptb.complex_chat import DEFAULT_COMPLEX_CHAT_CONFIG
-from clam_ptb.clam_ptb.logging import setup_logging
-from clam_ptb.clam_ptb.settings.main import CONFIGURED_CHATS, load_env
-from clam_ptb.complex_chat import (
+from yarvis_ptb.complex_chat import (
     Invocation,
     _process_multi_message_claude_invocation_no_lock,
 )
-from clam_ptb.debug_chat import RENDERED_MESSAGES_QUEUE
-from clam_ptb.settings import ID_USER_MAP
-from clam_ptb.settings.anton import USER_ANTON
-from clam_ptb.storage import DbMessage, Invocation, connect
+from yarvis_ptb.debug_chat import RENDERED_MESSAGES_QUEUE
+from yarvis_ptb.settings import ID_USER_MAP
+from yarvis_ptb.settings.anton import USER_ANTON
+from yarvis_ptb.storage import DbMessage, Invocation, connect
+from yarvis_ptb.yarvis_ptb.complex_chat import DEFAULT_COMPLEX_CHAT_CONFIG
+from yarvis_ptb.yarvis_ptb.logging import setup_logging
+from yarvis_ptb.yarvis_ptb.settings.main import CONFIGURED_CHATS, load_env
 
 app = typer.Typer()
 

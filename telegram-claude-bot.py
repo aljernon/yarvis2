@@ -14,7 +14,7 @@ from telegram.ext import (
     filters,
 )
 
-from clam_ptb.clam_ptb.handlers import (
+from yarvis_ptb.yarvis_ptb.handlers import (
     HANDLER_REGISTRY,
     app_start_callback,
     callback_minute,
@@ -45,18 +45,18 @@ async def log_all_updates(update: Update, context):
         logger.info(f"Full update: {update.to_dict()}")
 
 
-from clam_ptb.clam_ptb.logging import setup_logging
-from clam_ptb.clam_ptb.ptb_util import (
+from yarvis_ptb.yarvis_ptb.logging import setup_logging
+from yarvis_ptb.yarvis_ptb.ptb_util import (
     set_last_message_id,
 )
-from clam_ptb.clam_ptb.settings import (
+from yarvis_ptb.yarvis_ptb.settings import (
     BOT_FULL_NAME,
     FULL_LOG_CHAT_ID,
     ROOT_USER_ID,
     load_env,
 )
-from clam_ptb.clam_ptb.storage import connect
-from clam_ptb.clam_ptb.util import ensure
+from yarvis_ptb.yarvis_ptb.storage import connect
+from yarvis_ptb.yarvis_ptb.util import ensure
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -65,8 +65,8 @@ logger = logging.getLogger(__name__)
 CHATS_WITH_COMMANDS = [
     ROOT_USER_ID,
     FULL_LOG_CHAT_ID,
-    -4666161502,  # clam_simple_nomem
-    -4767217828,  # clam_simple
+    -4666161502,  # yarvis_simple_nomem
+    -4767217828,  # yarvis_simple
 ]
 
 

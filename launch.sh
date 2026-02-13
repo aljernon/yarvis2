@@ -21,7 +21,7 @@ Host github.com
 EOF
 
 git clone -o origin git@github.com:aljernon/logseq.git ~/logseq
-git clone -o origin git@github.com:aljernon/clam.git ~/repo
+git clone -o origin git@github.com:aljernon/yarvis.git ~/repo
 git clone -o origin git@github.com:aljernon/memory.git ~/core_knowledge
 
 # Setup repository and pre-commit hooks
@@ -35,7 +35,7 @@ git clone -o origin git@github.com:aljernon/memory.git ~/core_knowledge
 
 git config --global pull.rebase false
 git config --global user.email "you@example.com"
-git config --global user.name "Clam Bot"
+git config --global user.name "Yarvis Bot"
 
 updater_logseq() {
 	( cd ~/logseq && git pull )

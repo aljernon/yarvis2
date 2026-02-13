@@ -4,7 +4,7 @@ import anthropic
 import typer
 from anthropic.types import MessageParam, TextBlockParam
 
-from clam_ptb.clam_ptb.settings.main import (
+from yarvis_ptb.yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
     load_env,
 )

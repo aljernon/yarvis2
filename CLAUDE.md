@@ -1,7 +1,7 @@
-# Clam: Claude-Powered Telegram Bot
+# Yarvis: Yet Another JARVIS - Claude-Powered Telegram Bot
 
 ## Project Overview
-Clam is a Telegram bot powered by Claude LLM that provides users with an AI assistant through the Telegram platform. The bot features rich functionality including tool usage, memory persistence, and scheduled task execution.
+Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI assistant through the Telegram platform. The bot features rich functionality including tool usage, memory persistence, and scheduled task execution.
 
 ## Key Components
 
@@ -15,10 +15,10 @@ Clam is a Telegram bot powered by Claude LLM that provides users with an AI assi
 
 ### Key Files and Modules
 - `launch.sh`: Top-level entrypoint for the Heroku deployment
-- `clam_ptb/clam_ptb/complex_chat.py`: Contains the main conversational logic, Claude integration, and message handling
-- `clam_ptb/clam_ptb/storage.py`: Manages database interactions for messages, memories, and scheduled invocations
-- `clam_ptb/clam_ptb/prompt_consts.py`: Contains system prompts
-- `clam_ptb/clam_ptb/tools/`: Directory containing tool implementations
+- `yarvis_ptb/yarvis_ptb/complex_chat.py`: Contains the main conversational logic, Claude integration, and message handling
+- `yarvis_ptb/yarvis_ptb/storage.py`: Manages database interactions for messages, memories, and scheduled invocations
+- `yarvis_ptb/yarvis_ptb/prompt_consts.py`: Contains system prompts
+- `yarvis_ptb/yarvis_ptb/tools/`: Directory containing tool implementations
 
 ### Memory / Core knowledge repository
 `core_knowledge` folder is a link to a separate memory repository. It contains .md files with info about both the user and the environment. Some of them are loaded into context all the time and some are loaded contextually

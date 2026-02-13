@@ -7,8 +7,8 @@ import requests
 from flask import Flask, Response, request
 
 # Import the camera app package
-from clam_ptb.clam_ptb.settings import LOCATION_PATH
-from clam_ptb.clam_ptb.timezones import get_timezone
+from yarvis_ptb.yarvis_ptb.settings import LOCATION_PATH
+from yarvis_ptb.yarvis_ptb.timezones import get_timezone
 
 app = Flask(__name__)
 

@@ -39,7 +39,7 @@ flask==3.1.0
 cryptography==45.0.3
 fernet==1.0.1
 
--e ./clam_ptb
+-e ./yarvis_ptb
 
 # For the image processing
 pillow==11.0.0

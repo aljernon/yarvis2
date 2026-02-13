@@ -23,7 +23,7 @@ repos:
     hooks:
       - id: good_imports
         name: good_imports
-        entry: find clam_ptb/ -name "*.py" -exec sed -i '' "s/clam_ptb\.clam_ptb/clam_ptb/g" {} \;
+        entry: find yarvis_ptb/ -name "*.py" -exec sed -i '' "s/yarvis_ptb\.yarvis_ptb/yarvis_ptb/g" {} \;
         language: system
         types: [python]
         pass_filenames: false

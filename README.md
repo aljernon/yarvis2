@@ -40,7 +40,7 @@ export DATABASE_URL=$(heroku config | grep DAT | awk '{print $2}')
 
 This should create all needed tables:
 ```
-python -m clam_ptb.storage
+python -m yarvis_ptb.storage
 ```
 
 
@@ -79,7 +79,7 @@ to get tokens
 ### Required heroku env vars:
 
 ```
-# which settings in clam_ptb/settings/ to use.
+# which settings in yarvis_ptb/settings/ to use.
 SETTINGS_NAME=
 
 # Anthropic API key
