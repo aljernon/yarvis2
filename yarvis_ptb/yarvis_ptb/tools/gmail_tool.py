@@ -327,7 +327,7 @@ async def test_html_email():
 
 
 if __name__ == "__main__":
-    # python -m clam_ptb.tools.gmail_tool
+    # python -m yarvis_ptb.tools.gmail_tool
     try:
         asyncio.run(test_html_email())
     except Exception as e:

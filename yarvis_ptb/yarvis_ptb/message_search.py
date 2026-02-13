@@ -471,5 +471,5 @@ def query_model_group(query: str, limit: int = 10):
 
 
 if __name__ == "__main__":
-    # python -m clam_ptb.message_search
+    # python -m yarvis_ptb.message_search
     app()

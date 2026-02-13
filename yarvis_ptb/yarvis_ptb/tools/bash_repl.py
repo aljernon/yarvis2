@@ -132,7 +132,7 @@ async def run_tests():
 
 
 if __name__ == "__main__":
-    # python -m clam_ptb.tools.bash_repl
+    # python -m yarvis_ptb.tools.bash_repl
     # Run the tests
     import asyncio
 

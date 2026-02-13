@@ -274,7 +274,7 @@ async def test_editor_tool():
 
 
 if __name__ == "__main__":
-    # python -m clam_ptb.tools.editor_tool
+    # python -m yarvis_ptb.tools.editor_tool
     import asyncio
 
     asyncio.run(test_editor_tool())

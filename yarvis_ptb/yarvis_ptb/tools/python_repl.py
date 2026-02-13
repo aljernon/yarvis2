@@ -184,6 +184,6 @@ print(f'Sum: {sum}')
 
 
 if __name__ == "__main__":
-    # python -m clam_ptb.tools.python_repl
+    # python -m yarvis_ptb.tools.python_repl
     # Run the tests
     asyncio.run(run_tests())

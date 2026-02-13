@@ -12,7 +12,7 @@ SETTINGS_NAME = os.environ["SETTINGS_NAME"]
 
 
 # Dynamically import the settings module
-settings_module = importlib.import_module(f"clam_ptb.settings.{SETTINGS_NAME}")
+settings_module = importlib.import_module(f"yarvis_ptb.settings.{SETTINGS_NAME}")
 local_settings = cast(LocalSettings, getattr(settings_module, "LOCAL_SETTINGS"))
 
 

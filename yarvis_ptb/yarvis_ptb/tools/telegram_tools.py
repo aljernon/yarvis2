@@ -382,7 +382,7 @@ async def test_telegram_tools():
 
 
 if __name__ == "__main__":
-    # Can be run with: PYTHONPATH=/app/repo/clam_ptb python -m clam_ptb.tools.telegram_tools
+    # Can be run with: PYTHONPATH=/app/repo/yarvis_ptb python -m yarvis_ptb.tools.telegram_tools
     import asyncio
 
     load_env()

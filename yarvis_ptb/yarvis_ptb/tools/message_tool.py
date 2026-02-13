@@ -107,10 +107,10 @@ async def test_message_tool():
     # Save original function to restore later
     import sys
 
-    original_func = sys.modules["clam_ptb.storage"].get_scheduled_invocations
+    original_func = sys.modules["yarvis_ptb.storage"].get_scheduled_invocations
     # Replace with our mock
     sys.modules[
-        "clam_ptb.storage"
+        "yarvis_ptb.storage"
     ].get_scheduled_invocations = get_scheduled_invocations_mock
 
     try:
@@ -152,7 +152,7 @@ async def test_message_tool():
 
     finally:
         # Restore the original function
-        sys.modules["clam_ptb.storage"].get_scheduled_invocations = original_func
+        sys.modules["yarvis_ptb.storage"].get_scheduled_invocations = original_func
 
 
 if __name__ == "__main__":
