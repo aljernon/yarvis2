@@ -12,7 +12,7 @@ class EditorTool(LocalTool):
             description=cleandoc("""Custom editing tool for viewing, creating and editing files
             * State is persistent across command calls and discussions with the user
             * If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep
-            * The `create` command cannot be used if the specified `path` already exists as a file
+            * The `create` command cannot be used if the specified `path` already exists as a file, unless `force` is set to true
             * If a `command` generates a long output, it will be truncated and marked with `<response clipped>`
             * The `undo_edit` command will revert the last edit made to the file at `path`
 
@@ -37,6 +37,10 @@ class EditorTool(LocalTool):
                     "file_text": {
                         "description": "Required parameter of `create` command, with the content of the file to be created.",
                         "type": "string",
+                    },
+                    "force": {
+                        "description": "Optional parameter of `create` command. If true, allows overwriting existing files. Defaults to false.",
+                        "type": "boolean",
                     },
                     "insert_line": {
                         "description": "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`.",
@@ -78,7 +82,8 @@ class EditorTool(LocalTool):
 
             elif command == "create":
                 file_text = kwargs.pop("file_text", None)
-                return create_command(path, file_text)
+                force = kwargs.pop("force", False)
+                return create_command(path, file_text, force)
 
             elif command == "str_replace":
                 old_str = kwargs.pop("old_str", None)
@@ -150,12 +155,21 @@ def view_command(path: str, view_range: list[int] | None) -> ToolResult:
         return ToolResult.error(f"Path not found: {path}")
 
 
-def create_command(path: str, file_text: str | None) -> ToolResult:
+def create_command(path: str, file_text: str | None, force: bool = False) -> ToolResult:
     if not file_text:
         return ToolResult.error("file_text parameter required for create command")
+
+    # Check if file already exists
+    if os.path.exists(path) and not force:
+        return ToolResult.error(
+            f"File already exists: {path}. Use force=true to overwrite or use str_replace to edit the file."
+        )
+
     with open(path, "w") as f:
         f.write(file_text)
-    return ToolResult(f"Created file: {path}")
+
+    action = "Overwritten" if os.path.exists(path) else "Created"
+    return ToolResult(f"{action} file: {path}")
 
 
 def str_replace_command(
@@ -230,6 +244,27 @@ async def test_editor_tool():
         print("\nTest 3: View file with range")
         result = await editor(command="view", path=test_file, view_range=[1, 2])
         print(f"Result: {result}")
+
+        # Test create on existing file without force (should fail)
+        print("\nTest 3.5: Create on existing file without force")
+        result = await editor(
+            command="create", path=test_file, file_text="Should not overwrite"
+        )
+        print(f"Result: {result}")
+        assert (
+            result.is_error
+        ), "Expected error when creating existing file without force"
+        assert (
+            "already exists" in result.text.lower()
+        ), "Error message should mention file exists"
+
+        # Test create on existing file with force (should succeed)
+        print("\nTest 3.6: Create on existing file with force=True")
+        result = await editor(
+            command="create", path=test_file, file_text=test_content, force=True
+        )
+        print(f"Result: {result}")
+        assert not result.is_error, "Should succeed with force=True"
 
         # Test str_replace
         print("\nTest 4: String replace")
