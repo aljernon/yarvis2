@@ -49,6 +49,9 @@ pycairo==1.28.0
 # for some data science
 pandas==2.2.3
 
+# Web search
+brave-search==0.3.0
+
 # To speed up requirements resolution.
 idna>=3.10
 google-api-core>=2.24.0
