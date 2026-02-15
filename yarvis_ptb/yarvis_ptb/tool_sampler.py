@@ -261,12 +261,23 @@ async def _process_query_with_tools(
             f"(Attempt {retry_state.attempt_number})"
         ),
     )
+    def _get_retry_after(retry_state) -> float:
+        exc = retry_state.outcome.exception()
+        if isinstance(exc, RateLimitError) and exc.response:
+            retry_after = exc.response.headers.get("retry-after")
+            if retry_after:
+                try:
+                    return float(retry_after)
+                except ValueError:
+                    pass
+        return 35.0
+
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(RateLimitError),
-        wait=tenacity.wait_incrementing(start=35, increment=35),
+        wait=_get_retry_after,
         stop=tenacity.stop_after_attempt(3),
         before_sleep=lambda retry_state: logger.warning(
-            f"Rate limit hit, retrying in {35 * retry_state.attempt_number}s... "
+            f"Rate limit hit, retrying in {_get_retry_after(retry_state):.0f}s... "
             f"(Attempt {retry_state.attempt_number})"
         ),
     )
