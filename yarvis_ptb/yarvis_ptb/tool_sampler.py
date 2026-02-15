@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable, Literal
 
 import telegram
 import tenacity
-from anthropic import Anthropic, APIStatusError
+from anthropic import Anthropic, APIStatusError, RateLimitError
 from anthropic.types import (
     ContentBlock,
     MessageParam,
@@ -251,13 +251,21 @@ async def _process_query_with_tools(
 
     async_client = get_async_anthropic_client()
 
-    # Apply retry decorator to the entire function to handle rate limit errors
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(ANTHROPIC_EXCEPTIONS_TO_RETRY),
         wait=tenacity.wait_exponential(multiplier=2, min=2, max=60),
         stop=tenacity.stop_after_attempt(5),
         before_sleep=lambda retry_state: logger.warning(
-            f"Rate limit hit, retrying in {retry_state.next_action and retry_state.next_action.sleep} seconds... "
+            f"API error, retrying in {retry_state.next_action and retry_state.next_action.sleep} seconds... "
+            f"(Attempt {retry_state.attempt_number})"
+        ),
+    )
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(RateLimitError),
+        wait=tenacity.wait_incrementing(start=35, increment=35),
+        stop=tenacity.stop_after_attempt(3),
+        before_sleep=lambda retry_state: logger.warning(
+            f"Rate limit hit, retrying in {35 * retry_state.attempt_number}s... "
             f"(Attempt {retry_state.attempt_number})"
         ),
     )

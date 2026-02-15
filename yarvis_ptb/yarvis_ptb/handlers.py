@@ -508,9 +508,7 @@ async def handler_restart(update: Update, context: CallbackContext):
 async def handle_voice_message(
     auth: AuthInfo, update: Update, context: CallbackContext
 ) -> None:
-    if not auth.is_root_user_complex_chat and (
-        auth.group_chat_name not in CONFIGURED_CHATS
-    ):
+    if not auth.is_root_user_complex_chat:
         return
     if not update.message:
         logger.error("No message")
