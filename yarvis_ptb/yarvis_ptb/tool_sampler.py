@@ -252,7 +252,8 @@ async def _process_query_with_tools(
     async_client = get_async_anthropic_client()
 
     @tenacity.retry(
-        retry=tenacity.retry_if_exception_type(ANTHROPIC_EXCEPTIONS_TO_RETRY),
+        retry=tenacity.retry_if_exception_type(ANTHROPIC_EXCEPTIONS_TO_RETRY)
+        & ~tenacity.retry_if_exception_type(RateLimitError),
         wait=tenacity.wait_exponential(multiplier=2, min=2, max=60),
         stop=tenacity.stop_after_attempt(5),
         before_sleep=lambda retry_state: logger.warning(
