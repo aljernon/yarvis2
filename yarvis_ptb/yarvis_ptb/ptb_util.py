@@ -415,18 +415,25 @@ async def typing_action(bot: Bot, chat_id: int, interval: float = 4.0):
     Telegram typing indicator expires after ~5 seconds, so we resend it
     every *interval* seconds.  The background task is always cancelled on
     exit (including exceptions), so the indicator stops promptly.
+
+    The first action is sent synchronously before yielding so that it
+    goes out even if the caller blocks the event loop with sync code.
     """
+    try:
+        await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    except Exception:
+        logger.debug("Failed to send initial typing action", exc_info=True)
 
     async def _keep_typing():
         try:
             while True:
+                await asyncio.sleep(interval)
                 try:
                     await bot.send_chat_action(
                         chat_id=chat_id, action=ChatAction.TYPING
                     )
                 except Exception:
                     logger.debug("Failed to send typing action", exc_info=True)
-                await asyncio.sleep(interval)
         except asyncio.CancelledError:
             pass
 
