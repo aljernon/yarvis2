@@ -52,6 +52,9 @@ pandas==2.2.3
 # Web search
 brave-search==0.3.0
 
+# Google Places API
+googlemaps==4.10.0
+
 # To speed up requirements resolution.
 idna>=3.10
 google-api-core>=2.24.0
