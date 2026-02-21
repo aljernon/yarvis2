@@ -6,7 +6,6 @@ from datetime import datetime
 import requests
 from flask import Flask, Response, request
 
-# Import the camera app package
 from yarvis_ptb.yarvis_ptb.settings import LOCATION_PATH
 from yarvis_ptb.yarvis_ptb.timezones import get_timezone
 
@@ -46,10 +45,6 @@ def log_request():
 
 @app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE"])
 def proxy(path):
-    # Skip proxying for the paths we handle directly
-    if path.startswith("camera"):
-        return "Not found", 404
-
     # Construct the URL for the telegram bot
     target_url = f"http://localhost:{CUSTOM_TELEGRAM_BOT_PORT}/{path}"
 

@@ -32,12 +32,8 @@ telethon==1.38.1
 # OpenAI API for Whisper transcription
 openai==1.57.0
 
-# For location logger and camera app
+# For location logger
 flask==3.1.0
-
-# For camera app API key encryption
-cryptography==45.0.3
-fernet==1.0.1
 
 -e ./yarvis_ptb
 
