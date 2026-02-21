@@ -94,9 +94,9 @@ def render_memory_content() -> str:
     if autoload_memories:
         lines.append("=== Core Knowledge Repository (Autoloaded) ===\n")
         for path, content in sorted(
-            autoload_memories.items(), key=lambda x: (SYSTEM_CORE not in x, x)
+            autoload_memories.items(), key=lambda x: (SYSTEM_CORE not in x[0], x[0])
         ):
-            skill_name = path.strip("/").split("/")[-1]
+            skill_name = path.strip("/").split("/")[-2]
             lines.append(f"Content of skill {skill_name} - read from {path}")
             lines.append(content)
             lines.append("")

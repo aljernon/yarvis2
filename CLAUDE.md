@@ -31,6 +31,25 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 - `chat_variables`: Stores chat-specific variable values
 - `memories`: Not used. Old implementation of memory. Currently memory is FS-based
 
+### Message Storage Format
+Messages in the `messages` table have a `message` text field and a `meta` JSONB field.
+
+- **User messages**: `message` contains the text. `meta` may have `{"is_voice": true}` for voice messages, or `{"image_b64": "..."}` for image messages.
+- **System messages**: `message` contains the text (e.g. restart notifications). `meta` is usually empty.
+- **Bot messages** (user_id=-1): `message` is set to `"USE_CONTENT_FROM_META"`. The actual content is in `meta.message_params`, which is a list of Claude API `MessageParam` turns:
+  ```
+  [
+    {"role": "assistant", "content": [{"type": "tool_use", "name": "bash_run", "input": {...}, "id": "..."}]},
+    {"role": "user", "content": [{"type": "tool_result", "content": [{"type": "text", "text": "..."}], "is_error": false, "tool_use_id": "..."}]},
+    {"role": "assistant", "content": [{"type": "text", "text": "The final response text"}]},
+    ...
+  ]
+  ```
+  The list alternates assistant turns (containing `tool_use` and/or `text` blocks) and user turns (containing `tool_result` blocks). The final assistant turn typically has the text response shown to the user. See `render_claude_response_short()` and `render_claude_response_verbose()` in `prompting.py` for rendering logic.
+- **Tool call messages** (user_id=-3): Legacy format, `message` contains text.
+
+Special user_id values: BOT_USER_ID=-1, SYSTEM_USER_ID=-2, TOOL_CALL_USER_ID=-3.
+
 ### Memory System
 The Core Knowledge Repository is implemented as a collection of text files that get included in Claude's system prompt. This allows the bot to maintain persistent knowledge across conversations.
 
