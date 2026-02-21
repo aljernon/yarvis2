@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set active_page = "messages" %}
+{% block content %}
+<div class="controls">
+  <input type="text" id="search-input" placeholder="Search messages..." />
+  <select id="chat-filter">
+    <option value="">All chats</option>
+  </select>
+  <input type="number" id="min-bytes-input" placeholder="Min bytes" style="width:120px" />
+  <button id="search-btn">Search</button>
+</div>
+
+<div class="pagination" id="pagination-top"></div>
+<div id="turns-container"></div>
+<div class="pagination" id="pagination-bottom"></div>
+{% endblock %}

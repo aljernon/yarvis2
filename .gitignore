@@ -4,6 +4,7 @@ Debug.ipynb
 memory/
 core_knowledge
 __pycache__
+.token_cache
 .ipynb_checkpoints/
 *.egg-info
 memory

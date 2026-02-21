@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% set active_page = "agent" %}
+{% block content %}
+<div class="controls">
+  <span style="color:#7a6880;font-size:0.9em">Main chat agent view (hardcoded to root user)</span>
+  <button id="agent-token-btn" onclick="fetchAgentTokens()">tokens?</button>
+  <span id="agent-token-info" class="token-info"></span>
+</div>
+<div id="agent-container">
+  <div class="loading" style="display:none" id="agent-loading">Loading agent view...</div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yarvis Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <div class="nav-brand">Yarvis Dashboard</div>
+    <div class="nav-links">
+      <a href="/messages" class="{% if active_page == 'messages' %}active{% endif %}">Messages</a>
+      <a href="/invocations" class="{% if active_page == 'invocations' %}active{% endif %}">Invocations</a>
+      <a href="/agent" class="{% if active_page == 'agent' %}active{% endif %}">Agent View</a>
+    </div>
+    <div class="nav-stats" id="nav-stats"></div>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
