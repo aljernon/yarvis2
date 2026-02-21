@@ -50,7 +50,7 @@ pycairo==1.28.0
 pandas==2.2.3
 
 # Web search
-brave-search==0.3.0
+brave-search==0.2.0
 
 # Google Places API
 googlemaps==4.10.0
