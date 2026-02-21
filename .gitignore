@@ -5,7 +5,7 @@ memory/
 core_knowledge
 __pycache__
 .ipynb_checkpoints/
-clam_ptb/clam_ptb.egg-info
+*.egg-info
 memory
 .vscode
 
