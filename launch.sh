@@ -20,11 +20,20 @@ Host github.com
     IdentityFile ~/.ssh/id_ed25519
 EOF
 
+echo "$(date) START clone logseq"
 git clone -o origin git@github.com:aljernon/logseq.git ~/logseq
+echo "$(date) DONE clone logseq"
+
+echo "$(date) START clone yarvis"
 git clone -o origin git@github.com:aljernon/yarvis.git ~/repo
+echo "$(date) DONE clone yarvis"
+
+echo "$(date) START clone memory"
 git clone -o origin git@github.com:aljernon/memory.git ~/core_knowledge
+echo "$(date) DONE clone memory"
 
 # Setup repository and pre-commit hooks
+echo "$(date) START repo setup"
 (
     cd ~/repo
     ln -s /app/core_knowledge
@@ -32,6 +41,7 @@ git clone -o origin git@github.com:aljernon/memory.git ~/core_knowledge
     pip install pre-commit
     pre-commit install
 )
+echo "$(date) DONE repo setup"
 
 git config --global pull.rebase false
 git config --global user.email "you@example.com"
@@ -53,7 +63,5 @@ updater_core_knowledge &
 
 export CUSTOM_TELEGRAM_BOT_PORT=12345
 
-#echo Run location logger
-#python location_logger.py &
-echo Run bot
+echo "$(date) START bot"
 exec python telegram-claude-bot.py
