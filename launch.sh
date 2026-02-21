@@ -53,7 +53,7 @@ updater_core_knowledge &
 
 export CUSTOM_TELEGRAM_BOT_PORT=12345
 
-echo Run location logger
-python location_logger.py &
+#echo Run location logger
+#python location_logger.py &
 echo Run bot
 exec python telegram-claude-bot.py
