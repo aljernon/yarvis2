@@ -1,9 +1,10 @@
+import asyncio
 import dataclasses
 import datetime
 import functools
 import logging
 import os
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from tempfile import NamedTemporaryFile, gettempprefix
 from typing import Awaitable
@@ -13,7 +14,7 @@ import telegram
 import telegramify_markdown
 import tenacity
 from telegram import Bot, Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import CallbackContext
 from typing_extensions import Callable
 
@@ -405,3 +406,36 @@ def hard_restart():
     logger.error("GOING TO DO HARD RESTART")
     os.kill(os.getpid(), 9)
     raise RuntimeError("Hard restart")
+
+
+@asynccontextmanager
+async def typing_action(bot: Bot, chat_id: int, interval: float = 4.0):
+    """Send 'typing' chat action repeatedly until the block exits.
+
+    Telegram typing indicator expires after ~5 seconds, so we resend it
+    every *interval* seconds.  The background task is always cancelled on
+    exit (including exceptions), so the indicator stops promptly.
+    """
+
+    async def _keep_typing():
+        try:
+            while True:
+                try:
+                    await bot.send_chat_action(
+                        chat_id=chat_id, action=ChatAction.TYPING
+                    )
+                except Exception:
+                    logger.debug("Failed to send typing action", exc_info=True)
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            pass
+
+    task = asyncio.create_task(_keep_typing())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

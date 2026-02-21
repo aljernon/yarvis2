@@ -38,6 +38,7 @@ from yarvis_ptb.ptb_util import (
     build_interruptable_scope,
     get_anthropic_client,
     reply_maybe_markdown,
+    typing_action,
 )
 from yarvis_ptb.settings import (
     BOT_USER_ID,
@@ -302,6 +303,34 @@ async def _process_multi_message_claude_invocation_no_lock(
     initial_db_message: DbMessage | None = None,
     skip_db: bool = False,
     # Datetime to use for "now" for the last user message and the context.
+    forced_now_date: datetime.datetime | None = None,
+    telegram_message_id: int | None = None,
+):
+    async with typing_action(bot, chat_id):
+        await _process_multi_message_claude_invocation_inner(
+            curr,
+            application,
+            bot,
+            chat_id,
+            invocation,
+            chat_config=chat_config,
+            initial_db_message=initial_db_message,
+            skip_db=skip_db,
+            forced_now_date=forced_now_date,
+            telegram_message_id=telegram_message_id,
+        )
+
+
+async def _process_multi_message_claude_invocation_inner(
+    curr,
+    application: Application,
+    bot: Bot,
+    chat_id: int,
+    invocation: Invocation,
+    *,
+    chat_config: ChatConfig,
+    initial_db_message: DbMessage | None = None,
+    skip_db: bool = False,
     forced_now_date: datetime.datetime | None = None,
     telegram_message_id: int | None = None,
 ):
