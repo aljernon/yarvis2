@@ -420,9 +420,11 @@ async def typing_action(bot: Bot, chat_id: int, interval: float = 4.0):
     goes out even if the caller blocks the event loop with sync code.
     """
     try:
+        logger.info(f"Sending initial typing action to {chat_id}")
         await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        logger.info("Initial typing action sent successfully")
     except Exception:
-        logger.debug("Failed to send initial typing action", exc_info=True)
+        logger.exception("Failed to send initial typing action")
 
     async def _keep_typing():
         try:
