@@ -61,7 +61,11 @@ updater_core_knowledge() {
 
 updater_core_knowledge &
 
-export CUSTOM_TELEGRAM_BOT_PORT=12345
+# location_logger.py was a Flask proxy that bound to $PORT (for Heroku health check)
+# and forwarded to the bot on CUSTOM_TELEGRAM_BOT_PORT. Without it, the bot must
+# bind to $PORT directly, so don't set CUSTOM_TELEGRAM_BOT_PORT.
+#export CUSTOM_TELEGRAM_BOT_PORT=12345
+#python location_logger.py &
 
 echo "$(date) START bot"
 exec python telegram-claude-bot.py
