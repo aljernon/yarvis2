@@ -12,6 +12,7 @@ files=(
     "credentials.json"
     "token.pickle"
     "gmail_token.json"
+    "session_name2.session"
 )
 
 # Loop through each file

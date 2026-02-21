@@ -136,8 +136,7 @@ def get_tools_for_config(
                 build_chat_send_file_tools(chat_id, bot, debug_chat_id=debug_chat_id)
             )
         elif tool_class == "telegram":
-            pass
-        #     all_local_tool_objects.extend(TELEGRAM_TOOLS)
+            all_local_tool_objects.extend(TELEGRAM_TOOLS)
         elif tool_class == "messaging":
             all_local_tool_objects.extend(build_message_tools(bot, chat_id, curr))
         elif tool_class == "image_editing":

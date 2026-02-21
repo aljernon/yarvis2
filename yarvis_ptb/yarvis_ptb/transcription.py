@@ -32,7 +32,7 @@ async def _wait_until_last_message_has_voice(
 
 async def transcribe_last_message(chat_id: int) -> str:
     async with telethon.TelegramClient(
-        "session_name", os.environ["TELEGRAM_ID"], os.environ["TELEGRAM_HASH"]
+        "session_name2", os.environ["TELEGRAM_ID"], os.environ["TELEGRAM_HASH"]
     ) as client:
         message = await _wait_until_last_message_has_voice(client, chat_id)
         logger.info(f"Getting transcription {message.id=}")

@@ -30,7 +30,7 @@ class TelegramSingletonClient:
         logger.info(f"init {cls=} {cls._num_entrances=} {cls._maybe_client=}")
         if cls._num_entrances == 1:
             cls._maybe_client = telethon.TelegramClient(
-                "session_name",
+                "session_name2",
                 os.environ["TELEGRAM_ID"],
                 os.environ["TELEGRAM_HASH"],
             )
