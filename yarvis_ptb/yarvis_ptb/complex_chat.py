@@ -47,6 +47,7 @@ from yarvis_ptb.settings import (
     HISTORY_LENGTH_LONG_TOKENS,
     HISTORY_LENGTH_LONG_TURNS,
     LARGE_MESSAGE_SIZE_THRESHOLD,
+    SYSTEM_USER_ID,
     USER_ID_MAP,
 )
 from yarvis_ptb.settings.main import CONFIGURED_CHATS
@@ -573,11 +574,23 @@ async def _process_multi_message_claude_invocation_inner(
         for message_id in ids_to_archive:
             assert message_id is not None, ids_to_archive
             mark_message_for_archive(curr, chat_id, message_id)
+        compression_text = (
+            f"Context compression: {prompt_size} tokens exceeded {HISTORY_LENGTH_LONG_TOKENS} limit. "
+            f"Strategy: {archiving_string}"
+        )
         await reply_maybe_markdown(
             bot,
             chat_id,
-            f"**SYSTEM** Invocation: prompt truncation {prompt_size=} {HISTORY_LENGTH_LONG_TOKENS=};\n"
-            f"Archiving strategy: {archiving_string}",
+            f"**SYSTEM** {compression_text}",
+        )
+        save_message_and_update_index(
+            curr,
+            DbMessage(
+                chat_id=chat_id,
+                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                user_id=SYSTEM_USER_ID,
+                message=compression_text,
+            ),
         )
         await _process_multi_message_claude_invocation_no_lock(
             curr=curr,
