@@ -9,7 +9,7 @@ if [ -n "$TAILSCALE_AUTH_KEY" ]; then
     /tmp/tailscale_1.78.1_amd64/tailscaled --state=/tmp/tailscaled.state --tun=userspace-networking --socks5-server=localhost:1055 &
     sleep 2
     /tmp/tailscale_1.78.1_amd64/tailscale up --auth-key="$TAILSCALE_AUTH_KEY" --hostname=yarvis-heroku
-    export ALL_PROXY=socks5://localhost:1055/
+    export TAILSCALE_SOCKS5_PROXY=socks5://localhost:1055
     echo "$(date) DONE tailscale setup"
 fi
 
