@@ -47,6 +47,7 @@ from yarvis_ptb.tools.message_tool import build_message_tools
 from yarvis_ptb.tools.python_repl import PythonREPLTool
 from yarvis_ptb.tools.scheduling_tools import build_scheduling_tools
 from yarvis_ptb.tools.telegram_tools import get_telegram_tools
+from yarvis_ptb.tools.tool_output import GetToolOutputTool
 from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,9 @@ def get_tools_for_config(
         # This tool requires "all" tool filter
         if chat_config.tool_only_messaging:
             tool_classes.append("messaging")
+
+        if chat_config.tool_result_truncation_after_n_turns is not None:
+            tool_classes.append("tool_output")
     else:
         raise ValueError(f"Unknown tool_filter: {chat_config.tool_filter}")
     all_local_tool_objects = []
@@ -143,6 +147,8 @@ def get_tools_for_config(
             all_local_tool_objects.extend(build_image_tools(chat_id, curr))
         elif tool_class == "memory":
             all_local_tool_objects.extend(build_memory_tools())
+        elif tool_class == "tool_output":
+            all_local_tool_objects.append(GetToolOutputTool(curr))
         else:
             raise ValueError(f"Unknown tool class: {tool_class}")
     return all_local_tool_objects

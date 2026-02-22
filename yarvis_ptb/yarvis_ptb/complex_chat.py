@@ -76,6 +76,7 @@ DEFAULT_COMPLEX_CHAT_CONFIG = ChatConfig(
     tool_filter="all",
     max_history_length_turns_override=HISTORY_LENGTH_LONG_TURNS,
     tool_only_messaging=True,
+    tool_result_truncation_after_n_turns=5,
 )
 
 

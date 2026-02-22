@@ -37,6 +37,10 @@ class ChatConfig:
     When enabled, requires tool_filter to be set to 'all'.
     When this mode is active, the agent's thinking will be formatted as a quote in the chat history."""
 
+    tool_result_truncation_after_n_turns: int | None = None
+    """If set, tool results in turns older than N from the end will be truncated if >=10k bytes.
+    The bot can retrieve the original content via get_tool_output tool."""
+
     @property
     def max_history_length_turns(self) -> int:
         from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS

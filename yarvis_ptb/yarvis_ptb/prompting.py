@@ -4,6 +4,7 @@ import difflib
 import json
 import logging
 import re
+from collections import namedtuple
 from typing import Iterable, Literal, TypedDict, Union
 
 import pytz
@@ -61,6 +62,8 @@ class NormalizedMessageParam(TypedDict, total=False):
 
 
 COMPLEX_ANTON_PROMPT = "anton_private"
+
+ApiMsgAnnotation = namedtuple("ApiMsgAnnotation", ["db_msg_id", "turn_idx"])
 
 
 def normalize_message_param(message: MessageParam) -> NormalizedMessageParam:
@@ -140,12 +143,14 @@ def build_context_info(
 
 def convert_db_messages_to_claude_messages(
     messages: list[DbMessage],
+    tool_result_truncation_after_n_turns: int | None = None,
 ) -> list[MessageParam]:
     all_role_messages: list[MessageParam] = []
+    api_msg_annotations: list[ApiMsgAnnotation] = []
 
     messages = copy.deepcopy(messages)
 
-    for msg in messages:
+    for turn_idx, msg in enumerate(messages):
         role_messages: list[MessageParam] = []
         if msg.user_id == BOT_USER_ID:
             if msg.meta and "message_params" in msg.meta:
@@ -197,9 +202,103 @@ def convert_db_messages_to_claude_messages(
                         rm["content"][0]["text"] = (
                             "[MARKED_FOR_DELETION] " + rm["content"][0]["text"]
                         )
+
+        for _ in role_messages:
+            api_msg_annotations.append(
+                ApiMsgAnnotation(db_msg_id=msg.message_id, turn_idx=turn_idx)
+            )
         all_role_messages.extend(role_messages)
 
+    if tool_result_truncation_after_n_turns is not None:
+        apply_tool_call_compactification(
+            all_role_messages,
+            api_msg_annotations,
+            total_turns=len(messages),
+            truncation_after_n_turns=tool_result_truncation_after_n_turns,
+        )
+
     return all_role_messages
+
+
+def _get_tool_result_content_size(content) -> int:
+    """Get the byte size of a tool_result block's content."""
+    if isinstance(content, str):
+        return len(content.encode("utf-8"))
+    if isinstance(content, list):
+        total = 0
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    total += len(item.get("text", "").encode("utf-8"))
+                else:
+                    total += len(json.dumps(item).encode("utf-8"))
+            else:
+                total += len(str(item).encode("utf-8"))
+        return total
+    return len(json.dumps(content).encode("utf-8"))
+
+
+def apply_tool_call_compactification(
+    api_messages: list[MessageParam],
+    api_msg_annotations: list[ApiMsgAnnotation],
+    total_turns: int,
+    truncation_after_n_turns: int,
+) -> None:
+    """Truncate large tool results in old turns in-place.
+
+    For turns older than truncation_after_n_turns from the end, find tool_result
+    blocks with content >= 10k bytes and replace them with a truncation notice.
+    Skip tool results for send_message calls.
+    """
+    TRUNCATION_THRESHOLD_BYTES = 10_000
+
+    # Build a map from tool_use_id to (tool_name, api_message_index) for quick lookup
+    tool_use_map: dict[str, str] = {}  # tool_use_id -> tool_name
+    for msg in api_messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                tool_use_map[block["id"]] = block["name"]
+
+    for i, msg in enumerate(api_messages):
+        annotation = api_msg_annotations[i]
+        turns_from_end = total_turns - 1 - annotation.turn_idx
+        if turns_from_end <= truncation_after_n_turns:
+            continue
+
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+
+        # Track tool_result index within this message's content
+        tool_result_idx = 0
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+
+            tool_use_id = block.get("tool_use_id", "")
+            tool_name = tool_use_map.get(tool_use_id, "")
+
+            # Don't truncate send_message results
+            if tool_name == "send_message":
+                tool_result_idx += 1
+                continue
+
+            original_content = block.get("content", "")
+            original_size = _get_tool_result_content_size(original_content)
+
+            if original_size >= TRUNCATION_THRESHOLD_BYTES:
+                msg_id = annotation.db_msg_id
+                block["content"] = [
+                    {
+                        "type": "text",
+                        "text": f"Tool output truncated ({original_size} bytes). Use get_tool_output(msg_id={msg_id}, tool_index={tool_result_idx}) to retrieve.",
+                    }
+                ]
+
+            tool_result_idx += 1
 
 
 def build_claude_input(
@@ -236,7 +335,10 @@ def build_claude_input(
         system = f"{system}\n=== Core Knowledge Repository content:\n\nThe following is the current content of the Core Knowledge Repository. All repository files are on disk and can be modified using str_replace tool or directly via bash.\n\n{render_memory_content()}"
         if put_context_at_the_beginning:
             system = f"{system}\n{context_info}"
-    history = convert_db_messages_to_claude_messages(messages)
+    history = convert_db_messages_to_claude_messages(
+        messages,
+        tool_result_truncation_after_n_turns=chat_config.tool_result_truncation_after_n_turns,
+    )
     return system, history
 
 

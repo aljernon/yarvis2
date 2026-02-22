@@ -417,7 +417,7 @@ async function fetchAgentTokens() {
           if (header && !header.querySelector(".token-info")) {
             const span = document.createElement("span");
             span.className = "token-info";
-            span.textContent = `${turnTotal} tok`;
+            span.textContent = `${turnTotal > 2000 ? "⚠️ " : ""}${turnTotal} tok`;
             header.appendChild(span);
           }
         }
