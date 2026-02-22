@@ -48,6 +48,9 @@ pandas==2.2.3
 # Google Places API
 googlemaps==4.10.0
 
+# Signal message reading via websocket
+websocket-client==1.8.0
+
 # To speed up requirements resolution.
 idna>=3.10
 google-api-core>=2.24.0

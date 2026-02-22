@@ -2,6 +2,17 @@ set -x
 set -e
 set -o
 
+# Start Tailscale (userspace networking for Heroku - no /dev/net/tun)
+if [ -n "$TAILSCALE_AUTH_KEY" ]; then
+    echo "$(date) START tailscale setup"
+    curl -fsSL https://pkgs.tailscale.com/stable/tailscale_1.78.1_amd64.tgz | tar xzf - -C /tmp/
+    /tmp/tailscale_1.78.1_amd64/tailscaled --state=/tmp/tailscaled.state --tun=userspace-networking --socks5-server=localhost:1055 &
+    sleep 2
+    /tmp/tailscale_1.78.1_amd64/tailscale up --auth-key="$TAILSCALE_AUTH_KEY" --hostname=yarvis-heroku
+    export ALL_PROXY=socks5://localhost:1055/
+    echo "$(date) DONE tailscale setup"
+fi
+
 bash tokens_to_envs.sh from_env
 
 ls ~/.ssh
