@@ -85,7 +85,9 @@ function renderContentBlocks(blocks) {
       const errClass = block.is_error ? " tool-error" : "";
       const truncated = content;
       const bytes = new Blob([content]).size;
-      html += `<div class="tool-result-block"><div class="tool-result-header${errClass}" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>${block.is_error ? "Error" : "Result"}</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(truncated)}</div></div>`;
+      const isTruncated = content.startsWith("Tool output truncated (");
+      const truncLabel = isTruncated ? ' <span style="color:#e8a735;font-weight:bold">[TRUNCATED]</span>' : "";
+      html += `<div class="tool-result-block"><div class="tool-result-header${errClass}" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>${block.is_error ? "Error" : "Result"}</strong> <span class="block-size">(${bytes} bytes)</span>${truncLabel}</div><div class="collapsible-content" id="${id}">${escapeHtml(truncated)}</div></div>`;
     } else {
       html += `<div class="content-block">${escapeHtml(JSON.stringify(block))}</div>`;
     }
