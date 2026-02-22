@@ -116,8 +116,11 @@ def build_context_info(
             "HISTORY_LENGTH_LONG_TOKENS": HISTORY_LENGTH_LONG_TOKENS,
             "HISTORY_LENGTH_LONG_SHRINKING_FACTOR": HISTORY_LENGTH_LONG_SHRINKING_FACTOR,
             "LARGE_MESSAGE_SIZE_THRESHOLD": LARGE_MESSAGE_SIZE_THRESHOLD,
-            "tool_result_truncation_after_n_turns": chat_config.tool_result_truncation_after_n_turns,
         }
+        if chat_config.tool_result_truncation_after_n_turns is not None:
+            constants["tool_result_truncation_after_n_turns"] = (
+                chat_config.tool_result_truncation_after_n_turns
+            )
         system_parts.append(f"<constants>{json.dumps(constants)}</constants>")
 
     if scheduled_invocations is not None:
