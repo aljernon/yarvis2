@@ -74,3 +74,16 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp
 ON messages (chat_id, created_at DESC);
 """
+
+INIT_AGENTS_QUERY = """
+CREATE TABLE IF NOT EXISTS agents (
+    id SERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    meta JSONB
+);
+"""
+
+MIGRATE_MESSAGES_AGENT_ID = """
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS agent_id INTEGER DEFAULT NULL;
+"""

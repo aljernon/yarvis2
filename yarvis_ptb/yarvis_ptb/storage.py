@@ -9,11 +9,13 @@ from typing import Any, Literal, TypedDict
 import psycopg2
 
 from yarvis_ptb.queries import (
+    INIT_AGENTS_QUERY,
     INIT_INVOCATIONS_QUERY,
     INIT_MEMORY_QUERY,
     INIT_MESSAGES_QUERY,
     INIT_VARIABLES_QUERY,
     INIT_VECTOR,
+    MIGRATE_MESSAGES_AGENT_ID,
 )
 from yarvis_ptb.settings import (
     BOT_USER_ID,
@@ -45,6 +47,7 @@ class DbMessage:
     marked_for_archive: bool = False
     meta: dict | None = None
     message_id: int | None = None
+    agent_id: int | None = None
 
     def is_bot(self):
         return self.user_id == BOT_USER_ID
@@ -192,20 +195,33 @@ def connect():
             print("Database connection closed.")
 
 
-def get_messages(curr, chat_id: int, limit: int | None = None) -> list[DbMessage]:
-    """Gets last limit messages from the DB for the chat sorted ASC by created_at"""
+def get_messages(
+    curr, chat_id: int, limit: int | None = None, agent_id: int | None = None
+) -> list[DbMessage]:
+    """Gets last limit messages from the DB for the chat sorted ASC by created_at.
+
+    agent_id=None (default) returns only live agent messages (WHERE agent_id IS NULL).
+    agent_id=N returns only subagent messages for that agent.
+    """
     if limit is None:
         limit = 100000000
+    if agent_id is None:
+        agent_filter = "AND agent_id IS NULL"
+        params = (chat_id, limit)
+    else:
+        agent_filter = "AND agent_id = %s"
+        params = (chat_id, agent_id, limit)
     curr.execute(
-        """
-        SELECT created_at, chat_id, user_id, message, meta, id, marked_for_archive
+        f"""
+        SELECT created_at, chat_id, user_id, message, meta, id, marked_for_archive, agent_id
         FROM messages
         WHERE chat_id = %s
         AND is_visible = true
+        {agent_filter}
         ORDER BY created_at DESC
         LIMIT %s
         """,
-        (chat_id, limit),
+        params,
     )
     rows = curr.fetchall()
     messages = []
@@ -219,6 +235,7 @@ def get_messages(curr, chat_id: int, limit: int | None = None) -> list[DbMessage
                 meta=row[4],
                 message_id=row[5],
                 marked_for_archive=row[6],
+                agent_id=row[7],
             )
         )
     return messages
@@ -229,8 +246,8 @@ def save_message(curr, message: DbMessage):
     assert message.message_id is None, "Will be auto-generated"
     curr.execute(
         """
-            INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
         (
             message.created_at,
@@ -239,6 +256,7 @@ def save_message(curr, message: DbMessage):
             message.message,
             json.dumps(message.meta),
             message.marked_for_archive,
+            message.agent_id,
         ),
     )
 
@@ -675,6 +693,23 @@ def test_invocations():
             curr.execute(f"DELETE FROM invocations WHERE chat_id={fake_chat_id}")
 
 
+def create_agent(curr, chat_id: int, meta: dict | None = None) -> int:
+    """Creates an agent record in the DB. Returns the agent id."""
+    curr.execute(
+        """
+        INSERT INTO agents (chat_id, created_at, meta)
+        VALUES (%s, %s, %s)
+        RETURNING id
+        """,
+        (
+            chat_id,
+            datetime.datetime.now(DEFAULT_TIMEZONE),
+            json.dumps(meta) if meta else None,
+        ),
+    )
+    return curr.fetchone()[0]
+
+
 def craete_all():
     with connect() as conn, conn.cursor() as curr:
         logger.info("Init DB")
@@ -683,6 +718,8 @@ def craete_all():
         curr.execute(INIT_MESSAGES_QUERY)
         curr.execute(INIT_VARIABLES_QUERY)
         curr.execute(INIT_INVOCATIONS_QUERY)
+        curr.execute(INIT_AGENTS_QUERY)
+        curr.execute(MIGRATE_MESSAGES_AGENT_ID)
         logger.info("Init DB done")
 
 

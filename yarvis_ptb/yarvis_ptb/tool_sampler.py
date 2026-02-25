@@ -46,6 +46,7 @@ from yarvis_ptb.tools.message_search_tool import build_message_search_tools
 from yarvis_ptb.tools.message_tool import build_message_tools
 from yarvis_ptb.tools.python_repl import PythonREPLTool
 from yarvis_ptb.tools.scheduling_tools import build_scheduling_tools
+from yarvis_ptb.tools.subagent_tool import build_subagent_tools
 from yarvis_ptb.tools.telegram_tools import get_telegram_tools
 from yarvis_ptb.tools.tool_output import GetToolOutputTool
 from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
@@ -113,6 +114,7 @@ def get_tools_for_config(
             "telegram",
             "image_editing",
             "memory",
+            "subagent",
         ]
 
         # Add messaging tool only when tool_only_messaging is enabled
@@ -147,6 +149,8 @@ def get_tools_for_config(
             all_local_tool_objects.extend(build_image_tools(chat_id, curr))
         elif tool_class == "memory":
             all_local_tool_objects.extend(build_memory_tools())
+        elif tool_class == "subagent":
+            all_local_tool_objects.extend(build_subagent_tools(curr, chat_id, bot))
         elif tool_class == "tool_output":
             all_local_tool_objects.append(GetToolOutputTool(curr))
         else:
@@ -518,6 +522,98 @@ async def _process_query_with_tools(
             break
 
     return extra_messages, claude_calls
+
+
+async def process_subagent_query(
+    system: str,
+    messages: list[MessageParam],
+    tool_names: list[str],
+    chat_id: int,
+    agent_id: int,
+    curr,
+    bot,
+    scope: InterruptionScope | None = None,
+) -> list[MessageParam]:
+    """Simplified query function for subagents.
+
+    No streaming, no interruption handling, no MCP. Uses Sonnet model.
+    Returns the full list of message_params (assistant/user turns).
+
+    If scope is provided, the subagent will respect the parent's interruption
+    (e.g. if the user sends a new message while the subagent is running).
+    """
+    from yarvis_ptb.tools.subagent_tool import SUBAGENT_MODEL
+
+    if scope is None:
+        scope = InterruptionScope(chat_id=chat_id, message_id=None)
+
+    # Build tool objects from names
+    all_tool_objects = _get_tools_by_names(tool_names, curr, chat_id, bot)
+
+    claude_tools: list[ClaudeTool] = [
+        tool.spec().to_claude_tool() for tool in all_tool_objects
+    ]
+    tool_map = {t.name: t for t in all_tool_objects}
+
+    async with AsyncExitStack() as stack:
+        for tool in all_tool_objects:
+            await stack.enter_async_context(tool.context())
+
+        msg_params, _ = await _process_query_with_tools(
+            anthropic=None,  # Not used directly; async client is created inside
+            system=system,
+            messages=messages,
+            claude_tools=claude_tools,
+            all_local_tool_objects=tool_map,
+            mcp_clients=[],
+            on_update=dummy_on_update,
+            scope=scope,
+            model_name=SUBAGENT_MODEL,
+            job_queue=_DummyJobQueue(),
+        )
+        return msg_params
+
+
+class _DummyJobQueue:
+    """Minimal stand-in for telegram JobQueue used by subagent (no interruption checking)."""
+
+    def run_once(self, callback, *, data=None, when=0.0):
+        # Subagent doesn't need interruption checking.
+        # Signal that the check started so the stream doesn't hang.
+        if data and "check_interruption_started" in data:
+            data["check_interruption_started"].set()
+
+
+def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[LocalTool]:
+    """Pick specific tools by name from the available tool builders."""
+    # Map of tool name -> how to get it
+    name_to_tool: dict[str, LocalTool] = {}
+
+    for tool in GENERIC_LOCAL_TOOLS:
+        name_to_tool[tool.name] = tool
+
+    # Build tools that require curr/chat_id/bot on demand
+    _builders: dict[str, list[LocalTool]] = {
+        "scheduling": build_scheduling_tools(curr, chat_id),
+        "chat_send_file": build_chat_send_file_tools(chat_id, bot),
+        "message_search": build_message_search_tools(chat_id),
+        "image_editing": build_image_tools(chat_id, curr),
+        "memory": build_memory_tools(),
+    }
+    for tool_list in _builders.values():
+        for tool in tool_list:
+            name_to_tool[tool.name] = tool
+
+    for tool in ANTON_DATA_TOOLS + TELEGRAM_TOOLS:
+        name_to_tool[tool.name] = tool
+
+    result = []
+    for name in names:
+        if name in name_to_tool:
+            result.append(name_to_tool[name])
+        else:
+            logger.warning(f"Subagent requested unknown tool: {name}")
+    return result
 
 
 async def check_interruption(context: ContextTypes.DEFAULT_TYPE):
