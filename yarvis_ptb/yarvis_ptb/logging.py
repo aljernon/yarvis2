@@ -44,3 +44,4 @@ def setup_logging():
     logging.getLogger("httpcore").setLevel(logging.INFO)
     logging.getLogger("blib2to3").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
