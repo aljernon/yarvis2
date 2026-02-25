@@ -6,16 +6,20 @@ from typing import Tuple
 from yarvis_ptb.settings import PROJECT_ROOT
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
+TOOL_DEFAULT_TIMEOUT_SEC = 60
+TOOL_MAX_TIMEOUT_SEC = 600
+
 CWD = PROJECT_ROOT
 
 
 class BashSingleCommandRunner:
-    def execute(self, cmd: str) -> Tuple[str, str, bool]:
+    def execute(self, cmd: str, timeout: int | None = None) -> Tuple[str, str, bool]:
         """
         Execute a bash command and return (stdout, stderr, had_error).
 
         Args:
-            cmd: The Python code to execute
+            cmd: The bash command to execute
+            timeout: Timeout in seconds for the command (None = no timeout)
 
         Returns:
             Tuple containing:
@@ -32,7 +36,11 @@ class BashSingleCommandRunner:
             cwd=CWD,
         )
         try:
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            return "", f"Command timed out after {timeout} seconds", True
         except Exception as e:
             return "", str(e), True
         stdout = stdout.decode()
@@ -60,11 +68,19 @@ class BashRunTool(LocalTool):
                     type=str,
                     description="Bash code to execute",
                     is_required=True,
-                )
+                ),
+                ArgSpec(
+                    name="timeout_sec",
+                    type=int,
+                    description=f"Timeout in seconds (default {TOOL_DEFAULT_TIMEOUT_SEC}, max {TOOL_MAX_TIMEOUT_SEC}). Use higher values for long-running commands.",
+                    is_required=False,
+                ),
             ],
         )
 
-    async def _execute(self, *, code: str, **kwargs) -> ToolResult:
+    async def _execute(
+        self, *, code: str, timeout_sec: int | None = None, **kwargs
+    ) -> ToolResult:
         def _clip(s: str) -> str:
             if len(s) <= self._max_output_length:
                 return s
@@ -72,8 +88,9 @@ class BashRunTool(LocalTool):
             return s[: self._max_output_length] + f"... ({num_extra_chars} more chars)"
 
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
+        timeout = min(timeout_sec or TOOL_DEFAULT_TIMEOUT_SEC, TOOL_MAX_TIMEOUT_SEC)
         try:
-            stdout, stderr, is_error = self._repl.execute(code)
+            stdout, stderr, is_error = self._repl.execute(code, timeout=timeout)
             result = dict(stdout=_clip(stdout), stderr=_clip(stderr))
             return ToolResult(json.dumps(result), is_error=is_error)
 
@@ -115,8 +132,29 @@ async def run_tests():
         result = await runner(code="nonexistent_command")
         print(f"Result: {result}")
 
-        # Test 5: Multiple commands
-        print("\nTest 5: Multiple commands")
+        # Test 5: Timeout - command should timeout
+        print("\nTest 5: Timeout (2s limit on sleep 10)")
+        import time as _time
+
+        t0 = _time.monotonic()
+        result = await runner(code="sleep 10", timeout_sec=2)
+        elapsed = _time.monotonic() - t0
+        print(f"Result: {result}")
+        assert result.is_error, f"Expected error, got: {result}"
+        assert (
+            "timed out" in result.text.lower()
+        ), f"Expected timeout message, got: {result.text}"
+        assert elapsed < 5, f"Timeout took too long: {elapsed:.1f}s"
+        print(f"  Elapsed: {elapsed:.1f}s (expected ~2s)")
+
+        # Test 6: Default timeout should be applied
+        print("\nTest 6: Default timeout is applied (fast command succeeds)")
+        result = await runner(code="echo 'quick'")
+        assert not result.is_error, f"Expected success, got: {result}"
+        print(f"Result: {result}")
+
+        # Test 7: Multiple commands
+        print("\nTest 7: Multiple commands")
         result = await runner(
             code="""
             mkdir -p /tmp/test_dir

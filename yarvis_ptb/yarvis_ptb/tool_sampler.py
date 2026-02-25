@@ -44,7 +44,6 @@ from yarvis_ptb.tools.gkeep_tools import get_gkeep_tools
 from yarvis_ptb.tools.gmail_tool import get_gmail_tools
 from yarvis_ptb.tools.image_tools import build_image_tools
 from yarvis_ptb.tools.location import GetLocationTool
-from yarvis_ptb.tools.mcp_util import MCPClientBase
 from yarvis_ptb.tools.memory_tools import build_memory_tools
 from yarvis_ptb.tools.message_search_tool import build_message_search_tools
 from yarvis_ptb.tools.message_tool import build_message_tools
@@ -57,6 +56,10 @@ from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
 
 logger = logging.getLogger(__name__)
 
+TOOL_DEFAULT_TIMEOUT_SEC = 60
+TOOL_MAX_TIMEOUT_SEC = 600
+TOOL_EXECUTION_TIMEOUT_SEC = TOOL_MAX_TIMEOUT_SEC + 10  # hard limit per tool call
+
 GENERIC_LOCAL_TOOLS: list[LocalTool] = [
     PythonREPLTool(),
     BashRunTool(),
@@ -68,9 +71,6 @@ TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 ANTON_DATA_TOOLS: list[LocalTool] = [GetLocationTool()] + (
     get_calendar_tools() + get_gmail_tools() + get_gkeep_tools()
 )
-
-
-MCP_CLIENTS: list[MCPClientBase] = []
 
 
 ANTHROPIC_EXCEPTIONS_TO_RETRY: tuple[type[APIStatusError], ...] = (APIStatusError,)
@@ -210,13 +210,6 @@ async def process_query(
                 logger.warning("Interruption before generation started")
                 return [], None, 0.0
             await stack.enter_async_context(local_tool.context())
-        remote_tools = []
-        for mcp_client in MCP_CLIENTS:
-            if scope.is_interrupted:
-                logger.warning("Interruption before generation started")
-                return [], None, 0.0
-            await stack.enter_async_context(mcp_client.context())
-            remote_tools.extend(await mcp_client.list_tools())
         if scope.is_interrupted:
             logger.warning("Interruption before generation started")
             return [], None, 0.0
@@ -225,8 +218,7 @@ async def process_query(
             anthropic,
             system,
             messages,
-            claude_tools=local_tools + remote_tools,
-            mcp_clients=MCP_CLIENTS,
+            claude_tools=local_tools,
             all_local_tool_objects={t.name: t for t in all_local_tool_objects},
             on_update=on_update if on_update is not None else dummy_on_update,
             scope=scope,
@@ -263,18 +255,11 @@ async def _process_query_with_tools(
     messages: list[MessageParam],
     claude_tools: list[ClaudeTool],
     all_local_tool_objects: dict[str, LocalTool],
-    mcp_clients: list[MCPClientBase],
     on_update: Callable[[list[MessageParam]], Awaitable[Any]],
     scope: InterruptionScope,
     job_queue: JobQueue,
     model_name: str = CLAUDE_MODEL_NAME,
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
-    remote_tool_to_mcp_client = {
-        tool["name"]: mcp_client
-        for mcp_client in mcp_clients
-        for tool in (await mcp_client.list_tools())
-    }
-
     async_client = get_async_anthropic_client()
 
     @tenacity.retry(
@@ -502,10 +487,16 @@ async def _process_query_with_tools(
                 assert isinstance(tool_args, dict), tool_args
 
                 # Execute tool call
-                if (mcp_client := remote_tool_to_mcp_client.get(tool_name)) is not None:
-                    result = await mcp_client.call_tool(tool_name, tool_args)
-                elif tool_name in all_local_tool_objects:
-                    result = await all_local_tool_objects[tool_name](**tool_args)
+                if tool_name in all_local_tool_objects:
+                    try:
+                        result = await asyncio.wait_for(
+                            all_local_tool_objects[tool_name](**tool_args),
+                            timeout=TOOL_EXECUTION_TIMEOUT_SEC,
+                        )
+                    except asyncio.TimeoutError:
+                        result = ToolResult.error(
+                            f"Tool {tool_name} timed out after {TOOL_EXECUTION_TIMEOUT_SEC}s"
+                        )
                 else:
                     result = ToolResult.error(f"Unknown tool: {tool_name}")
                 # Show result to Claude.
@@ -581,7 +572,6 @@ async def process_subagent_query(
             messages=messages,
             claude_tools=claude_tools,
             all_local_tool_objects=tool_map,
-            mcp_clients=[],
             on_update=dummy_on_update,
             scope=scope,
             model_name=model_name,
