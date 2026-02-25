@@ -597,8 +597,20 @@ class _DummyJobQueue:
             data["check_interruption_started"].set()
 
 
+def _build_fresh_generic_tools() -> list[LocalTool]:
+    """Create fresh instances of generic tools (not singletons) for subagent use."""
+    return [
+        PythonREPLTool(),
+        BashRunTool(),
+        EditorTool(),
+    ]
+
+
 def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[LocalTool]:
-    """Pick specific tools by name from the full set of available tools."""
+    """Pick specific tools by name from the full set of available tools.
+
+    Creates fresh instances of generic tools to avoid sharing state with the parent.
+    """
     # Build all tool classes (excluding subagent to prevent recursion)
     all_classes = [
         "anton_google",
@@ -612,6 +624,11 @@ def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[Local
     ]
     all_tools = _build_tools_from_classes(all_classes, curr, chat_id, bot)
     name_to_tool = {t.name: t for t in all_tools}
+
+    # Override generic tools with fresh instances so subagent doesn't share
+    # state (init/close) with the parent's singletons
+    for tool in _build_fresh_generic_tools():
+        name_to_tool[tool.name] = tool
 
     result = []
     for name in names:
