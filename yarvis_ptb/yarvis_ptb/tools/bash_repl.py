@@ -6,7 +6,7 @@ from typing import Tuple
 from yarvis_ptb.settings import PROJECT_ROOT
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
-TOOL_DEFAULT_TIMEOUT_SEC = 60
+TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
 
 CWD = PROJECT_ROOT

@@ -56,7 +56,7 @@ from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
 
 logger = logging.getLogger(__name__)
 
-TOOL_DEFAULT_TIMEOUT_SEC = 60
+TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
 TOOL_EXECUTION_TIMEOUT_SEC = TOOL_MAX_TIMEOUT_SEC + 10  # hard limit per tool call
 
