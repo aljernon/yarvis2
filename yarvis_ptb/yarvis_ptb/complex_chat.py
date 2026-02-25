@@ -50,7 +50,7 @@ from yarvis_ptb.settings import (
     SYSTEM_USER_ID,
     USER_ID_MAP,
 )
-from yarvis_ptb.settings.main import CONFIGURED_CHATS
+from yarvis_ptb.settings.main import CONFIGURED_CHATS, KNOWN_USER_PRIVATE_CHAT_CONFIGS
 from yarvis_ptb.storage import (
     IMAGE_B64_META_FIELD,
     DbMessage,
@@ -121,6 +121,8 @@ def format_as_quote(text: str) -> str:
 def get_chat_config(auth: AuthInfo) -> ChatConfig:
     if auth.is_root_user_debug_chat or auth.is_root_user_complex_chat:
         chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
+    elif not auth.group_chat_id and auth.user_id in KNOWN_USER_PRIVATE_CHAT_CONFIGS:
+        chat_config = KNOWN_USER_PRIVATE_CHAT_CONFIGS[auth.user_id]
     else:
         assert auth.group_chat_name, auth
         chat_config = CONFIGURED_CHATS[auth.group_chat_name]

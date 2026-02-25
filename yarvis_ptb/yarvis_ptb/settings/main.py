@@ -35,6 +35,16 @@ BOT_USER_ID = -1
 TOOL_CALL_USER_ID = -3
 SYSTEM_USER_ID = -2
 
+KNOWN_USER_PRIVATE_CHAT_CONFIGS: dict[int, ChatConfig] = {
+    192932807: ChatConfig(  # mila
+        prompt_name="mamont_private",
+        is_complex_chat=False,
+        tool_filter="basic",
+        max_history_length_turns_override=HISTORY_LENGTH_TURNS,
+        memory_access=False,
+    ),
+}
+
 # chat name -> config. Only works if root in the the channel and the message
 # from the root.
 CONFIGURED_CHATS: dict[str, ChatConfig] = {

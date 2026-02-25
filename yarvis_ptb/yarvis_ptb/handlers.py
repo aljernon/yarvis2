@@ -54,6 +54,7 @@ from yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
     CONFIGURED_CHATS,
     HISTORY_LENGTH_LONG_TURNS,
+    KNOWN_USER_PRIVATE_CHAT_CONFIGS,
 )
 from yarvis_ptb.storage import (
     DbMessage,
@@ -548,6 +549,13 @@ async def _handle_message(
     with context.bot_data["conn"].cursor() as curr:
         try:
             if auth.is_root_user_complex_chat or auth.is_root_user_debug_chat:
+                await handle_message_root_user_assistant(
+                    curr, auth, update, context, is_voice=is_voice
+                )
+            elif (
+                not auth.group_chat_id
+                and auth.user_id in KNOWN_USER_PRIVATE_CHAT_CONFIGS
+            ):
                 await handle_message_root_user_assistant(
                     curr, auth, update, context, is_voice=is_voice
                 )
