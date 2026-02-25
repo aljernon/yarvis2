@@ -126,6 +126,20 @@ def get_tools_for_config(
             tool_classes.append("tool_output")
     else:
         raise ValueError(f"Unknown tool_filter: {chat_config.tool_filter}")
+    debug_chat_id = FULL_LOG_CHAT_ID if chat_config.is_complex_chat else None
+    return _build_tools_from_classes(
+        tool_classes, curr, chat_id, bot, debug_chat_id=debug_chat_id
+    )
+
+
+def _build_tools_from_classes(
+    tool_classes: list[str],
+    curr,
+    chat_id: int,
+    bot,
+    debug_chat_id: int | None = None,
+) -> list[LocalTool]:
+    """Build tool objects from a list of tool class names."""
     all_local_tool_objects = []
     for tool_class in tool_classes:
         if tool_class == "anton_google":
@@ -137,7 +151,6 @@ def get_tools_for_config(
         elif tool_class == "anton_message_search":
             all_local_tool_objects.extend(build_message_search_tools(chat_id))
         elif tool_class == "chat_send_file":
-            debug_chat_id = FULL_LOG_CHAT_ID if chat_config.is_complex_chat else None
             all_local_tool_objects.extend(
                 build_chat_send_file_tools(chat_id, bot, debug_chat_id=debug_chat_id)
             )
@@ -585,27 +598,20 @@ class _DummyJobQueue:
 
 
 def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[LocalTool]:
-    """Pick specific tools by name from the available tool builders."""
-    # Map of tool name -> how to get it
-    name_to_tool: dict[str, LocalTool] = {}
-
-    for tool in GENERIC_LOCAL_TOOLS:
-        name_to_tool[tool.name] = tool
-
-    # Build tools that require curr/chat_id/bot on demand
-    _builders: dict[str, list[LocalTool]] = {
-        "scheduling": build_scheduling_tools(curr, chat_id),
-        "chat_send_file": build_chat_send_file_tools(chat_id, bot, debug_chat_id=None),
-        "message_search": build_message_search_tools(chat_id),
-        "image_editing": build_image_tools(chat_id, curr),
-        "memory": build_memory_tools(),
-    }
-    for tool_list in _builders.values():
-        for tool in tool_list:
-            name_to_tool[tool.name] = tool
-
-    for tool in ANTON_DATA_TOOLS + TELEGRAM_TOOLS:
-        name_to_tool[tool.name] = tool
+    """Pick specific tools by name from the full set of available tools."""
+    # Build all tool classes (excluding subagent to prevent recursion)
+    all_classes = [
+        "anton_google",
+        "fs",
+        "scheduling",
+        "anton_message_search",
+        "chat_send_file",
+        "telegram",
+        "image_editing",
+        "memory",
+    ]
+    all_tools = _build_tools_from_classes(all_classes, curr, chat_id, bot)
+    name_to_tool = {t.name: t for t in all_tools}
 
     result = []
     for name in names:
