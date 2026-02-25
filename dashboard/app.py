@@ -219,10 +219,11 @@ def api_messages():
             cur.execute(
                 f"""
                 SELECT id, created_at, chat_id, user_id, message, meta, marked_for_archive,
-                       octet_length(meta::text) + octet_length(message) as total_bytes
+                       octet_length(meta::text) + octet_length(message) as total_bytes,
+                       agent_id
                 FROM messages
                 {where_sql}
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT %s OFFSET %s
                 """,
                 params + [PER_PAGE, offset],
@@ -247,6 +248,7 @@ def api_messages():
                     "has_message_params": "message_params" in meta,
                     "has_image": "image_b64" in meta,
                     "total_bytes": row["total_bytes"],
+                    "agent_id": row["agent_id"],
                 }
             )
 
@@ -319,20 +321,55 @@ def api_turn_tokens(turn_id: int):
                         parts.append(str(rc))
             return "\n".join(parts)
 
-        # Two counting strategies:
-        # - For tool_use (assistant): approximate by counting content as plain text
+        def has_text_blocks(msg: dict) -> bool:
+            content = msg.get("content", [])
+            if not isinstance(content, list):
+                return False
+            return any(isinstance(b, dict) and b.get("type") == "text" for b in content)
+
+        def count_per_block(msg: dict) -> list[dict] | None:
+            """For assistant messages with mixed content (text + tool_use),
+            return per-block token info. Only text blocks get counted;
+            tool_use blocks are skipped (covered by the result's call+result count)."""
+            content = msg.get("content", [])
+            if not isinstance(content, list):
+                return None
+            blocks = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "text":
+                    text = block.get("text", "")
+                    tokens = count_tokens_cached(
+                        messages=[{"role": "user", "content": text}]
+                    )
+                    blocks.append({"tokens": tokens, "approx": False})
+                elif btype == "tool_use":
+                    # Skip — the paired tool_result's call+result count covers this
+                    blocks.append(None)
+            return blocks if blocks else None
+
+        # Counting strategies:
+        # - For tool_use-only (assistant, no text): skip — covered by result's call+result
+        # - For mixed (assistant, text + tool_use): exact count for text blocks only
         # - For tool_result (user) and other boundaries: exact incremental count
-        #   which covers the tool_use+tool_result pair
         results = [None] * len(api_msgs)
         prev_total = 0
 
         for i in range(len(api_msgs)):
             if has_tool_use(api_msgs[i]):
-                text = msg_to_text(api_msgs[i])
-                tokens = count_tokens_cached(
-                    messages=[{"role": "user", "content": text}]
-                )
-                results[i] = {"role": "assistant", "tokens": tokens, "approx": True}
+                if has_text_blocks(api_msgs[i]):
+                    # Mixed message: count text blocks exactly, skip tool_use
+                    blocks = count_per_block(api_msgs[i])
+                    results[i] = {
+                        "role": "assistant",
+                        "tokens": None,
+                        "blocks": blocks,
+                    }
+                else:
+                    # Tool_use only — skip, covered by result's call+result
+                    results[i] = {"role": "assistant", "tokens": None}
                 continue
 
             if not is_countable_boundary(i):

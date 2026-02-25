@@ -173,9 +173,10 @@ async function loadMessages(page) {
 
   for (const msg of data.messages) {
     const card = document.createElement("div");
-    card.className = "turn-card";
+    card.className = msg.agent_id ? "turn-card subagent" : "turn-card";
 
     let badges = "";
+    if (msg.agent_id) badges += `<span class="badge agent">Agent #${msg.agent_id}</span>`;
     if (msg.has_image) badges += `<span class="badge image">Image</span>`;
     if (msg.marked_for_archive) badges += `<span class="badge archived">Archived</span>`;
 
@@ -236,7 +237,7 @@ async function fetchTokens(turnId, dbId) {
     const totalEl = document.getElementById(turnId + "-token-total");
     if (totalEl) totalEl.textContent = `${data.total_tokens} tok`;
 
-    // Show per-message counts in the first block header of each api-message
+    // Show per-message counts in block headers of each api-message
     const body = document.getElementById(turnId + "-rendered");
     if (body) {
       const apiMsgs = body.querySelectorAll(".api-message");
@@ -244,15 +245,31 @@ async function fetchTokens(turnId, dbId) {
         const idx = parseInt(el.dataset.msgIdx);
         const tokData = data.messages[idx];
         if (!tokData || tokData.tokens == null) continue;
-        const header = el.querySelector(".tool-use-header, .tool-result-header, .text-block-header");
-        if (header && !header.querySelector(".block-tokens")) {
-          const span = document.createElement("span");
-          span.className = "block-tokens";
-          let label = `${tokData.tokens} tok`;
-          if (tokData.approx) label = `~${tokData.tokens} tok`;
-          if (tokData.pair) label = `${tokData.tokens} tok (call+result)`;
-          span.textContent = label;
-          header.appendChild(span);
+
+        if (tokData.blocks) {
+          // Per-block annotation for mixed assistant messages (text + tool_use)
+          const headers = el.querySelectorAll(".tool-use-header, .tool-result-header, .text-block-header");
+          for (let bi = 0; bi < headers.length && bi < tokData.blocks.length; bi++) {
+            const b = tokData.blocks[bi];
+            if (!b) continue;  // null = skipped (e.g. tool_use covered by call+result)
+            const h = headers[bi];
+            if (h.querySelector(".block-tokens")) continue;
+            const span = document.createElement("span");
+            span.className = "block-tokens";
+            span.textContent = b.approx ? `~${b.tokens} tok` : `${b.tokens} tok`;
+            h.appendChild(span);
+          }
+        } else {
+          const header = el.querySelector(".tool-use-header, .tool-result-header, .text-block-header");
+          if (header && !header.querySelector(".block-tokens")) {
+            const span = document.createElement("span");
+            span.className = "block-tokens";
+            let label = `${tokData.tokens} tok`;
+            if (tokData.approx) label = `~${tokData.tokens} tok`;
+            if (tokData.pair) label = `${tokData.tokens} tok (call+result)`;
+            span.textContent = label;
+            header.appendChild(span);
+          }
         }
       }
     }

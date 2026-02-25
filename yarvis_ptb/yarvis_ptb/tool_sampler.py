@@ -31,7 +31,11 @@ from yarvis_ptb.ptb_util import (
     get_async_anthropic_client,
 )
 from yarvis_ptb.settings import FULL_LOG_CHAT_ID
-from yarvis_ptb.settings.main import CLAUDE_MODEL_NAME
+from yarvis_ptb.settings.main import (
+    CLAUDE_MODEL_NAME,
+    SUBAGENT_DEFAULT_MODEL,
+    SUBAGENT_MODEL_MAP,
+)
 from yarvis_ptb.tools.bash_repl import BashRunTool
 from yarvis_ptb.tools.editor_tool import EditorTool
 from yarvis_ptb.tools.file_tools import build_chat_send_file_tools
@@ -546,17 +550,16 @@ async def process_subagent_query(
     curr,
     bot,
     scope: InterruptionScope | None = None,
+    model_name: str = SUBAGENT_MODEL_MAP[SUBAGENT_DEFAULT_MODEL],
 ) -> list[MessageParam]:
     """Simplified query function for subagents.
 
-    No streaming, no interruption handling, no MCP. Uses Sonnet model.
+    No streaming, no interruption handling, no MCP.
     Returns the full list of message_params (assistant/user turns).
 
     If scope is provided, the subagent will respect the parent's interruption
     (e.g. if the user sends a new message while the subagent is running).
     """
-    from yarvis_ptb.tools.subagent_tool import SUBAGENT_MODEL
-
     if scope is None:
         scope = InterruptionScope(chat_id=chat_id, message_id=None)
 
@@ -581,7 +584,7 @@ async def process_subagent_query(
             mcp_clients=[],
             on_update=dummy_on_update,
             scope=scope,
-            model_name=SUBAGENT_MODEL,
+            model_name=model_name,
             job_queue=_DummyJobQueue(),
         )
         return msg_params

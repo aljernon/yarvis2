@@ -4,6 +4,7 @@ import pathlib
 from inspect import cleandoc
 
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
+from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import DbMessage, create_agent, save_message
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
@@ -15,8 +16,6 @@ SUBAGENT_SYSTEM_PROMPT_PATH = (
     / "subagent-usage"
     / "SYSTEM_PROMPT.md"
 )
-
-SUBAGENT_MODEL = "claude-sonnet-4-5-20250929"
 
 
 class RunSubagentTool(LocalTool):
@@ -55,19 +54,38 @@ class RunSubagentTool(LocalTool):
                     description="Comma-separated tool names the subagent should have access to. Default: python_repl,bash_run,editor",
                     is_required=False,
                 ),
+                ArgSpec(
+                    name="model",
+                    type=str,
+                    description="Model to use: haiku, sonnet, or opus. Default: haiku",
+                    is_required=False,
+                ),
             ],
         )
 
     async def _execute(
-        self, *, task: str, tools: str | None = None, **kwargs
+        self,
+        *,
+        task: str,
+        tools: str | None = None,
+        model: str | None = None,
+        **kwargs,
     ) -> ToolResult:
         from yarvis_ptb.tool_sampler import process_subagent_query
+
+        # 0. Resolve model
+        model_short = model or SUBAGENT_DEFAULT_MODEL
+        model_id = SUBAGENT_MODEL_MAP.get(model_short)
+        if model_id is None:
+            return ToolResult.error(
+                f"Unknown model '{model_short}'. Use: haiku, sonnet, or opus"
+            )
 
         # 1. Create agent record
         agent_id = create_agent(
             self._curr,
             self._chat_id,
-            meta={"task": task[:500], "tools": tools},
+            meta={"task": task[:500], "tools": tools, "model": model_short},
         )
         logger.info(f"Created subagent {agent_id} for chat {self._chat_id}")
 
@@ -102,6 +120,7 @@ class RunSubagentTool(LocalTool):
                 curr=self._curr,
                 bot=self._bot,
                 scope=parent_scope,
+                model_name=model_id,
             )
         except Exception as e:
             logger.exception(f"Subagent {agent_id} failed: {e}")
