@@ -173,3 +173,182 @@ def _extract_final_text(message_params: list[dict]) -> str | None:
 
 def build_subagent_tools(curr, chat_id: int, bot) -> list[LocalTool]:
     return [RunSubagentTool(curr, chat_id, bot)]
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    from yarvis_ptb.settings import load_env
+
+    load_env()
+
+    from yarvis_ptb.storage import (
+        connect,
+        craete_all,
+        get_messages,
+    )
+
+    # ── Unit test: _extract_final_text with synthetic data ──
+
+    def test_extract_final_text():
+        print("\n=== Testing _extract_final_text ===")
+
+        # String content
+        assert (
+            _extract_final_text([{"role": "assistant", "content": "hello"}]) == "hello"
+        )
+
+        # Block content
+        params = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "python_repl",
+                        "input": {"code": "2+2"},
+                        "id": "t1",
+                    },
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "content": [{"type": "text", "text": "4"}],
+                        "tool_use_id": "t1",
+                    },
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "The answer is 4."},
+                ],
+            },
+        ]
+        assert _extract_final_text(params) == "The answer is 4."
+
+        # Multiple text blocks
+        params2 = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Line 1"},
+                    {"type": "text", "text": "Line 2"},
+                ],
+            }
+        ]
+        assert _extract_final_text(params2) == "Line 1\nLine 2"
+
+        # Empty
+        assert _extract_final_text([]) is None
+        assert _extract_final_text([{"role": "user", "content": "hi"}]) is None
+
+        print("All _extract_final_text tests passed!")
+
+    test_extract_final_text()
+
+    # ── Integration test: full subagent flow ──
+
+    TEST_CHAT_ID = -999999  # unlikely to collide
+
+    async def test_subagent_integration():
+        print("\n=== Integration test: subagent flow ===")
+        from yarvis_ptb.tool_sampler import process_subagent_query
+
+        craete_all()
+
+        with connect() as conn, conn.cursor() as curr:
+            # 1. Create agent
+            from yarvis_ptb.storage import create_agent
+
+            agent_id = create_agent(curr, TEST_CHAT_ID, meta={"test": True})
+            print(f"Created agent_id={agent_id}")
+
+            # 2. Run subagent query
+            system = "You are a test subagent. Complete the task concisely."
+            messages = [
+                {
+                    "role": "user",
+                    "content": "What is 2+2? Use python_repl to compute it.",
+                }
+            ]
+
+            message_params = await process_subagent_query(
+                system=system,
+                messages=messages,
+                tool_names=["python_repl"],
+                chat_id=TEST_CHAT_ID,
+                agent_id=agent_id,
+                curr=curr,
+                bot=None,
+            )
+
+            # 3. Verify message_params non-empty
+            assert message_params, "message_params should not be empty"
+            print(f"Got {len(message_params)} message param entries")
+
+            # 4. Verify final text extractable
+            final_text = _extract_final_text(message_params)
+            assert final_text, "Should extract final text"
+            print(f"Final text: {final_text[:200]}")
+
+            # 5. Save messages to DB (mimic what _execute does)
+            now = datetime.datetime.now(DEFAULT_TIMEZONE)
+            save_message(
+                curr,
+                DbMessage(
+                    created_at=now,
+                    chat_id=TEST_CHAT_ID,
+                    user_id=1,
+                    message="What is 2+2? Use python_repl to compute it.",
+                    agent_id=agent_id,
+                ),
+            )
+            save_message(
+                curr,
+                DbMessage(
+                    created_at=now,
+                    chat_id=TEST_CHAT_ID,
+                    user_id=BOT_USER_ID,
+                    message="USE_CONTENT_FROM_META",
+                    meta={"message_params": message_params},
+                    agent_id=agent_id,
+                ),
+            )
+
+            # 6. Verify messages retrievable with agent_id
+            agent_msgs = get_messages(curr, TEST_CHAT_ID, agent_id=agent_id)
+            assert (
+                len(agent_msgs) >= 2
+            ), f"Expected >=2 agent messages, got {len(agent_msgs)}"
+            print(
+                f"get_messages(agent_id={agent_id}) returned {len(agent_msgs)} messages"
+            )
+
+            # 7. Verify get_messages(agent_id=None) does NOT return them
+            main_msgs = get_messages(curr, TEST_CHAT_ID, agent_id=None)
+            agent_msg_ids = {m.agent_id for m in main_msgs}
+            assert (
+                agent_id not in agent_msg_ids
+            ), "Main messages should not include subagent messages"
+            print("get_messages(agent_id=None) correctly excludes subagent messages")
+
+            # 8. Cleanup
+            curr.execute(
+                "DELETE FROM messages WHERE chat_id = %s AND agent_id = %s",
+                (TEST_CHAT_ID, agent_id),
+            )
+            curr.execute("DELETE FROM agents WHERE id = %s", (agent_id,))
+            print(f"Cleaned up agent {agent_id} and its messages")
+
+            print("\n=== Integration test PASSED ===")
+
+    asyncio.run(test_subagent_integration())
