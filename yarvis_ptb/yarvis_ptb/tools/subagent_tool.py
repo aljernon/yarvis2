@@ -107,7 +107,14 @@ class RunSubagentTool(LocalTool):
             logger.exception(f"Subagent {agent_id} failed: {e}")
             return ToolResult.error(f"Subagent failed: {e}")
 
-        # 6. Save all message_params to DB with agent_id
+        # 6. Send subagent activity to debug chat
+        from yarvis_ptb.debug_chat import add_debug_message_to_queue
+
+        add_debug_message_to_queue(f"**SUBAGENT #{agent_id}** (task: {task[:100]})")
+        if message_params:
+            add_debug_message_to_queue(message_params)
+
+        # 7. Save all message_params to DB with agent_id
         now = datetime.datetime.now(DEFAULT_TIMEZONE)
         save_message(
             self._curr,
@@ -132,7 +139,7 @@ class RunSubagentTool(LocalTool):
                 ),
             )
 
-        # 7. Extract final text response
+        # 8. Extract final text response
         final_text = _extract_final_text(message_params)
         if not final_text:
             return ToolResult.error("Subagent produced no text response")
