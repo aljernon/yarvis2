@@ -595,7 +595,7 @@ def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[Local
     # Build tools that require curr/chat_id/bot on demand
     _builders: dict[str, list[LocalTool]] = {
         "scheduling": build_scheduling_tools(curr, chat_id),
-        "chat_send_file": build_chat_send_file_tools(chat_id, bot),
+        "chat_send_file": build_chat_send_file_tools(chat_id, bot, debug_chat_id=None),
         "message_search": build_message_search_tools(chat_id),
         "image_editing": build_image_tools(chat_id, curr),
         "memory": build_memory_tools(),
