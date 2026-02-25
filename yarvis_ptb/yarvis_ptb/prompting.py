@@ -193,7 +193,7 @@ def convert_db_messages_to_claude_messages(
             and not role_messages[-1]["content"]
             and role_messages[-1]["role"] == "assistant"
         ):
-            logger.warning(f"Empty message: {role_messages[-2:]}")
+            logger.debug(f"Empty message: {role_messages[-2:]}")
             del role_messages[-1]
 
         if msg.marked_for_archive:
