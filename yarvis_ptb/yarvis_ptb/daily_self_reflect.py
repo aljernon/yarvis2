@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 
@@ -11,8 +12,9 @@ from yarvis_ptb.prompting import (
     render_claude_response_short,
     render_mesage_param_exact,
 )
+from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
-from yarvis_ptb.storage import create_agent, get_messages
+from yarvis_ptb.storage import DbMessage, create_agent, get_messages, save_message
 from yarvis_ptb.tool_sampler import process_subagent_query
 
 logger = logging.getLogger(__name__)
@@ -145,6 +147,20 @@ async def run_reflect(curr, chat_id: int, bot) -> str:
         curr=curr,
         bot=bot,
         model_name=MODEL,
+    )
+
+    # Save to DB under the agent_id
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    save_message(
+        curr,
+        DbMessage(
+            created_at=now,
+            chat_id=chat_id,
+            user_id=BOT_USER_ID,
+            message="USE_CONTENT_FROM_META",
+            meta={"message_params": msg_params},
+            agent_id=agent_id,
+        ),
     )
 
     # Commit any memory changes
