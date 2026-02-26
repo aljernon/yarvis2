@@ -142,7 +142,6 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
                     result_params,
                     claude_calls,
                 ) = await tool_sampler._process_query_with_tools(
-                    anthropic=None,
                     system=system,
                     messages=message_params,
                     claude_tools=claude_tools,

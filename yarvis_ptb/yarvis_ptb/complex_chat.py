@@ -456,7 +456,6 @@ async def _process_multi_message_claude_invocation_inner(
             maybe_claude_calls,
             tool_init_time,
         ) = await tool_sampler.process_query(
-            client,
             curr=curr,
             bot=bot,
             chat_config=chat_config,

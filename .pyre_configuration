@@ -1,0 +1,32 @@
+{
+	"site_package_search_strategy": "pep561",
+	"search_path": [
+		"/opt/homebrew/Caskroom/miniconda/base/envs/clam/lib/python3.10/site-packages",
+		"/Users/anton/projects/yarvis/yarvis_ptb"
+	],
+	"source_directories": [
+		"yarvis_ptb"
+	],
+	"ignore_all_errors": [
+		"yarvis_ptb/yarvis_ptb/complex_chat.py",
+		"yarvis_ptb/yarvis_ptb/handlers.py",
+		"yarvis_ptb/yarvis_ptb/message_search.py",
+		"yarvis_ptb/yarvis_ptb/prompting.py",
+		"yarvis_ptb/yarvis_ptb/ptb_util.py",
+		"yarvis_ptb/yarvis_ptb/settings/main.py",
+		"yarvis_ptb/yarvis_ptb/tools/bash_repl.py",
+		"yarvis_ptb/yarvis_ptb/tools/file_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/gcal_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/gkeep_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/gmail_tool.py",
+		"yarvis_ptb/yarvis_ptb/tools/image_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/memory_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/python_repl.py",
+		"yarvis_ptb/yarvis_ptb/tools/scheduling_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/subagent_tool.py",
+		"yarvis_ptb/yarvis_ptb/tools/telegram_tools.py",
+		"yarvis_ptb/yarvis_ptb/tools/tool_output.py",
+		"yarvis_ptb/yarvis_ptb/tools/tool_spec.py",
+		"yarvis_ptb/yarvis_ptb/transcription.py"
+	]
+}

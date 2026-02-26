@@ -4,11 +4,11 @@ import logging
 import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, Protocol
 
 import telegram
 import tenacity
-from anthropic import Anthropic, APIStatusError, RateLimitError
+from anthropic import APIStatusError, RateLimitError
 from anthropic.types import (
     ContentBlock,
     MessageParam,
@@ -27,7 +27,6 @@ from anthropic.types.beta import (
     BetaThinkingBlockParam,
     BetaToolUseBlock,
 )
-from telegram.ext import ContextTypes, JobQueue
 
 from yarvis_ptb.chat_config import ChatConfig
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
@@ -78,6 +77,12 @@ TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 ANTON_DATA_TOOLS: list[LocalTool] = [GetLocationTool()] + (
     get_calendar_tools() + get_gmail_tools() + get_gkeep_tools()
 )
+
+
+class JobQueueLike(Protocol):
+    def run_once(
+        self, callback: Any, *, data: Any = None, when: float = 0.0
+    ) -> Any: ...
 
 
 ADAPTIVE_THINKING_MODELS = {"claude-opus-4-6", "claude-sonnet-4-6"}
@@ -189,7 +194,6 @@ async def dummy_on_update(messages: list[MessageParam]) -> None:
 
 
 async def process_query(
-    anthropic: Anthropic,
     curr: Any,
     bot: telegram.Bot,
     chat_config: ChatConfig,
@@ -224,7 +228,6 @@ async def process_query(
             return [], None, 0.0
         tool_init_time = time.monotonic() - start
         msg, claude_calls = await _process_query_with_tools(
-            anthropic,
             system,
             messages,
             claude_tools=local_tools,
@@ -259,14 +262,13 @@ def add_caching_to_messages(
 
 
 async def _process_query_with_tools(
-    anthropic: Anthropic,
     system: str,
     messages: list[MessageParam],
     claude_tools: list[ClaudeTool],
     all_local_tool_objects: dict[str, LocalTool],
     on_update: Callable[[list[MessageParam]], Awaitable[Any]],
     scope: InterruptionScope,
-    job_queue: JobQueue,
+    job_queue: JobQueueLike,
     model_name: str = CLAUDE_MODEL_NAME,
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
     async_client = get_async_anthropic_client()
@@ -385,10 +387,14 @@ async def _process_query_with_tools(
                         ):
                             text = chunk.delta.text
                             all_text.append(text)
+                            update_msg: MessageParam = {
+                                "role": "assistant",
+                                "content": "".join(all_text),
+                            }
                             await on_update(
                                 [
                                     *extra_messages,
-                                    {"role": "assistant", "content": "".join(all_text)},
+                                    update_msg,
                                 ]
                             )
                         elif chunk.type == "message_start":
@@ -593,7 +599,6 @@ async def process_subagent_query(
             await stack.enter_async_context(tool.context())
 
         msg_params, _ = await _process_query_with_tools(
-            anthropic=None,  # Not used directly; async client is created inside
             system=system,
             messages=messages,
             claude_tools=claude_tools,
@@ -664,7 +669,7 @@ def _get_tools_by_names(
     return result
 
 
-async def check_interruption(context: ContextTypes.DEFAULT_TYPE):
+async def check_interruption(context: Any) -> None:
     """Check for interruption in a separate task and cancel the stream if interrupted."""
     logger.info("Starting check_interruption loop")
     stream_task = context.job.data["stream_task"]
