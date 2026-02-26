@@ -27,3 +27,9 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: pyre
+        name: pyre
+        entry: conda run -n clam pyre
+        language: system
+        types: [python]
+        pass_filenames: false

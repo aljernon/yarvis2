@@ -6,7 +6,7 @@ gspread==6.1.4
 python-dotenv==1.0.1
 pre_commit==4.0.1
 gcsa==2.5.1
-anthropic==0.49.0
+anthropic==0.84.0
 python-dateutil==2.9.0.post0
 ensure==1.0.4
 psycopg2==2.9.10
