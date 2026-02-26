@@ -84,6 +84,7 @@ def _count_tokens(system: str, messages: list[MessageParam]) -> int:
 def _trim_conversation_to_token_budget(
     conversation_lines: list[str],
     system: str,
+    invocations_text: str,
 ) -> str:
     """Trim conversation from the beginning to fit within token budget.
 
@@ -92,7 +93,9 @@ def _trim_conversation_to_token_budget(
     full_text = "\n".join(conversation_lines)
     user_message: MessageParam = {
         "role": "user",
-        "content": REFLECT_PROMPT.format(conversation=full_text),
+        "content": REFLECT_PROMPT.format(
+            conversation=full_text, scheduled_invocations=invocations_text
+        ),
     }
     total_tokens = _count_tokens(system, [user_message])
     logger.info(f"Reflection: full conversation is {total_tokens} tokens")
@@ -107,7 +110,9 @@ def _trim_conversation_to_token_budget(
         trimmed = "\n".join(conversation_lines[mid:])
         msg: MessageParam = {
             "role": "user",
-            "content": REFLECT_PROMPT.format(conversation=trimmed),
+            "content": REFLECT_PROMPT.format(
+                conversation=trimmed, scheduled_invocations=invocations_text
+            ),
         }
         tokens = _count_tokens(system, [msg])
         if tokens > MAX_CONVERSATION_TOKENS:
@@ -155,7 +160,9 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
     )
 
     # Trim conversation to fit token budget
-    conversation_text = _trim_conversation_to_token_budget(rendered_lines, system)
+    conversation_text = _trim_conversation_to_token_budget(
+        rendered_lines, system, invocations_text
+    )
 
     # Build the user message
     user_message: MessageParam = {
