@@ -14,7 +14,14 @@ from yarvis_ptb.prompting import (
 )
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
-from yarvis_ptb.storage import DbMessage, create_agent, get_messages, save_message
+from yarvis_ptb.storage import (
+    DbMessage,
+    create_agent,
+    get_messages,
+    get_scheduled_invocations,
+    save_message,
+)
+from yarvis_ptb.timezones import get_timezone
 from yarvis_ptb.tool_sampler import process_subagent_query
 
 logger = logging.getLogger(__name__)
@@ -29,18 +36,24 @@ Your task:
 1. Read through the conversation carefully
 2. Identify any new information worth remembering — facts about Anton, preferences, patterns, decisions, or anything that should persist across conversations
 3. Update the Core Knowledge Repository files accordingly using the str_replace_editor tool
-4. Summarize what you reflected on and what changes (if any) you made
+4. Review the scheduled invocations below. Cancel any that are no longer needed (e.g., reminders for things already addressed). Add new ones if follow-ups are needed.
+5. Summarize what you reflected on and what changes (if any) you made
 
 Focus on:
 - New facts about Anton's life, preferences, habits, relationships
 - Technical decisions or project context worth remembering
 - Patterns in how Anton likes to interact
 - Any corrections to existing knowledge
+- Scheduled invocations that should be cancelled or added
 
 Do NOT:
 - Add trivial or temporary information
 - Duplicate information already in the knowledge files
 - Remove information unless it's clearly wrong
+
+<scheduled_invocations>
+{scheduled_invocations}
+</scheduled_invocations>
 
 <recent_conversation>
 {conversation}
@@ -118,6 +131,20 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
     for msg in claude_messages:
         rendered_lines.extend(render_mesage_param_exact(msg))
 
+    # Fetch and format scheduled invocations
+    scheduled_invocations = get_scheduled_invocations(curr, chat_id)
+    target_tz = get_timezone(True)
+    if scheduled_invocations:
+        inv_lines = []
+        for inv in scheduled_invocations:
+            recur = "recurring daily" if inv.is_recurring else "one-time"
+            inv_lines.append(
+                f"- (id={inv.scheduled_id}) {recur}; next at {inv.scheduled_at.astimezone(target_tz)}; reason: '{inv.reason}'"
+            )
+        invocations_text = "\n".join(inv_lines)
+    else:
+        invocations_text = "No scheduled invocations."
+
     # Build system prompt with memory
     system = SYSTEM_PROMPTS["anton_private"]
     system += (
@@ -133,7 +160,10 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
     # Build the user message
     user_message: MessageParam = {
         "role": "user",
-        "content": REFLECT_PROMPT.format(conversation=conversation_text),
+        "content": REFLECT_PROMPT.format(
+            conversation=conversation_text,
+            scheduled_invocations=invocations_text,
+        ),
     }
 
     agent_id = create_agent(curr, chat_id, meta={"type": "reflect"})
