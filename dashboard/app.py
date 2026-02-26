@@ -41,6 +41,28 @@ DEFAULT_CHAT_ID = ROOT_USER_ID
 PER_PAGE = 500
 
 
+def strip_thinking_blocks(messages: list[dict]) -> list[dict]:
+    """Remove thinking/redacted_thinking blocks from messages for token counting."""
+    cleaned = []
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            filtered = [
+                b
+                for b in content
+                if not (
+                    isinstance(b, dict)
+                    and b.get("type") in ("thinking", "redacted_thinking")
+                )
+            ]
+            if filtered:
+                cleaned.append({**msg, "content": filtered})
+            # Skip messages that become empty after stripping
+        else:
+            cleaned.append(msg)
+    return cleaned
+
+
 def turn_to_api_messages(row: dict) -> list[dict]:
     """Convert a single DB row to Claude API MessageParam list using the real codepath."""
     db_msg = DbMessage(
@@ -379,7 +401,7 @@ def api_turn_tokens(turn_id: int):
             if not is_countable_boundary(i):
                 continue
 
-            conversation = api_msgs[: i + 1]
+            conversation = strip_thinking_blocks(api_msgs[: i + 1])
             total = count_tokens_cached(messages=conversation)
             segment_tokens = total - prev_total
             is_pair = i > 0 and has_tool_use(api_msgs[i - 1])
@@ -570,7 +592,7 @@ def api_agent_view_tokens():
             if not is_countable_boundary(i):
                 continue
 
-            conversation = history[: i + 1]
+            conversation = strip_thinking_blocks(history[: i + 1])
             total = count_tokens_cached(system=system_prompt, messages=conversation)
             segment_tokens = total - prev_total
             is_pair = i > 0 and has_tool_use(history[i - 1])
