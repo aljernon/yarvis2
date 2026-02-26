@@ -356,6 +356,9 @@ def render_mesage_param_exact(rec: MessageParam) -> list[str]:
     else:
         for section in content:
             section = dict(section)
+            if section.get("type") in ("thinking", "redacted_thinking"):
+                formatted.append(f"**[{section.get('type')}]**")
+                continue
             section_content = section.pop("text", None)
             if section_content is None:
                 section_content = section.pop("content", None)
@@ -388,6 +391,8 @@ def render_claude_response_short(
                     tool_results.append(content)
                     err_tag = "[E]" if tool_results[-1]["is_error"] else "[S]"
                     chunks.append(f"{err_tag}{tool_calls[-1]['name']}")
+                elif content["type"] in ("thinking", "redacted_thinking"):
+                    pass
                 else:
                     logger.error(f"Unknown content type: {content}")
                     chunks.append(content)
@@ -444,6 +449,8 @@ def render_claude_response_verbose(
 
                     chunks.append(f"{status}\n```\n{result_str}\n```")
 
+                elif content["type"] in ("thinking", "redacted_thinking"):
+                    pass
                 else:
                     logger.error(f"Unknown content type: {content}")
                     chunks.append(content)

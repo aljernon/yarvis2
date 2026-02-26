@@ -243,6 +243,30 @@ button:hover { background: #ece4ea; }
 .tool-use-header { background: #fdf0f2; color: #c04058; }
 .tool-result-header { background: #eef8f9; color: #2e8e9a; }
 
+/* Thinking blocks */
+.thinking-block {
+  border: 1px solid #e0d8f0;
+  border-radius: 3px;
+  margin: 2px 0;
+}
+.thinking-block.redacted {
+  padding: 3px 8px;
+  background: #f0ecf5;
+  color: #8a70a0;
+  font-size: 0.82em;
+}
+.thinking-header {
+  padding: 3px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82em;
+  background: #f0ecf5;
+  color: #8a70a0;
+}
+.thinking-header:hover { background: #e4dced; }
+
 .tool-use-header:hover { background: #f8e4e8; }
 .tool-result-header:hover { background: #e0f0f2; }
 .tool-result-header.tool-error { color: #e05068; background: #fdf0f2; }

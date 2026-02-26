@@ -19,7 +19,14 @@ from anthropic.types import (
     ToolUseBlock,
     ToolUseBlockParam,
 )
-from anthropic.types.beta import BetaTextBlock, BetaToolUseBlock
+from anthropic.types.beta import (
+    BetaRedactedThinkingBlock,
+    BetaRedactedThinkingBlockParam,
+    BetaTextBlock,
+    BetaThinkingBlock,
+    BetaThinkingBlockParam,
+    BetaToolUseBlock,
+)
 from telegram.ext import ContextTypes, JobQueue
 
 from yarvis_ptb.chat_config import ChatConfig
@@ -72,6 +79,8 @@ ANTON_DATA_TOOLS: list[LocalTool] = [GetLocationTool()] + (
     get_calendar_tools() + get_gmail_tools() + get_gkeep_tools()
 )
 
+
+ADAPTIVE_THINKING_MODELS = {"claude-opus-4-6", "claude-sonnet-4-6"}
 
 ANTHROPIC_EXCEPTIONS_TO_RETRY: tuple[type[APIStatusError], ...] = (APIStatusError,)
 
@@ -305,6 +314,8 @@ async def _process_query_with_tools(
             ),
             # betas=["token-efficient-tools-2025-02-19"],
         )
+        if model_name in ADAPTIVE_THINKING_MODELS:
+            kwargs["thinking"] = {"type": "adaptive"}
 
         count = -2
         num_cached_tokens = -2
@@ -344,7 +355,7 @@ async def _process_query_with_tools(
             sampling_is_done = asyncio.Event()
 
             async with async_client.beta.messages.stream(
-                max_tokens=4096, **kwargs
+                max_tokens=16000, **kwargs
             ) as stream:
                 # Stream processing in the main task
                 try:
@@ -428,6 +439,16 @@ async def _process_query_with_tools(
     def convert_result_content_to_input_content(
         result_content: ContentBlock,
     ) -> TextBlockParam | ToolUseBlockParam:
+        if isinstance(result_content, BetaThinkingBlock):
+            return BetaThinkingBlockParam(
+                type="thinking",
+                thinking=result_content.thinking,
+                signature=result_content.signature,
+            )
+        if isinstance(result_content, BetaRedactedThinkingBlock):
+            return BetaRedactedThinkingBlockParam(
+                type="redacted_thinking", data=result_content.data
+            )
         if isinstance(result_content, (TextBlock, BetaTextBlock)):
             return TextBlockParam(type="text", text=result_content.text)
         else:
@@ -467,6 +488,9 @@ async def _process_query_with_tools(
             # Return nothing - no need to waste content.
             return [], claude_calls
 
+        logger.info(
+            f"Response content types: {[c.type for c in partial_sample.content]}"
+        )
         converted_content = [
             convert_result_content_to_input_content(content)
             for content in partial_sample.content
@@ -478,6 +502,8 @@ async def _process_query_with_tools(
         for content in partial_sample.content:
             logger.debug(f"Content: {content}")
             if content.type == "text":
+                pass
+            elif content.type in ("thinking", "redacted_thinking"):
                 pass
             elif content.type == "tool_use":
                 assert isinstance(content, (ToolUseBlock, BetaToolUseBlock)), content

@@ -83,3 +83,10 @@ To work on this project locally:
 ```
 SETTINGS_NAME=anton conda run -n clam python -c "..."
 ```
+
+### Testing changes
+Use `cli_prompt.py` to test changes end-to-end. It loads full conversation history from DB, runs Claude with all tools, and prints the response to terminal — without saving anything back to DB or involving Telegram.
+```
+SETTINGS_NAME=anton conda run -n clam python cli_prompt.py "Your test prompt here"
+SETTINGS_NAME=anton conda run -n clam python cli_prompt.py -v "Compute 2+2 in python"  # verbose: shows tool call details
+```

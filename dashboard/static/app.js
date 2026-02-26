@@ -88,6 +88,13 @@ function renderContentBlocks(blocks) {
       const isTruncated = content.startsWith("Tool output truncated (");
       const truncLabel = isTruncated ? ' <span style="color:#e8a735;font-weight:bold">[TRUNCATED]</span>' : "";
       html += `<div class="tool-result-block"><div class="tool-result-header${errClass}" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>${block.is_error ? "Error" : "Result"}</strong> <span class="block-size">(${bytes} bytes)</span>${truncLabel}</div><div class="collapsible-content" id="${id}">${escapeHtml(truncated)}</div></div>`;
+    } else if (block.type === "thinking") {
+      const id = "think-" + uid();
+      const text = block.thinking || "";
+      const bytes = new Blob([text]).size;
+      html += `<div class="thinking-block"><div class="thinking-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>Thinking</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(text)}</div></div>`;
+    } else if (block.type === "redacted_thinking") {
+      html += `<div class="thinking-block redacted"><strong>Redacted Thinking</strong></div>`;
     } else {
       html += `<div class="content-block">${escapeHtml(JSON.stringify(block))}</div>`;
     }

@@ -319,6 +319,8 @@ def api_turn_tokens(turn_id: int):
                         )
                     else:
                         parts.append(str(rc))
+                elif block.get("type") in ("thinking", "redacted_thinking"):
+                    pass
             return "\n".join(parts)
 
         def has_text_blocks(msg: dict) -> bool:
@@ -347,6 +349,8 @@ def api_turn_tokens(turn_id: int):
                     blocks.append({"tokens": tokens, "approx": False})
                 elif btype == "tool_use":
                     # Skip — the paired tool_result's call+result count covers this
+                    blocks.append(None)
+                elif btype in ("thinking", "redacted_thinking"):
                     blocks.append(None)
             return blocks if blocks else None
 
@@ -527,6 +531,8 @@ def api_agent_view_tokens():
                         )
                     else:
                         parts.append(str(rc))
+                elif block.get("type") in ("thinking", "redacted_thinking"):
+                    pass
             return "\n".join(parts)
 
         # System prompt tokens
