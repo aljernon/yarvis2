@@ -535,7 +535,7 @@ async def _process_query_with_tools(
 async def process_subagent_query(
     system: str,
     messages: list[MessageParam],
-    tool_names: list[str],
+    tool_names: list[str] | None,
     chat_id: int,
     agent_id: int,
     curr,
@@ -599,9 +599,12 @@ def _build_fresh_generic_tools() -> list[LocalTool]:
     ]
 
 
-def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[LocalTool]:
+def _get_tools_by_names(
+    names: list[str] | None, curr, chat_id: int, bot
+) -> list[LocalTool]:
     """Pick specific tools by name from the full set of available tools.
 
+    If names is None, returns all available tools.
     Creates fresh instances of generic tools to avoid sharing state with the parent.
     """
     # Build all tool classes (excluding subagent to prevent recursion)
@@ -622,6 +625,9 @@ def _get_tools_by_names(names: list[str], curr, chat_id: int, bot) -> list[Local
     # state (init/close) with the parent's singletons
     for tool in _build_fresh_generic_tools():
         name_to_tool[tool.name] = tool
+
+    if names is None:
+        return list(name_to_tool.values())
 
     result = []
     for name in names:

@@ -22,6 +22,7 @@ from yarvis_ptb.complex_chat import (
     handle_message_root_user_assistant,
     process_multi_message_claude_invocation,
 )
+from yarvis_ptb.daily_self_reflect import run_reflect
 from yarvis_ptb.debug_chat import (
     add_debug_message_to_queue,
     maybe_send_messages_to_debug_chat,
@@ -58,7 +59,6 @@ from yarvis_ptb.settings.main import (
 )
 from yarvis_ptb.storage import (
     DbMessage,
-    DbScheduledInvocation,
     Invocation,
     VariablesForChat,
     bump_recurring_invocation,
@@ -458,29 +458,23 @@ async def handler_todo(update: Update, context: CallbackContext):
         await reply_maybe_markdown(context.bot, message.chat_id, error_message)
 
 
-@RegisteredCommandHandler.register(description="Send reflection invocation")
+@RegisteredCommandHandler.register(
+    description="Run self-reflection on recent conversations"
+)
 @auth_decorator_all_complex_chats
 async def handler_reflect(update: Update, context: CallbackContext):
     chat_id = ensure(update.message).chat_id
     assert chat_id == ROOT_USER_ID
-    with context.bot_data["conn"].cursor() as curr:
-        invocation = Invocation(
-            invocation_type="schedule",
-            db_invocation=DbScheduledInvocation(
-                scheduled_at=datetime.datetime.now(),
-                is_recurring=False,
-                chat_id=chat_id,
-                reason="Reflection time",
-            ),
-        )
-        await process_multi_message_claude_invocation(
-            curr,
-            application=context.application,
-            bot=context.bot,
-            chat_id=chat_id,
-            chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
-            invocation=invocation,
-        )
+    message = ensure(update.message)
+    status_msg = await message.reply_text("Reflecting...")
+    try:
+        with context.bot_data["conn"].cursor() as curr:
+            response_text = await run_reflect(curr, chat_id, context.bot)
+            context.bot_data["conn"].commit()
+        await reply_maybe_markdown(context.bot, chat_id, response_text)
+    except Exception as e:
+        logger.exception("Reflection failed")
+        await reply_maybe_markdown(context.bot, chat_id, f"Reflection failed: {e}")
 
 
 @RegisteredCommandHandler.register()

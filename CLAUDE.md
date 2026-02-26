@@ -73,6 +73,13 @@ The project is hosted on Heroku with PostgreSQL database integration.
 
 ## Development
 To work on this project locally:
-1. Set up required environment variables (including API keys)
-2. Install dependencies from requirements.txt
-3. Run the bot using the launch.sh script
+1. Activate the conda environment: `conda activate clam`
+2. Set up required environment variables (including API keys) — see `activate.zsh`
+3. Install dependencies from requirements.txt
+4. Run the bot using the launch.sh script
+
+### Running Python
+`activate.zsh` is the ground truth for environment setup. Source it or replicate its variables before running anything. Currently this means:
+```
+SETTINGS_NAME=anton conda run -n clam python -c "..."
+```
