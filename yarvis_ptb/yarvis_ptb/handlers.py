@@ -466,10 +466,24 @@ async def handler_reflect(update: Update, context: CallbackContext):
     chat_id = ensure(update.message).chat_id
     assert chat_id == ROOT_USER_ID
     message = ensure(update.message)
-    status_msg = await message.reply_text("Reflecting...")
+
+    # Parse optional max_turns argument: /reflect [N]
+    max_turns = None
+    if context.args:
+        try:
+            max_turns = int(context.args[0])
+        except ValueError:
+            await message.reply_text("Usage: /reflect [max_turns]")
+            return
+
+    status_msg = await message.reply_text(
+        f"Reflecting (last {max_turns} turns)..." if max_turns else "Reflecting..."
+    )
     try:
         with context.bot_data["conn"].cursor() as curr:
-            response_text = await run_reflect(curr, chat_id, context.bot)
+            response_text = await run_reflect(
+                curr, chat_id, context.bot, max_turns=max_turns
+            )
             context.bot_data["conn"].commit()
         await reply_maybe_markdown(context.bot, chat_id, response_text)
     except Exception as e:

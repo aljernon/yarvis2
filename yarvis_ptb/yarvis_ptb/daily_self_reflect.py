@@ -109,8 +109,8 @@ def _trim_conversation_to_token_budget(
     return result
 
 
-async def run_reflect(curr, chat_id: int, bot) -> str:
-    messages = get_messages(curr, chat_id)
+async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> str:
+    messages = get_messages(curr, chat_id, limit=max_turns)
     claude_messages = convert_db_messages_to_claude_messages(messages)
 
     # Render conversation to readable text
