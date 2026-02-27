@@ -523,9 +523,13 @@ async def _process_multi_message_claude_invocation_inner(
             save_message_and_update_index(curr, initial_db_message)
         bot_meta: dict = {"message_params": message_params}
         if claude_calls is not None:
+            pricing = tool_sampler.MODEL_PRICING.get(chat_config.model_name)
             bot_meta["usage"] = {
-                "calls": [c.to_usage_dict() for c in claude_calls],
+                "calls": [c.to_usage_dict(pricing) for c in claude_calls],
                 "estimated_cost_usd": cost,
+                "cost_breakdown_usd": tool_sampler.cost_breakdown(
+                    claude_calls, chat_config.model_name
+                ),
             }
         db_message = DbMessage(
             chat_id=chat_id,

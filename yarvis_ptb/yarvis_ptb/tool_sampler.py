@@ -108,9 +108,9 @@ class ClaudeCallInfo:
             - self.num_cache_creation_tokens,
         )
 
-    def to_usage_dict(self) -> dict:
-        """Return a dict with the 4 token categories and timing info."""
-        return {
+    def to_usage_dict(self, pricing: "ModelPricing | None" = None) -> dict:
+        """Return a dict with the 4 token categories, timing, and optional cost."""
+        d: dict = {
             "uncached_input": self.num_uncached_input_tokens,
             "cached_input": self.num_cached_tokens,
             "cache_creation": self.num_cache_creation_tokens,
@@ -118,6 +118,14 @@ class ClaudeCallInfo:
             "seconds_till_start": self.seconds_till_start,
             "tool_execution_time": self.tool_execution_time,
         }
+        if pricing is not None:
+            d["cost_usd"] = (
+                self.num_uncached_input_tokens * pricing.input
+                + self.num_cached_tokens * pricing.cache_read
+                + self.num_cache_creation_tokens * pricing.cache_creation
+                + self.num_output_tokens * pricing.output
+            )
+        return d
 
 
 @dataclass
@@ -154,18 +162,26 @@ MODEL_PRICING: dict[str, ModelPricing] = {
 
 def estimate_cost(calls: list[ClaudeCallInfo], model_name: str) -> float | None:
     """Estimate dollar cost from a list of ClaudeCallInfo for the given model."""
+    b = cost_breakdown(calls, model_name)
+    if b is None:
+        return None
+    return sum(b.values())
+
+
+def cost_breakdown(
+    calls: list[ClaudeCallInfo], model_name: str
+) -> dict[str, float] | None:
+    """Return per-category dollar costs: uncached_input, cached_input, cache_creation, output."""
     p = MODEL_PRICING.get(model_name)
     if p is None:
         return None
-    total = 0.0
-    for c in calls:
-        total += (
-            c.num_uncached_input_tokens * p.input
-            + c.num_cached_tokens * p.cache_read
-            + c.num_cache_creation_tokens * p.cache_creation
-            + c.num_output_tokens * p.output
-        )
-    return total
+    return {
+        "uncached_input": sum(c.num_uncached_input_tokens for c in calls) * p.input,
+        "cached_input": sum(c.num_cached_tokens for c in calls) * p.cache_read,
+        "cache_creation": sum(c.num_cache_creation_tokens for c in calls)
+        * p.cache_creation,
+        "output": sum(c.num_output_tokens for c in calls) * p.output,
+    }
 
 
 @dataclass

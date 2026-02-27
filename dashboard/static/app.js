@@ -151,14 +151,29 @@ function renderUsageBadge(meta) {
   if (totalCached) parts.push(`${totalCached} cached`);
   if (totalCacheCreate) parts.push(`${totalCacheCreate} cache_wr`);
   if (totalOut) parts.push(`${totalOut} out`);
-  const tooltip = calls.map((c, i) => {
-    const p = [];
-    if (c.uncached_input) p.push(`in:${c.uncached_input}`);
-    if (c.cached_input) p.push(`cached:${c.cached_input}`);
-    if (c.cache_creation) p.push(`cache_wr:${c.cache_creation}`);
-    if (c.output) p.push(`out:${c.output}`);
-    return `call ${i + 1}: ${p.join(", ")}`;
-  }).join("\n");
+  // Tooltip: per-category $ breakdown + per-call details
+  const tooltipLines = [];
+  const bd = usage.cost_breakdown_usd;
+  if (bd) {
+    tooltipLines.push(`in: ${totalUncached} tok  $${(bd.uncached_input || 0).toFixed(4)}`);
+    tooltipLines.push(`cached: ${totalCached} tok  $${(bd.cached_input || 0).toFixed(4)}`);
+    tooltipLines.push(`cache_wr: ${totalCacheCreate} tok  $${(bd.cache_creation || 0).toFixed(4)}`);
+    tooltipLines.push(`out: ${totalOut} tok  $${(bd.output || 0).toFixed(4)}`);
+  }
+  if (calls.length > 1) {
+    tooltipLines.push("");
+    for (let i = 0; i < calls.length; i++) {
+      const c = calls[i];
+      const p = [];
+      if (c.uncached_input) p.push(`in:${c.uncached_input}`);
+      if (c.cached_input) p.push(`cached:${c.cached_input}`);
+      if (c.cache_creation) p.push(`cache_wr:${c.cache_creation}`);
+      if (c.output) p.push(`out:${c.output}`);
+      if (c.cost_usd != null) p.push(`$${c.cost_usd.toFixed(4)}`);
+      tooltipLines.push(`call ${i + 1}: ${p.join(", ")}`);
+    }
+  }
+  const tooltip = tooltipLines.join("\n");
   return `<span class="badge usage" title="${escapeHtml(tooltip)}">${parts.join(" | ")}${costStr}</span>`;
 }
 
