@@ -125,6 +125,7 @@ button:hover { background: #ece4ea; }
 .badge.image { background: #45b5c4; color: #fff; }
 .badge.archived { background: #b0a0b4; color: #fff; }
 .badge.agent { background: #a078c0; color: #fff; }
+.badge.usage { background: #2a7a3a; color: #fff; cursor: help; white-space: pre-line; }
 
 /* Subagent messages indented like a subthread */
 .turn-card.subagent {

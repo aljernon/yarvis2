@@ -94,8 +94,78 @@ ANTHROPIC_EXCEPTIONS_TO_RETRY: tuple[type[APIStatusError], ...] = (APIStatusErro
 class ClaudeCallInfo:
     num_prompt_tokens: int
     num_cached_tokens: int
+    num_cache_creation_tokens: int
+    num_output_tokens: int
     seconds_till_start: float | None
     tool_execution_time: float | None
+
+    @property
+    def num_uncached_input_tokens(self) -> int:
+        return max(
+            0,
+            self.num_prompt_tokens
+            - self.num_cached_tokens
+            - self.num_cache_creation_tokens,
+        )
+
+    def to_usage_dict(self) -> dict:
+        """Return a dict with the 4 token categories and timing info."""
+        return {
+            "uncached_input": self.num_uncached_input_tokens,
+            "cached_input": self.num_cached_tokens,
+            "cache_creation": self.num_cache_creation_tokens,
+            "output": self.num_output_tokens,
+            "seconds_till_start": self.seconds_till_start,
+            "tool_execution_time": self.tool_execution_time,
+        }
+
+
+@dataclass
+class ModelPricing:
+    """Per-token pricing in dollars."""
+
+    input: float
+    cache_read: float
+    cache_creation: float
+    output: float
+
+
+MODEL_PRICING: dict[str, ModelPricing] = {
+    "claude-opus-4-6": ModelPricing(
+        input=15.0 / 1e6,
+        cache_read=1.50 / 1e6,
+        cache_creation=18.75 / 1e6,
+        output=75.0 / 1e6,
+    ),
+    "claude-sonnet-4-6": ModelPricing(
+        input=3.0 / 1e6,
+        cache_read=0.30 / 1e6,
+        cache_creation=3.75 / 1e6,
+        output=15.0 / 1e6,
+    ),
+    "claude-haiku-4-5-20251001": ModelPricing(
+        input=0.80 / 1e6,
+        cache_read=0.08 / 1e6,
+        cache_creation=1.0 / 1e6,
+        output=4.0 / 1e6,
+    ),
+}
+
+
+def estimate_cost(calls: list[ClaudeCallInfo], model_name: str) -> float | None:
+    """Estimate dollar cost from a list of ClaudeCallInfo for the given model."""
+    p = MODEL_PRICING.get(model_name)
+    if p is None:
+        return None
+    total = 0.0
+    for c in calls:
+        total += (
+            c.num_uncached_input_tokens * p.input
+            + c.num_cached_tokens * p.cache_read
+            + c.num_cache_creation_tokens * p.cache_creation
+            + c.num_output_tokens * p.output
+        )
+    return total
 
 
 @dataclass
@@ -104,6 +174,8 @@ class PartialSample:
     stop_reason: Literal["tool_use", "eot", "interrupt"]
     num_prompt_tokens: int
     num_cached_tokens: int
+    num_cache_creation_tokens: int
+    num_output_tokens: int
     seconds_till_start: float | None
 
 
@@ -321,6 +393,8 @@ async def _process_query_with_tools(
 
         count = -2
         num_cached_tokens = -2
+        num_cache_creation_tokens = 0
+        num_output_tokens = 0
         all_text: list[str] = []
         response_time_secs: float | None = None
         start_time = time.monotonic()
@@ -342,6 +416,8 @@ async def _process_query_with_tools(
             return PartialSample(
                 num_prompt_tokens=count,
                 num_cached_tokens=num_cached_tokens,
+                num_cache_creation_tokens=num_cache_creation_tokens,
+                num_output_tokens=num_output_tokens,
                 content=content,
                 stop_reason="interrupt",
                 seconds_till_start=response_time_secs,
@@ -407,12 +483,18 @@ async def _process_query_with_tools(
                                 + (usage.cache_read_input_tokens or 0)
                             )
                             num_cached_tokens = usage.cache_read_input_tokens or 0
+                            num_cache_creation_tokens = (
+                                usage.cache_creation_input_tokens or 0
+                            )
 
                     # Get the final message if stream completed normally
                     msg = await stream.get_final_message()
+                    num_output_tokens = msg.usage.output_tokens
                     return PartialSample(
                         num_prompt_tokens=count,
                         num_cached_tokens=num_cached_tokens,
+                        num_cache_creation_tokens=num_cache_creation_tokens,
+                        num_output_tokens=num_output_tokens,
                         content=msg.content,
                         stop_reason="tool_use"
                         if msg.stop_reason == "tool_use"
@@ -480,6 +562,8 @@ async def _process_query_with_tools(
             partial_sample = PartialSample(
                 num_prompt_tokens=-1,
                 num_cached_tokens=-1,
+                num_cache_creation_tokens=0,
+                num_output_tokens=0,
                 content=[
                     TextBlock(
                         type="text",
@@ -551,6 +635,8 @@ async def _process_query_with_tools(
             ClaudeCallInfo(
                 num_prompt_tokens=partial_sample.num_prompt_tokens,
                 num_cached_tokens=partial_sample.num_cached_tokens,
+                num_cache_creation_tokens=partial_sample.num_cache_creation_tokens,
+                num_output_tokens=partial_sample.num_output_tokens,
                 seconds_till_start=partial_sample.seconds_till_start,
                 tool_execution_time=tool_execution_time,
             )

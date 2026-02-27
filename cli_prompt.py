@@ -164,8 +164,11 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
             if claude_calls:
                 total_prompt = sum(c.num_prompt_tokens for c in claude_calls)
                 total_cached = sum(c.num_cached_tokens for c in claude_calls)
+                total_output = sum(c.num_output_tokens for c in claude_calls)
+                cost = tool_sampler.estimate_cost(claude_calls, chat_config.model_name)
+                cost_str = f", ${cost:.4f}" if cost is not None else ""
                 print(
-                    f"\n[{len(claude_calls)} API call(s), {total_prompt} prompt tokens, {total_cached} cached]",
+                    f"\n[{len(claude_calls)} API call(s), {total_prompt} prompt tokens, {total_cached} cached, {total_output} output{cost_str}]",
                     file=sys.stderr,
                 )
 

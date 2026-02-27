@@ -135,6 +135,33 @@ function renderMessageParams(meta, turnId) {
   return html;
 }
 
+function renderUsageBadge(meta) {
+  const usage = meta && meta.usage;
+  if (!usage) return "";
+  const cost = usage.estimated_cost_usd;
+  const calls = usage.calls;
+  if (!calls || !calls.length) return "";
+  const totalOut = calls.reduce((s, c) => s + (c.output || 0), 0);
+  const totalCached = calls.reduce((s, c) => s + (c.cached_input || 0), 0);
+  const totalUncached = calls.reduce((s, c) => s + (c.uncached_input || 0), 0);
+  const totalCacheCreate = calls.reduce((s, c) => s + (c.cache_creation || 0), 0);
+  const costStr = cost != null ? ` $${cost.toFixed(4)}` : "";
+  const parts = [];
+  if (totalUncached) parts.push(`${totalUncached} in`);
+  if (totalCached) parts.push(`${totalCached} cached`);
+  if (totalCacheCreate) parts.push(`${totalCacheCreate} cache_wr`);
+  if (totalOut) parts.push(`${totalOut} out`);
+  const tooltip = calls.map((c, i) => {
+    const p = [];
+    if (c.uncached_input) p.push(`in:${c.uncached_input}`);
+    if (c.cached_input) p.push(`cached:${c.cached_input}`);
+    if (c.cache_creation) p.push(`cache_wr:${c.cache_creation}`);
+    if (c.output) p.push(`out:${c.output}`);
+    return `call ${i + 1}: ${p.join(", ")}`;
+  }).join("\n");
+  return `<span class="badge usage" title="${escapeHtml(tooltip)}">${parts.join(" | ")}${costStr}</span>`;
+}
+
 function senderClass(msg) {
   if (msg.user_id === -1) return "bot";
   if (msg.user_id === -2) return "system";
@@ -186,6 +213,7 @@ async function loadMessages(page) {
     if (msg.agent_id) badges += `<span class="badge agent">Agent #${msg.agent_id}</span>`;
     if (msg.has_image) badges += `<span class="badge image">Image</span>`;
     if (msg.marked_for_archive) badges += `<span class="badge archived">Archived</span>`;
+    badges += renderUsageBadge(msg.meta);
 
     const sc = senderClass(msg);
     const turnId = "turn-" + msg.id;

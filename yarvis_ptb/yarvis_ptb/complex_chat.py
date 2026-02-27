@@ -468,11 +468,15 @@ async def _process_multi_message_claude_invocation_inner(
         )
 
     prompt_size: int | None
+    cost: float | None = None
     if (claude_calls := maybe_claude_calls) is not None:
         prompt_size = claude_calls[0].num_prompt_tokens if claude_calls else -2
+        cost = tool_sampler.estimate_cost(claude_calls, chat_config.model_name)
         sizes["claude_calls"] = claude_calls
         sizes["tool_init_time"] = tool_init_time
         sizes["pre_call_time"] = pre_call_time
+        if cost is not None:
+            sizes["estimated_cost_usd"] = f"${cost:.4f}"
         add_debug_message_to_queue(
             f"**SIZES:**:\n```\n{json.dumps(sizes, indent=2, sort_keys=True, cls=DataclassJSONEncoder)}\n```",
         )
@@ -517,12 +521,18 @@ async def _process_multi_message_claude_invocation_inner(
         if initial_db_message is not None:
             # Saving to db only at the end.
             save_message_and_update_index(curr, initial_db_message)
+        bot_meta: dict = {"message_params": message_params}
+        if claude_calls is not None:
+            bot_meta["usage"] = {
+                "calls": [c.to_usage_dict() for c in claude_calls],
+                "estimated_cost_usd": cost,
+            }
         db_message = DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=BOT_USER_ID,
             message="USE_CONTENT_FROM_META",
-            meta={"message_params": message_params},
+            meta=bot_meta,
         )
         save_message_and_update_index(curr, db_message)
 
