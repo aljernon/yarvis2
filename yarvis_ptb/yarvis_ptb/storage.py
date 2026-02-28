@@ -241,13 +241,13 @@ def get_messages(
     return messages
 
 
-def save_message(curr, message: DbMessage):
+def save_message(curr, message: DbMessage, *, is_visible: bool = True):
     """Save message to the dbwith connect() as curr"""
     assert message.message_id is None, "Will be auto-generated"
     curr.execute(
         """
-            INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id, is_visible)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
         (
             message.created_at,
@@ -257,6 +257,7 @@ def save_message(curr, message: DbMessage):
             json.dumps(message.meta),
             message.marked_for_archive,
             message.agent_id,
+            is_visible,
         ),
     )
 
@@ -691,6 +692,25 @@ def test_invocations():
 
         finally:
             curr.execute(f"DELETE FROM invocations WHERE chat_id={fake_chat_id}")
+
+
+def update_agent_meta(curr, agent_id: int, meta: dict) -> None:
+    """Merges keys into the agent's existing meta JSON."""
+    curr.execute(
+        """
+        UPDATE agents
+        SET meta = COALESCE(meta, '{}'::jsonb) || %s::jsonb
+        WHERE id = %s
+        """,
+        (json.dumps(meta), agent_id),
+    )
+
+
+def get_agent_meta(curr, agent_id: int) -> dict | None:
+    """Returns agent meta dict, or None if the agent doesn't exist."""
+    curr.execute("SELECT meta FROM agents WHERE id = %s", (agent_id,))
+    row = curr.fetchone()
+    return row[0] if row else None
 
 
 def create_agent(curr, chat_id: int, meta: dict | None = None) -> int:
