@@ -173,6 +173,17 @@ function renderUsageBadge(meta) {
       tooltipLines.push(`call ${i + 1}: ${p.join(", ")}`);
     }
   }
+  const subs = usage.subagent_usages;
+  if (subs && subs.length) {
+    tooltipLines.push("");
+    for (let i = 0; i < subs.length; i++) {
+      const s = subs[i];
+      const model = (s.model || "").replace(/^claude-/, "").replace(/-\d+$/, "");
+      const sCost = s.estimated_cost_usd != null ? `$${s.estimated_cost_usd.toFixed(4)}` : "";
+      const nCalls = (s.calls || []).length;
+      tooltipLines.push(`subagent ${i + 1} (${model}, ${nCalls} calls): ${sCost}`);
+    }
+  }
   const tooltip = tooltipLines.join("\n");
   return `<span class="badge usage" title="${escapeHtml(tooltip)}">${parts.join(" | ")}${costStr}</span>`;
 }

@@ -175,7 +175,7 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
 
     agent_id = create_agent(curr, chat_id, meta={"type": "reflect"})
 
-    msg_params = await process_subagent_query(
+    msg_params, _claude_calls = await process_subagent_query(
         system=system,
         messages=[user_message],
         tool_names=None,  # All available tools

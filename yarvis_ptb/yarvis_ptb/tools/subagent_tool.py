@@ -23,6 +23,7 @@ class RunSubagentTool(LocalTool):
         self._curr = curr
         self._chat_id = chat_id
         self._bot = bot
+        self.subagent_usages: list[dict] = []
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -111,7 +112,7 @@ class RunSubagentTool(LocalTool):
                 break
 
         try:
-            message_params = await process_subagent_query(
+            message_params, claude_calls = await process_subagent_query(
                 system=system,
                 messages=messages,
                 tool_names=tool_names,
@@ -125,6 +126,23 @@ class RunSubagentTool(LocalTool):
         except Exception as e:
             logger.exception(f"Subagent {agent_id} failed: {e}")
             return ToolResult.error(f"Subagent failed: {e}")
+
+        # Build cost info for the parent invocation to aggregate
+        from yarvis_ptb.tool_sampler import (
+            MODEL_PRICING,
+            cost_breakdown,
+            estimate_cost,
+        )
+
+        subagent_usage = None
+        if claude_calls:
+            pricing = MODEL_PRICING.get(model_id)
+            subagent_usage = {
+                "model": model_id,
+                "calls": [c.to_usage_dict(pricing) for c in claude_calls],
+                "estimated_cost_usd": estimate_cost(claude_calls, model_id),
+                "cost_breakdown_usd": cost_breakdown(claude_calls, model_id),
+            }
 
         # 6. Send subagent activity to debug chat
         from yarvis_ptb.debug_chat import add_debug_message_to_queue
@@ -146,6 +164,9 @@ class RunSubagentTool(LocalTool):
             ),
         )
         if message_params:
+            bot_meta: dict = {"message_params": message_params}
+            if subagent_usage:
+                bot_meta["usage"] = subagent_usage
             save_message(
                 self._curr,
                 DbMessage(
@@ -153,7 +174,7 @@ class RunSubagentTool(LocalTool):
                     chat_id=self._chat_id,
                     user_id=BOT_USER_ID,
                     message="USE_CONTENT_FROM_META",
-                    meta={"message_params": message_params},
+                    meta=bot_meta,
                     agent_id=agent_id,
                 ),
             )
@@ -162,6 +183,9 @@ class RunSubagentTool(LocalTool):
         final_text = _extract_final_text(message_params)
         if not final_text:
             return ToolResult.error("Subagent produced no text response")
+
+        if subagent_usage:
+            self.subagent_usages.append(subagent_usage)
 
         return ToolResult.success(f"[Subagent #{agent_id} result]\n{final_text}")
 
@@ -307,7 +331,7 @@ if __name__ == "__main__":
                 }
             ]
 
-            message_params = await process_subagent_query(
+            message_params, _claude_calls = await process_subagent_query(
                 system=system,
                 messages=messages,
                 tool_names=["python_repl"],

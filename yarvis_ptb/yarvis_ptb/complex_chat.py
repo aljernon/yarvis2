@@ -455,6 +455,7 @@ async def _process_multi_message_claude_invocation_inner(
             message_params,
             maybe_claude_calls,
             tool_init_time,
+            subagent_usages,
         ) = await tool_sampler.process_query(
             curr=curr,
             bot=bot,
@@ -524,13 +525,18 @@ async def _process_multi_message_claude_invocation_inner(
         bot_meta: dict = {"message_params": message_params}
         if claude_calls is not None:
             pricing = tool_sampler.MODEL_PRICING.get(chat_config.model_name)
+            subagent_total_cost = sum(
+                u.get("estimated_cost_usd", 0) or 0 for u in subagent_usages
+            )
             bot_meta["usage"] = {
                 "calls": [c.to_usage_dict(pricing) for c in claude_calls],
-                "estimated_cost_usd": cost,
+                "estimated_cost_usd": (cost or 0) + subagent_total_cost,
                 "cost_breakdown_usd": tool_sampler.cost_breakdown(
                     claude_calls, chat_config.model_name
                 ),
             }
+            if subagent_usages:
+                bot_meta["usage"]["subagent_usages"] = subagent_usages
         db_message = DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),

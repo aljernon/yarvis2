@@ -291,13 +291,14 @@ async def process_query(
     job_queue,
     scope: InterruptionScope,
     on_update: Callable[[list[MessageParam]], Awaitable[Any]] | None = None,
-) -> tuple[list[MessageParam], list[ClaudeCallInfo] | None, float]:
+) -> tuple[list[MessageParam], list[ClaudeCallInfo] | None, float, list[dict]]:
     """Process a query using Claude and available tools.
 
     Returns:
-        Tuple of (message_params, claude_calls)
+        Tuple of (message_params, claude_calls, tool_init_time, subagent_usages)
         where claude_calls contains num input tokens and time till first token
         for all claude calls - initial and after each tool.
+        subagent_usages is a list of cost dicts from any subagent invocations.
     """
 
     start = time.monotonic()
@@ -309,23 +310,31 @@ async def process_query(
         for local_tool in all_local_tool_objects:
             if scope.is_interrupted:
                 logger.warning("Interruption before generation started")
-                return [], None, 0.0
+                return [], None, 0.0, []
             await stack.enter_async_context(local_tool.context())
         if scope.is_interrupted:
             logger.warning("Interruption before generation started")
-            return [], None, 0.0
+            return [], None, 0.0, []
         tool_init_time = time.monotonic() - start
+        tool_map = {t.name: t for t in all_local_tool_objects}
         msg, claude_calls = await _process_query_with_tools(
             system,
             messages,
             claude_tools=local_tools,
-            all_local_tool_objects={t.name: t for t in all_local_tool_objects},
+            all_local_tool_objects=tool_map,
             on_update=on_update if on_update is not None else dummy_on_update,
             scope=scope,
             model_name=chat_config.model_name,
             job_queue=job_queue,
         )
-        return msg, claude_calls, tool_init_time
+        # Collect subagent cost info if any subagents were used
+        from yarvis_ptb.tools.subagent_tool import RunSubagentTool
+
+        subagent_usages: list[dict] = []
+        for tool in tool_map.values():
+            if isinstance(tool, RunSubagentTool) and tool.subagent_usages:
+                subagent_usages.extend(tool.subagent_usages)
+        return msg, claude_calls, tool_init_time, subagent_usages
     raise ValueError("Should not reach here")
 
 
@@ -685,11 +694,11 @@ async def process_subagent_query(
     bot,
     scope: InterruptionScope | None = None,
     model_name: str = SUBAGENT_MODEL_MAP[SUBAGENT_DEFAULT_MODEL],
-) -> list[MessageParam]:
+) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
     """Simplified query function for subagents.
 
     No streaming, no interruption handling, no MCP.
-    Returns the full list of message_params (assistant/user turns).
+    Returns (message_params, claude_calls).
 
     If scope is provided, the subagent will respect the parent's interruption
     (e.g. if the user sends a new message while the subagent is running).
@@ -709,7 +718,7 @@ async def process_subagent_query(
         for tool in all_tool_objects:
             await stack.enter_async_context(tool.context())
 
-        msg_params, _ = await _process_query_with_tools(
+        msg_params, claude_calls = await _process_query_with_tools(
             system=system,
             messages=messages,
             claude_tools=claude_tools,
@@ -719,7 +728,7 @@ async def process_subagent_query(
             model_name=model_name,
             job_queue=_DummyJobQueue(),
         )
-        return msg_params
+        return msg_params, claude_calls
 
 
 class _DummyJobQueue:
