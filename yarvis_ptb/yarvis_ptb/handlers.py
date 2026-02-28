@@ -517,7 +517,15 @@ async def handler_restart(update: Update, context: CallbackContext):
 async def handle_voice_message(
     auth: AuthInfo, update: Update, context: CallbackContext
 ) -> None:
-    if not auth.is_root_user_complex_chat:
+    # Voice messages allowed in 1-on-1 chats: private chat with root, or
+    # configured group chats with trigger_condition="root" (e.g. logseq)
+    chat_config = CONFIGURED_CHATS.get(auth.group_chat_name or "")
+    is_root_triggered_group = (
+        auth.is_message_from_root
+        and chat_config is not None
+        and chat_config.trigger_condition == "root"
+    )
+    if not (auth.is_root_user_complex_chat or is_root_triggered_group):
         return
     if not update.message:
         logger.error("No message")
