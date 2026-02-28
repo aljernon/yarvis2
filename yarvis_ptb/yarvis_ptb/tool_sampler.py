@@ -347,6 +347,15 @@ def add_caching_to_messages(
 
     messages = [normalize_message_param(x) for x in raw_messages]
     messages = copy.deepcopy(messages)
+    # Strip empty text blocks — the API rejects them
+    for msg in messages:
+        msg["content"] = [  # type: ignore
+            b
+            for b in msg["content"]
+            if not (
+                isinstance(b, dict) and b.get("type") == "text" and not b.get("text")
+            )
+        ]
     # Adding cache control to the last assistabt message. We can't add cache to
     # use message, as the user messages could be duplicated and that confuses
     # Claude.
