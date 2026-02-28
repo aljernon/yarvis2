@@ -70,6 +70,51 @@ The bot can schedule its own future invocations using the scheduling system:
 
 ## Deployment
 The project is hosted on Heroku with PostgreSQL database integration.
+- Heroku app name: `claude-telegram`
+
+## GCP Infrastructure (Signal API)
+A GCP VM runs `signal-cli-rest-api` to give Yarvis read access to Signal messages.
+
+- **GCP project**: `signal-api-project`
+- **VM name**: `signal-api`, zone `us-central1-a`, machine type `e2-micro` (free tier)
+- **OS**: Ubuntu 24.04 LTS
+- **Networking**: Tailscale private network (no public ports except SSH)
+  - VM Tailscale IP: `100.108.7.78`
+  - Signal API accessible at `http://100.108.7.78:8080`
+- **Signal API**: `bbernhard/signal-cli-rest-api` Docker container, running in JSON-RPC mode
+  - Bound to Tailscale IP only (`-p 100.108.7.78:8080:8080`)
+  - Signal number: `+16506603785`
+  - Data volume: `signal-cli-data`
+- **Heroku ↔ GCP**: Tailscale buildpack (`mvisonneau/heroku-buildpack-tailscale`) on Heroku app
+  - Env vars on Heroku: `TAILSCALE_AUTH_KEY`, `SIGNAL_API_URL=http://100.108.7.78:8080`
+- **Local gcloud**: `/opt/homebrew/share/google-cloud-sdk/bin/gcloud`
+- **SSH**: `gcloud compute ssh signal-api --zone us-central1-a --tunnel-through-iap`
+
+### Signal Accumulator
+Code lives in `signal_accumulator/` in this repo. It's a Flask app that listens to the Signal API websocket, stores messages in SQLite, and exposes a query API on port 8081.
+
+**Deployment**: Code is committed here, then manually copied to the GCP VM and run as a Docker container:
+```bash
+# Copy files to VM
+gcloud compute scp signal_accumulator/* signal-api:~/signal_accumulator/ --zone us-central1-a --tunnel-through-iap
+
+# On the VM: build and run
+cd ~/signal_accumulator
+sudo docker build -t signal-accumulator .
+sudo docker run -d --name signal-accumulator \
+  --restart=unless-stopped \
+  -p 100.108.7.78:8081:8081 \
+  -v signal-accumulator-data:/data \
+  -e SIGNAL_WS_URL=ws://100.108.7.78:8080 \
+  signal-accumulator
+```
+
+### SMS Accumulator
+Go service in `sms_accumulator/` — connects to Google Messages via `libgm` (web pairing protocol), captures all SMS/RCS messages (incoming + outgoing), stores in SQLite, exposes query API on port 8082. See `sms_accumulator/CLAUDE.md` for details.
+
+- **API**: `GET /messages?hours=24&sender=...&limit=100`, `GET /health`
+- **VM port**: `100.108.7.78:8082`
+- **Docker volume**: `sms-accumulator-data` (holds `auth.json` + `sms_messages.db`)
 
 ## Development
 To work on this project locally:

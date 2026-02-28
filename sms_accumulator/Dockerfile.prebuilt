@@ -1,0 +1,6 @@
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY sms-accumulator /usr/local/bin/
+VOLUME /data
+EXPOSE 8082
+CMD ["sms-accumulator"]
