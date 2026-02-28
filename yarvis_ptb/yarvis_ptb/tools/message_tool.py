@@ -38,6 +38,12 @@ class SendMessageTool(LocalTool):
                     description="The message text to send to the user",
                     is_required=True,
                 ),
+                ArgSpec(
+                    name="final",
+                    type=bool,
+                    description="Set final=true if this is your last action and you have nothing more to do. Saves a round-trip.",
+                    is_required=False,
+                ),
             ],
         )
 
@@ -53,7 +59,10 @@ class SendMessageTool(LocalTool):
                 disable_notification=False,
             )
 
-            return ToolResult.success("Message sent successfully.")
+            return ToolResult.success(
+                "Message sent successfully.",
+                stop_after=bool(kwargs.get("final", False)),
+            )
 
         except Exception as e:
             logger.exception(f"Error sending message: {e}")

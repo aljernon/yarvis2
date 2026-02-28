@@ -26,6 +26,10 @@ class ToolResult:
     # E.g., we can save a diff here for editor tool.
     meta_info: dict | None = None
 
+    # If True, the sampling loop should stop after processing this result
+    # (no further API call). Used by send_message(final=True).
+    stop_after: bool = False
+
     def get_content(self) -> list[ToolResultContent]:
         content = []
         content.append({"type": "text", "text": self.text})
@@ -35,10 +39,10 @@ class ToolResult:
         return content
 
     @classmethod
-    def success(cls, text: str | dict | None):
+    def success(cls, text: str | dict | None, stop_after: bool = False):
         if not isinstance(text, str):
             text = json.dumps(text)
-        return cls(text, is_error=False)
+        return cls(text, is_error=False, stop_after=stop_after)
 
     @classmethod
     def error(cls, text: str | dict):

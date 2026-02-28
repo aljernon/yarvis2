@@ -604,6 +604,7 @@ async def _process_query_with_tools(
         extra_messages.append({"role": "assistant", "content": converted_content})
         # No need to call on_update here, as we are already doing it in the stream.
         tool_execution_results: list[ToolResultBlockParam] = []
+        should_stop_after = False
         tool_execution_start_time = time.monotonic()
         for content in partial_sample.content:
             logger.debug(f"Content: {content}")
@@ -638,6 +639,8 @@ async def _process_query_with_tools(
                     "content": result.get_content(),
                     "is_error": result.is_error,
                 }
+                if result.stop_after:
+                    should_stop_after = True
                 tool_execution_results.append(result_content)
             else:
                 logger.warning(f"Unknown content type: {content.type}")
@@ -657,6 +660,12 @@ async def _process_query_with_tools(
                 tool_execution_time=tool_execution_time,
             )
         )
+        if should_stop_after:
+            logger.info("Stopping sampling loop early due to stop_after flag")
+            extra_messages.append(
+                {"role": "assistant", "content": [{"type": "text", "text": ""}]}
+            )
+            break
         if partial_sample.stop_reason != "tool_use":
             logger.info(
                 f"Claude finished sampling with stop reason: {partial_sample.stop_reason=}"

@@ -54,7 +54,10 @@ class _CliSendMessageTool(LocalTool):
     async def _execute(self, **kwargs) -> ToolResult:
         message = kwargs["message"]
         print(f"\n{'='*60}\n[send_message]\n{message}\n{'='*60}\n")
-        return ToolResult.success("Message sent successfully.")
+        return ToolResult.success(
+            "Message sent successfully.",
+            stop_after=bool(kwargs.get("final", False)),
+        )
 
 
 @app.command()
