@@ -352,7 +352,11 @@ def add_caching_to_messages(
     # Claude.
     for msg in reversed(messages):
         if msg["role"] == "assistant":
-            msg["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore
+            # Find the last non-empty content block to cache
+            for block in reversed(list(msg["content"])):
+                if block.get("type") != "text" or block.get("text"):  # type: ignore
+                    block["cache_control"] = {"type": "ephemeral"}  # type: ignore
+                    break
             break
 
     return messages
