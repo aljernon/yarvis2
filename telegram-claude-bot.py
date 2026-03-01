@@ -57,6 +57,7 @@ from yarvis_ptb.yarvis_ptb.settings import (
 )
 from yarvis_ptb.yarvis_ptb.storage import connect
 from yarvis_ptb.yarvis_ptb.util import ensure
+from yarvis_ptb.yarvis_ptb.webhook_handlers import TimezoneHandler
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -203,6 +204,18 @@ def main():
         application.job_queue.run_once(callback_minute, when=1)
         application.job_queue.run_once(app_start_callback, when=1)
         application.job_queue.run_repeating(callback_minute, interval=60)
+
+        async def register_custom_routes(_context) -> None:
+            """Add custom (non-Telegram) routes to the tornado app."""
+            httpd = application.updater._httpd  # type: ignore[union-attr]
+            tornado_app = httpd._http_server.request_callback  # type: ignore[union-attr]
+            tornado_app.add_handlers(
+                r".*",
+                [("/api/timezone", TimezoneHandler, {"conn": conn})],
+            )
+            logger.info("Registered custom webhook handlers")
+
+        application.job_queue.run_once(register_custom_routes, when=1)
 
         # Start the webhook
         webhook_url = (
