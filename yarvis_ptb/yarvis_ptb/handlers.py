@@ -22,7 +22,11 @@ from yarvis_ptb.complex_chat import (
     handle_message_root_user_assistant,
     process_multi_message_claude_invocation,
 )
-from yarvis_ptb.daily_self_reflect import run_reflect
+from yarvis_ptb.daily_self_reflect import (
+    run_auto_reflect,
+    run_reflect,
+    should_auto_reflect,
+)
 from yarvis_ptb.debug_chat import (
     add_debug_message_to_queue,
     maybe_send_messages_to_debug_chat,
@@ -697,3 +701,16 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                         invocation_type="schedule", db_invocation=inv
                     ),
                 )
+        # Auto-reflection check
+        try:
+            if await should_auto_reflect(curr, ROOT_USER_ID):
+                await run_auto_reflect(
+                    curr, ROOT_USER_ID, context.application, context.bot
+                )
+                context.bot_data["conn"].commit()
+        except Exception:
+            logger.exception("Auto-reflect failed")
+            add_debug_message_to_queue(
+                f"**AUTO-REFLECT FAILED**\n```\n{traceback.format_exc()}\n```"
+            )
+            await maybe_send_messages_to_debug_chat(context.application)

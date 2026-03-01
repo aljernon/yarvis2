@@ -8,14 +8,17 @@ from anthropic.types import MessageParam
 from yarvis_ptb.on_disk_memory import commit_memory, render_memory_content
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
 from yarvis_ptb.prompting import (
+    build_claude_input,
     convert_db_messages_to_claude_messages,
     render_claude_response_short,
     render_mesage_param_exact,
 )
-from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
+from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
+    Invocation,
+    VariablesForChat,
     create_agent,
     get_messages,
     get_scheduled_invocations,
@@ -204,3 +207,233 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
     commit_memory()
 
     return render_claude_response_short(msg_params)
+
+
+AUTO_REFLECT_PROMPT = """\
+This is an automatic self-reflection triggered by the system, not a user message. \
+Please read the auto-reflect skill using read_memory tool (name: "auto-reflect") and follow its instructions."""
+
+# TODO: Add a daily 3am reflection that bypasses idle window/substance checks
+AUTO_REFLECT_COOLDOWN_SECS = 3600  # 1 hour
+AUTO_REFLECT_IDLE_MIN_SECS = 210  # 3:30
+AUTO_REFLECT_IDLE_MAX_SECS = 270  # 4:30
+MIN_USER_MESSAGES_FOR_REFLECT = 5
+MIN_TOOL_CALLS_FOR_REFLECT = 10
+LAST_AUTO_REFLECT_TIME_VAR = "LAST_AUTO_REFLECT_TIME"
+
+
+async def should_auto_reflect(curr, chat_id: int) -> bool:
+    """Check if auto-reflection should be triggered."""
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+
+    # Check cooldown: at least 1 hour since last auto-reflection
+    chat_vars = VariablesForChat(curr, chat_id)
+    last_reflect = chat_vars.get(LAST_AUTO_REFLECT_TIME_VAR)
+    if last_reflect is not None:
+        since_last_reflect = (now - last_reflect).total_seconds()
+        if since_last_reflect < AUTO_REFLECT_COOLDOWN_SECS:
+            return False
+
+    # Check idle time: between 3:30 and 4:30 since last user message
+    # get_messages returns ASC order, so last element is most recent
+    recent_messages = get_messages(curr, chat_id, limit=50)
+    if not recent_messages:
+        return False
+
+    # Find last user message for idle check
+    last_user_msg = None
+    for msg in reversed(recent_messages):
+        if msg.user_id > 0:
+            last_user_msg = msg
+            break
+
+    if last_user_msg is None:
+        return False
+
+    idle_secs = (now - last_user_msg.created_at).total_seconds()
+    if idle_secs < AUTO_REFLECT_IDLE_MIN_SECS or idle_secs > AUTO_REFLECT_IDLE_MAX_SECS:
+        return False
+
+    # Count user messages and tool calls since the last auto-reflect placeholder.
+    # Skip reflection if conversation is too thin.
+    user_msg_count = 0
+    tool_call_count = 0
+    for msg in reversed(recent_messages):
+        if (
+            msg.user_id == BOT_USER_ID
+            and msg.message == "USE_CONTENT_FROM_META"
+            and msg.meta
+            and any(
+                "Self-reflection completed" in block.get("text", "")
+                for mp in msg.meta.get("message_params", [])
+                if isinstance(mp.get("content"), list)
+                for block in mp["content"]
+                if isinstance(block, dict)
+            )
+        ):
+            break
+        if msg.user_id > 0:
+            user_msg_count += 1
+        meta = msg.meta
+        if (
+            msg.user_id == BOT_USER_ID
+            and msg.message == "USE_CONTENT_FROM_META"
+            and meta is not None
+        ):
+            for mp in meta.get("message_params", []):
+                if isinstance(mp.get("content"), list):
+                    tool_call_count += sum(
+                        1
+                        for block in mp["content"]
+                        if isinstance(block, dict) and block.get("type") == "tool_use"
+                    )
+
+    if (
+        user_msg_count < MIN_USER_MESSAGES_FOR_REFLECT
+        and tool_call_count < MIN_TOOL_CALLS_FOR_REFLECT
+    ):
+        return False
+
+    return True
+
+
+async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
+    """Run automatic self-reflection using the warm cache from recent conversation.
+
+    Unlike run_reflect(), this uses the same message-building pipeline as
+    process_multi_message_claude_invocation to get a cache hit on the prompt prefix.
+    Results are saved under an agent_id (visible on dashboard, not in main history).
+    A placeholder assistant message is inserted into main history.
+    """
+    from yarvis_ptb import tool_sampler
+    from yarvis_ptb.complex_chat import (
+        COMPLEX_CHAT_LOCK,
+        COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
+        COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
+        DEFAULT_COMPLEX_CHAT_CONFIG,
+    )
+    from yarvis_ptb.debug_chat import add_debug_message_to_queue
+    from yarvis_ptb.message_search import save_message_and_update_index
+    from yarvis_ptb.ptb_util import InterruptionScope
+
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
+
+    # Don't block if lock is held (user conversation in progress)
+    if COMPLEX_CHAT_LOCK.locked():
+        logger.info("Auto-reflect: skipping, complex chat lock is held")
+        return
+
+    async with COMPLEX_CHAT_LOCK:
+        logger.info("Auto-reflect: starting")
+        add_debug_message_to_queue("**AUTO-REFLECT: starting**")
+
+        # 1. Load messages (same as normal invocation)
+        max_history_length_turns = chat_config.max_history_length_turns
+        db_messages = get_messages(
+            curr, chat_id=chat_id, limit=max_history_length_turns
+        )
+
+        # 2. Create the reflection trigger as a system message
+        reflect_msg = DbMessage(
+            chat_id=chat_id,
+            created_at=now,
+            user_id=SYSTEM_USER_ID,
+            message=AUTO_REFLECT_PROMPT,
+        )
+        db_messages = [*db_messages, reflect_msg][-max_history_length_turns:]
+
+        # 3. Build Claude input (same pipeline = cache hit)
+        scheduled_invocations = get_scheduled_invocations(curr, chat_id)
+        system, message_params = build_claude_input(
+            db_messages,
+            chat_config,
+            invocation=Invocation(invocation_type="schedule"),  # no special type needed
+            put_context_at_the_beginning=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
+            put_context_at_the_end=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
+            scheduled_invocations=scheduled_invocations,
+            forced_now_date=now,
+        )
+
+        # 4. Call process_query with full tool access
+        scope = InterruptionScope(chat_id=chat_id, message_id=None)
+        (
+            result_params,
+            claude_calls,
+            tool_init_time,
+            subagent_usages,
+        ) = await tool_sampler.process_query(
+            curr=curr,
+            bot=bot,
+            chat_config=chat_config,
+            chat_id=chat_id,
+            system=system,
+            messages=message_params,
+            on_update=None,
+            scope=scope,
+            job_queue=application.job_queue,
+        )
+
+        # 5. Create agent and save reflection messages under it
+        agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})
+
+        # Save the trigger message under agent_id
+        save_message(
+            curr,
+            DbMessage(
+                created_at=now,
+                chat_id=chat_id,
+                user_id=SYSTEM_USER_ID,
+                message=AUTO_REFLECT_PROMPT,
+                agent_id=agent_id,
+            ),
+        )
+
+        # Save bot response under agent_id
+        save_message(
+            curr,
+            DbMessage(
+                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                chat_id=chat_id,
+                user_id=BOT_USER_ID,
+                message="USE_CONTENT_FROM_META",
+                meta={"message_params": result_params},
+                agent_id=agent_id,
+            ),
+        )
+
+        # 6. Insert placeholder in main history
+        placeholder_params: list[MessageParam] = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "[Self-reflection completed; output omitted from history]",
+                    }
+                ],
+            }
+        ]
+        save_message_and_update_index(
+            curr,
+            DbMessage(
+                chat_id=chat_id,
+                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                user_id=BOT_USER_ID,
+                message="USE_CONTENT_FROM_META",
+                meta={"message_params": placeholder_params},
+            ),
+        )
+
+        # 7. Update last auto-reflect time
+        chat_vars = VariablesForChat(curr, chat_id)
+        chat_vars.set(
+            LAST_AUTO_REFLECT_TIME_VAR, datetime.datetime.now(DEFAULT_TIMEZONE)
+        )
+
+        # 8. Commit memory changes
+        commit_memory()
+
+        summary = render_claude_response_short(result_params)
+        logger.info(f"Auto-reflect completed: {summary[:200]}")
+        add_debug_message_to_queue(f"**AUTO-REFLECT: completed**\n{summary}")
