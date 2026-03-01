@@ -68,9 +68,10 @@ function renderContentBlocks(blocks) {
     } else if (block.type === "tool_use") {
       const id = "tool-" + uid();
       const keys = Object.keys(block.input || {});
-      const singleStr = keys.length === 1 && typeof block.input[keys[0]] === "string";
-      const inputStr = singleStr ? block.input[keys[0]] : JSON.stringify(block.input, null, 2);
-      const headerLabel = singleStr ? `${block.name}/${keys[0]}` : block.name;
+      const isSendMessageFinal = block.name === "send_message" && keys.length === 2 && block.input.final === true && typeof block.input.message === "string";
+      const singleStr = isSendMessageFinal || (keys.length === 1 && typeof block.input[keys[0]] === "string");
+      const inputStr = isSendMessageFinal ? block.input.message : (singleStr ? block.input[keys[0]] : JSON.stringify(block.input, null, 2));
+      const headerLabel = isSendMessageFinal ? `${block.name}/message/final` : (singleStr ? `${block.name}/${keys[0]}` : block.name);
       const startOpen = block.name === "send_message";
       const bytes = new Blob([inputStr]).size;
       html += `<div class="tool-use-block"><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow${startOpen ? " open" : ""}" id="arrow-${id}">&#9654;</span> <strong>Tool:</strong> ${escapeHtml(headerLabel)} <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content${startOpen ? " open" : ""}" id="${id}">${escapeHtml(inputStr)}</div></div>`;
