@@ -41,7 +41,7 @@ class SendMessageTool(LocalTool):
                 ArgSpec(
                     name="final",
                     type=bool,
-                    description="Set final=true if this is your last action and you have nothing more to do. Saves a round-trip.",
+                    description="Set final=true if this is your last action and you have nothing more to do. This saves token cost so please use it..",
                     is_required=False,
                 ),
             ],

@@ -129,6 +129,9 @@ To work on this project locally:
 SETTINGS_NAME=anton conda run -n clam python -c "..."
 ```
 
+### Go
+Go is not installed locally. For Go services (e.g. `sms_accumulator/`), use Docker for builds — see the sub-project's own CLAUDE.md for build/deploy instructions.
+
 ### Testing changes
 Use `cli_prompt.py` to test changes end-to-end. It loads full conversation history from DB, runs Claude with all tools, and prints the response to terminal — without saving anything back to DB or involving Telegram.
 ```
