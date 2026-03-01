@@ -374,20 +374,19 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
             job_queue=application.job_queue,
         )
 
-        # 5. Create agent and save reflection messages under it
-        agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})
-
-        # Save the trigger message under agent_id
-        save_message(
+        # 5. Save trigger message to main history
+        save_message_and_update_index(
             curr,
             DbMessage(
                 created_at=now,
                 chat_id=chat_id,
                 user_id=SYSTEM_USER_ID,
                 message=AUTO_REFLECT_PROMPT,
-                agent_id=agent_id,
             ),
         )
+
+        # Create agent and save bot response under it
+        agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})
 
         # Save bot response under agent_id
         save_message(
