@@ -48,6 +48,9 @@ pandas==2.2.3
 # Google Places API
 googlemaps==4.10.0
 
+# Cron expression parsing for scheduling
+croniter==5.0.1
+
 # Signal message reading via websocket
 websocket-client==1.8.0
 

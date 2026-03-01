@@ -13,8 +13,10 @@ from yarvis_ptb.queries import (
     INIT_INVOCATIONS_QUERY,
     INIT_MEMORY_QUERY,
     INIT_MESSAGES_QUERY,
+    INIT_SCHEDULES_QUERY,
     INIT_VARIABLES_QUERY,
     INIT_VECTOR,
+    MIGRATE_INVOCATIONS_TO_SCHEDULES,
     MIGRATE_MESSAGES_AGENT_ID,
 )
 from yarvis_ptb.settings import (
@@ -54,20 +56,22 @@ class DbMessage:
 
 
 @dataclass
-class DbScheduledInvocation:
-    scheduled_at: datetime.datetime
-    is_recurring: bool
+class DbSchedule:
+    next_run_at: datetime.datetime
     chat_id: int
     reason: str
+    schedule_type: str  # 'at', 'cron', 'every'
+    schedule_spec: str | None = None  # cron expr or interval string
+    context: str | None = None
     is_active: bool = True
     meta: dict = field(default_factory=dict)
-    scheduled_id: int | None = None
+    schedule_id: int | None = None
 
 
 @dataclass
 class Invocation:
     invocation_type: Literal["reply", "schedule", "context_overflow", "reply_timeout"]
-    db_invocation: DbScheduledInvocation | None = None
+    db_invocation: DbSchedule | None = None
     reply_to_message_id: int | None = None
 
 
@@ -434,95 +438,119 @@ def sync_memory_db_with_dump(curr, chat_id: int, dump: list[dict]) -> str:
     )
 
 
-def get_scheduled_invocations(
-    curr, chat_id: int | None = None
-) -> list[DbScheduledInvocation]:
-    """Gets active invocations from the DB for the chat"""
+def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
+    """Gets active schedules from the DB for the chat"""
     if chat_id is None:
         curr.execute(
             """
-        SELECT scheduled_at, chat_id, is_active, reason, meta, id, is_recurring
-        FROM invocations
+        SELECT next_run_at, chat_id, is_active, reason, meta, id, schedule_type, schedule_spec, context
+        FROM schedules
         WHERE is_active = true
-        ORDER BY scheduled_at ASC
+        ORDER BY next_run_at ASC
         """
         )
     else:
         curr.execute(
             """
-        SELECT scheduled_at, chat_id, is_active, reason, meta, id, is_recurring
-        FROM invocations
+        SELECT next_run_at, chat_id, is_active, reason, meta, id, schedule_type, schedule_spec, context
+        FROM schedules
         WHERE chat_id = %s AND is_active = true
-        ORDER BY scheduled_at ASC
+        ORDER BY next_run_at ASC
         """,
             (chat_id,),
         )
     rows = curr.fetchall()
-    invocations = []
+    schedules = []
     for row in list(rows):
-        invocations.append(
-            DbScheduledInvocation(
-                scheduled_at=row[0].astimezone(DEFAULT_TIMEZONE),
+        schedules.append(
+            DbSchedule(
+                next_run_at=row[0].astimezone(DEFAULT_TIMEZONE),
                 chat_id=row[1],
                 is_active=row[2],
                 reason=row[3],
-                meta=row[4],
-                scheduled_id=row[5],
-                is_recurring=row[6],
+                meta=row[4] or {},
+                schedule_id=row[5],
+                schedule_type=row[6],
+                schedule_spec=row[7],
+                context=row[8],
             )
         )
-    return invocations
+    return schedules
 
 
-def save_invocation(curr, invocation: DbScheduledInvocation) -> int:
-    """Save invocation to the db"""
-    assert invocation.scheduled_id is None, "Will be auto-generated"
-    assert invocation.is_active, "Only active invocations can be saved"
+def get_schedule_by_id(curr, schedule_id: int) -> DbSchedule | None:
+    """Gets a schedule by its ID (active or not)"""
     curr.execute(
         """
-       INSERT INTO invocations (created_at, scheduled_at, chat_id, is_active, reason, meta, is_recurring)
-       VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+        SELECT next_run_at, chat_id, is_active, reason, meta, id, schedule_type, schedule_spec, context
+        FROM schedules
+        WHERE id = %s
+        """,
+        (schedule_id,),
+    )
+    row = curr.fetchone()
+    if row is None:
+        return None
+    return DbSchedule(
+        next_run_at=row[0].astimezone(DEFAULT_TIMEZONE),
+        chat_id=row[1],
+        is_active=row[2],
+        reason=row[3],
+        meta=row[4] or {},
+        schedule_id=row[5],
+        schedule_type=row[6],
+        schedule_spec=row[7],
+        context=row[8],
+    )
+
+
+def save_schedule(curr, schedule: DbSchedule) -> int:
+    """Save schedule to the db, returns the generated id"""
+    assert schedule.schedule_id is None, "Will be auto-generated"
+    assert schedule.is_active, "Only active schedules can be saved"
+    curr.execute(
+        """
+       INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, reason, context, schedule_type, schedule_spec, meta)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
        """,
         (
             datetime.datetime.now(DEFAULT_TIMEZONE),
-            invocation.scheduled_at,
-            invocation.chat_id,
-            invocation.is_active,
-            invocation.reason,
-            json.dumps(invocation.meta),
-            invocation.is_recurring,
+            schedule.next_run_at,
+            schedule.chat_id,
+            schedule.is_active,
+            schedule.reason,
+            schedule.context,
+            schedule.schedule_type,
+            schedule.schedule_spec,
+            json.dumps(schedule.meta),
         ),
     )
     return curr.fetchone()[0]
 
 
-def bump_recurring_invocation(curr, invocation: DbScheduledInvocation):
-    """Set invocation as non-active"""
-    assert invocation.scheduled_id is not None, "Should be saved first"
+def advance_schedule(curr, schedule: DbSchedule, next_run_at: datetime.datetime):
+    """Advance a recurring schedule to its next run time"""
+    assert schedule.schedule_id is not None, "Should be saved first"
     curr.execute(
         """
-       UPDATE invocations
-       SET scheduled_at = %s
-       WHERE chat_id = %s AND id = %s
+       UPDATE schedules
+       SET next_run_at = %s
+       WHERE id = %s
        """,
-        (
-            invocation.scheduled_at + datetime.timedelta(days=1),
-            invocation.chat_id,
-            invocation.scheduled_id,
-        ),
+        (next_run_at, schedule.schedule_id),
     )
 
 
-def set_non_active_invocation(curr, invocation: DbScheduledInvocation):
-    """Set invocation as non-active"""
-    assert invocation.scheduled_id is not None, "Should be saved first"
+def deactivate_schedule(curr, schedule: DbSchedule):
+    """Set schedule as non-active"""
+    assert schedule.schedule_id is not None, "Should be saved first"
     curr.execute(
         """
-       UPDATE invocations
+       UPDATE schedules
        SET is_active = false
-       WHERE chat_id = %s AND id = %s
+       WHERE id = %s
        """,
-        (invocation.chat_id, invocation.scheduled_id),
+        (schedule.schedule_id,),
     )
 
 
@@ -653,45 +681,44 @@ def test_variables():
             curr.execute("DELETE FROM chat_variables WHERE name=%s", (fake_var_name,))
 
 
-def test_invocations():
+def test_schedules():
     fake_chat_id = 12345
     with connect() as conn, conn.cursor() as curr:
         try:
-            # Create a test invocation
-            test_invocation = DbScheduledInvocation(
-                scheduled_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            # Create a test schedule
+            test_schedule = DbSchedule(
+                next_run_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                 chat_id=fake_chat_id,
                 is_active=True,
-                is_recurring=False,
                 reason="test reason",
+                schedule_type="at",
                 meta={"test_field": "test_value"},
             )
 
-            save_invocation(curr, test_invocation)
+            save_schedule(curr, test_schedule)
 
-            invocations = get_scheduled_invocations(curr, chat_id=fake_chat_id)
-            invocations_all = get_scheduled_invocations(curr)
-            assert len(invocations) == 1, invocations
-            assert len([x for x in invocations_all if x.chat_id == fake_chat_id]) == 1
-            [the_invocation] = invocations
-            print(f"Retrieved: {the_invocation}")
+            schedules = get_schedules(curr, chat_id=fake_chat_id)
+            schedules_all = get_schedules(curr)
+            assert len(schedules) == 1, schedules
+            assert len([x for x in schedules_all if x.chat_id == fake_chat_id]) == 1
+            [the_schedule] = schedules
+            print(f"Retrieved: {the_schedule}")
 
-            assert test_invocation.chat_id == the_invocation.chat_id
-            assert test_invocation.is_active == the_invocation.is_active
-            assert test_invocation.scheduled_at == the_invocation.scheduled_at
-            assert test_invocation.reason == the_invocation.reason
-            assert test_invocation.meta == the_invocation.meta
+            assert test_schedule.chat_id == the_schedule.chat_id
+            assert test_schedule.is_active == the_schedule.is_active
+            assert test_schedule.reason == the_schedule.reason
+            assert test_schedule.meta == the_schedule.meta
 
-            assert the_invocation.scheduled_id is not None, the_invocation
-            set_non_active_invocation(curr, the_invocation)
+            assert the_schedule.schedule_id is not None, the_schedule
+            deactivate_schedule(curr, the_schedule)
 
-            invocations = get_scheduled_invocations(curr, chat_id=fake_chat_id)
+            schedules = get_schedules(curr, chat_id=fake_chat_id)
             assert (
-                len(invocations) == 0
-            ), invocations  # Should be empty since we only get active ones
+                len(schedules) == 0
+            ), schedules  # Should be empty since we only get active ones
 
         finally:
-            curr.execute(f"DELETE FROM invocations WHERE chat_id={fake_chat_id}")
+            curr.execute(f"DELETE FROM schedules WHERE chat_id={fake_chat_id}")
 
 
 def update_agent_meta(curr, agent_id: int, meta: dict) -> None:
@@ -738,8 +765,10 @@ def craete_all():
         curr.execute(INIT_MESSAGES_QUERY)
         curr.execute(INIT_VARIABLES_QUERY)
         curr.execute(INIT_INVOCATIONS_QUERY)
+        curr.execute(INIT_SCHEDULES_QUERY)
         curr.execute(INIT_AGENTS_QUERY)
         curr.execute(MIGRATE_MESSAGES_AGENT_ID)
+        curr.execute(MIGRATE_INVOCATIONS_TO_SCHEDULES)
         logger.info("Init DB done")
 
 
@@ -749,7 +778,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     craete_all()
-    test_invocations()
+    test_schedules()
     test_variables()
     test_messages()
     test_memories()

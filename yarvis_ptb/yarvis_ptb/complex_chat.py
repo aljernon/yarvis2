@@ -57,10 +57,10 @@ from yarvis_ptb.storage import (
     Invocation,
     VariablesForChat,
     archive_marked_messages,
+    deactivate_schedule,
     get_messages,
-    get_scheduled_invocations,
+    get_schedules,
     mark_message_for_archive,
-    set_non_active_invocation,
 )
 from yarvis_ptb.util import RateController, ensure
 
@@ -158,15 +158,13 @@ async def handle_message_root_user_assistant(
         await update.message.reply_text("Kill switch on")
         return
 
-    # Check for any active reply_timeout invocations and deactivate them
+    # Check for any active reply_timeout schedules and deactivate them
     # since the user has replied
-    scheduled_invocations = get_scheduled_invocations(curr, chat_id)
-    for invocation in scheduled_invocations:
-        if invocation.meta.get("invocation_type") == "reply_timeout":
-            logger.info(
-                f"Deactivating reply timeout invocation: {invocation.scheduled_id}"
-            )
-            set_non_active_invocation(curr, invocation)
+    scheduled_invocations = get_schedules(curr, chat_id)
+    for sched in scheduled_invocations:
+        if sched.meta.get("invocation_type") == "reply_timeout":
+            logger.info(f"Deactivating reply timeout schedule: {sched.schedule_id}")
+            deactivate_schedule(curr, sched)
 
     # Debug logging for message type detection
     logger.info(
@@ -368,7 +366,7 @@ async def _process_multi_message_claude_invocation_inner(
         add_debug_message_to_queue("**ANTON:**\n" + initial_db_message.message)
         db_messages = [*db_messages, initial_db_message][-max_history_length_turns:]
 
-    scheduled_invocations = get_scheduled_invocations(curr, chat_id)
+    scheduled_invocations = get_schedules(curr, chat_id)
 
     # Send the message to Claude
     logger.debug("Sending message to Claude")

@@ -34,7 +34,7 @@ from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS
 from yarvis_ptb.storage import (
     DbMessage,
     get_messages,
-    get_scheduled_invocations,
+    get_schedules,
 )
 
 DEFAULT_CHAT_ID = ROOT_USER_ID
@@ -466,7 +466,7 @@ def api_agent_view():
             messages = get_messages(
                 cur, DEFAULT_CHAT_ID, limit=HISTORY_LENGTH_LONG_TURNS
             )
-            scheduled_invocations = get_scheduled_invocations(cur)
+            scheduled_invocations = get_schedules(cur)
 
         system_prompt, history = build_claude_input(
             messages,
@@ -507,7 +507,7 @@ def api_agent_view_tokens():
             messages = get_messages(
                 cur, DEFAULT_CHAT_ID, limit=HISTORY_LENGTH_LONG_TURNS
             )
-            scheduled_invocations = get_scheduled_invocations(cur)
+            scheduled_invocations = get_schedules(cur)
 
         system_prompt, history = build_claude_input(
             messages,

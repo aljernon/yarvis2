@@ -23,6 +23,39 @@ USING ivfflat (embedding vector_ip_ops)  -- or vector_cosine_ops
 WITH (lists = 100);
 """
 
+INIT_SCHEDULES_QUERY = """
+CREATE TABLE IF NOT EXISTS schedules (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    next_run_at TIMESTAMPTZ NOT NULL,
+    chat_id BIGINT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    reason TEXT NOT NULL,
+    context TEXT,
+    schedule_type VARCHAR(20) NOT NULL,
+    schedule_spec TEXT,
+    meta JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedules_active ON schedules (is_active) WHERE is_active = true;
+"""
+
+MIGRATE_INVOCATIONS_TO_SCHEDULES = """
+INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, reason, schedule_type, schedule_spec, meta)
+SELECT created_at, scheduled_at, chat_id, is_active, reason,
+       CASE WHEN is_recurring THEN 'every' ELSE 'at' END,
+       CASE WHEN is_recurring THEN '1d' ELSE NULL END,
+       meta
+FROM invocations
+WHERE is_active = true
+AND NOT EXISTS (
+    SELECT 1 FROM schedules
+    WHERE schedules.chat_id = invocations.chat_id
+    AND schedules.reason = invocations.reason
+    AND schedules.is_active = true
+);
+"""
+
 
 INIT_VARIABLES_QUERY = """
 CREATE TABLE  IF NOT EXISTS  chat_variables(

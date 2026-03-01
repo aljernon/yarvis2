@@ -100,27 +100,23 @@ async def test_message_tool():
         def fetchall(self):
             return []  # Mock empty result for testing
 
-    class MockDbScheduledInvocation:
+    class MockDbSchedule:
         def __init__(self, meta=None):
             self.meta = meta or {}
 
-    def get_scheduled_invocations_mock(curr, chat_id):
-        """Mock function that replaces the real get_scheduled_invocations"""
+    def get_schedules_mock(curr, chat_id):
+        """Mock function that replaces the real get_schedules"""
         if curr.has_existing_timeout:
-            # Return a mock invocation with reply_timeout type
-            return [
-                MockDbScheduledInvocation(meta={"invocation_type": "reply_timeout"})
-            ]
-        return []  # No existing invocations
+            # Return a mock schedule with reply_timeout type
+            return [MockDbSchedule(meta={"invocation_type": "reply_timeout"})]
+        return []  # No existing schedules
 
     # Save original function to restore later
     import sys
 
-    original_func = sys.modules["yarvis_ptb.storage"].get_scheduled_invocations
+    original_func = sys.modules["yarvis_ptb.storage"].get_schedules
     # Replace with our mock
-    sys.modules[
-        "yarvis_ptb.storage"
-    ].get_scheduled_invocations = get_scheduled_invocations_mock
+    sys.modules["yarvis_ptb.storage"].get_schedules = get_schedules_mock
 
     try:
         mock_bot = MockBot()
@@ -161,7 +157,7 @@ async def test_message_tool():
 
     finally:
         # Restore the original function
-        sys.modules["yarvis_ptb.storage"].get_scheduled_invocations = original_func
+        sys.modules["yarvis_ptb.storage"].get_schedules = original_func
 
 
 if __name__ == "__main__":

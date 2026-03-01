@@ -35,7 +35,7 @@ from yarvis_ptb.settings import (
 from yarvis_ptb.storage import (
     IMAGE_B64_META_FIELD,
     DbMessage,
-    DbScheduledInvocation,
+    DbSchedule,
     Invocation,
     MemoryType,
 )
@@ -85,7 +85,7 @@ def build_memory_str(memories: list[MemoryType]) -> str:
 def build_context_info(
     *,
     invocation: Invocation | None,
-    scheduled_invocations: list[DbScheduledInvocation] | None,
+    scheduled_invocations: list[DbSchedule] | None,
     chat_config: ChatConfig,
     forced_now_date: datetime.datetime | None = None,
 ) -> str:
@@ -106,9 +106,11 @@ def build_context_info(
         invocation_dict = dict(invocation_type=invocation.invocation_type)
         if invocation.db_invocation is not None:
             invocation_dict["scheduled_at"] = (
-                invocation.db_invocation.scheduled_at.astimezone(target_tz).isoformat()
+                invocation.db_invocation.next_run_at.astimezone(target_tz).isoformat()
             )
             invocation_dict["reason"] = invocation.db_invocation.reason
+            if invocation.db_invocation.context:
+                invocation_dict["context"] = invocation.db_invocation.context
         system_parts.append(f"<invocation>{invocation_dict}</invocation>")
     if chat_config.is_complex_chat:
         constants = {
@@ -128,14 +130,19 @@ def build_context_info(
         if not scheduled_invocations:
             str_chunks.append("No scheduled invocations.")
         else:
-            for inv in scheduled_invocations:
-                if inv.is_recurring:
+            for sched in scheduled_invocations:
+                next_at = sched.next_run_at.astimezone(target_tz)
+                if sched.schedule_type == "at":
                     str_chunks.append(
-                        f"(scheduled_id={inv.scheduled_id}) Scheduled daily; next at {inv.scheduled_at.astimezone(target_tz)}; reason: '{inv.reason}'"
+                        f"(scheduled_id={sched.schedule_id}) at {next_at}; reason: '{sched.reason}'"
                     )
-                else:
+                elif sched.schedule_type == "cron":
                     str_chunks.append(
-                        f"(scheduled_id={inv.scheduled_id}) Scheduled at {inv.scheduled_at.astimezone(target_tz)}; reason: '{inv.reason}'"
+                        f"(scheduled_id={sched.schedule_id}) cron \"{sched.schedule_spec}\"; next at {next_at}; reason: '{sched.reason}'"
+                    )
+                elif sched.schedule_type == "every":
+                    str_chunks.append(
+                        f"(scheduled_id={sched.schedule_id}) every {sched.schedule_spec}; next at {next_at}; reason: '{sched.reason}'"
                     )
 
         scheduled_invocations_str = "\n".join(str_chunks)
@@ -312,7 +319,7 @@ def build_claude_input(
     put_context_at_the_end: bool,
     put_context_at_the_beginning: bool,
     invocation: Invocation | None = None,
-    scheduled_invocations: list[DbScheduledInvocation] | None = None,
+    scheduled_invocations: list[DbSchedule] | None = None,
     forced_now_date: datetime.datetime | None = None,
 ) -> tuple[str, list[MessageParam]]:
     # Build input with system prompt (containing Core Knowledge Repository) and Dynamic Context

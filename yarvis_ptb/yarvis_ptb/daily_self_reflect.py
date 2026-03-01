@@ -21,7 +21,7 @@ from yarvis_ptb.storage import (
     VariablesForChat,
     create_agent,
     get_messages,
-    get_scheduled_invocations,
+    get_schedules,
     save_message,
 )
 from yarvis_ptb.timezones import get_timezone
@@ -140,14 +140,21 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
         rendered_lines.extend(render_mesage_param_exact(msg))
 
     # Fetch and format scheduled invocations
-    scheduled_invocations = get_scheduled_invocations(curr, chat_id)
+    scheduled_invocations = get_schedules(curr, chat_id)
     target_tz = get_timezone(True)
     if scheduled_invocations:
         inv_lines = []
-        for inv in scheduled_invocations:
-            recur = "recurring daily" if inv.is_recurring else "one-time"
+        for sched in scheduled_invocations:
+            if sched.schedule_type == "at":
+                type_desc = "one-time"
+            elif sched.schedule_type == "cron":
+                type_desc = f'cron "{sched.schedule_spec}"'
+            elif sched.schedule_type == "every":
+                type_desc = f"every {sched.schedule_spec}"
+            else:
+                type_desc = sched.schedule_type
             inv_lines.append(
-                f"- (id={inv.scheduled_id}) {recur}; next at {inv.scheduled_at.astimezone(target_tz)}; reason: '{inv.reason}'"
+                f"- (id={sched.schedule_id}) {type_desc}; next at {sched.next_run_at.astimezone(target_tz)}; reason: '{sched.reason}'"
             )
         invocations_text = "\n".join(inv_lines)
     else:
@@ -344,7 +351,7 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
         db_messages = [*db_messages, reflect_msg][-max_history_length_turns:]
 
         # 3. Build Claude input (same pipeline = cache hit)
-        scheduled_invocations = get_scheduled_invocations(curr, chat_id)
+        scheduled_invocations = get_schedules(curr, chat_id)
         system, message_params = build_claude_input(
             db_messages,
             chat_config,

@@ -65,14 +65,14 @@ from yarvis_ptb.storage import (
     DbMessage,
     Invocation,
     VariablesForChat,
-    bump_recurring_invocation,
+    advance_schedule,
+    deactivate_schedule,
     get_memories,
     get_messages,
-    get_scheduled_invocations,
+    get_schedules,
     hide_message_history,
     mark_message_for_archive,
     save_message,
-    set_non_active_invocation,
 )
 from yarvis_ptb.util import ensure
 from yarvis_ptb.whisper_transcription import transcribe_voice_message
@@ -192,7 +192,7 @@ async def handler_show_prompt(update: Update, context: CallbackContext):
     with context.bot_data["conn"].cursor() as curr:
         # chat_id = ensure(update.message).chat_id
         messages = get_messages(curr, chat_id=ROOT_USER_ID, limit=HISTORY_LENGTH_TURNS)
-        scheduled_invocations = get_scheduled_invocations(curr, ROOT_USER_ID)
+        scheduled_invocations = get_schedules(curr, ROOT_USER_ID)
 
     chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
     system_prompt = SYSTEM_PROMPTS[chat_config.prompt_name]
@@ -259,7 +259,7 @@ async def send_text_as_file(
 async def handler_show_context(update: Update, context: CallbackContext):
     with context.bot_data["conn"].cursor() as curr:
         memories = get_memories(curr, ROOT_USER_ID)
-        scheduled_invocations = get_scheduled_invocations(curr, ROOT_USER_ID)
+        scheduled_invocations = get_schedules(curr, ROOT_USER_ID)
 
     context_info = build_context_info(
         chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
@@ -677,28 +677,34 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
             hard_restart()
     with context.bot_data["conn"].cursor() as curr:
         now = datetime.datetime.now(DEFAULT_TIMEZONE)
-        invocations = get_scheduled_invocations(curr)
+        schedules = get_schedules(curr)
         deltas = [
-            (inv, (inv.scheduled_at - now).total_seconds()) for inv in invocations
+            (sched, (sched.next_run_at - now).total_seconds()) for sched in schedules
         ]
-        logger.debug(f"Scheduled invocations: {now=} {invocations=} {deltas=}")
-        for inv, delta in deltas:
+        logger.debug(f"Schedules: {now=} {schedules=} {deltas=}")
+        for sched, delta in deltas:
             if delta <= 0:
-                logger.info(f"Invoking {inv.chat_id}")
-                if inv.is_recurring:
-                    bump_recurring_invocation(curr, inv)
+                logger.info(
+                    f"Invoking schedule {sched.schedule_id} for chat {sched.chat_id}"
+                )
+                if sched.schedule_type == "at":
+                    deactivate_schedule(curr, sched)
                 else:
-                    set_non_active_invocation(curr, inv)
-                # Not implemeneted for other chats.
-                assert inv.chat_id == ROOT_USER_ID, inv
+                    # 'cron' or 'every' — advance to next run
+                    from yarvis_ptb.tools.scheduling_tools import compute_next_run
+
+                    next_run = compute_next_run(sched, now)
+                    advance_schedule(curr, sched, next_run)
+                # Not implemented for other chats.
+                assert sched.chat_id == ROOT_USER_ID, sched
                 await process_multi_message_claude_invocation(
                     curr,
                     application=context.application,
                     bot=context.bot,
-                    chat_id=inv.chat_id,
+                    chat_id=sched.chat_id,
                     chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
                     invocation=Invocation(
-                        invocation_type="schedule", db_invocation=inv
+                        invocation_type="schedule", db_invocation=sched
                     ),
                 )
         # Auto-reflection check

@@ -30,7 +30,7 @@ from yarvis_ptb.storage import (
     Invocation,
     connect,
     get_messages,
-    get_scheduled_invocations,
+    get_schedules,
 )
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_config
 from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult
@@ -97,7 +97,7 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
                 -chat_config.max_history_length_turns :
             ]
 
-            scheduled_invocations = get_scheduled_invocations(curr, chat_id)
+            scheduled_invocations = get_schedules(curr, chat_id)
 
             # Build system prompt + history
             invocation = Invocation(invocation_type="reply")
