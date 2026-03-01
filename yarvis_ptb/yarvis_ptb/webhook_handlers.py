@@ -38,10 +38,12 @@ class TimezoneHandler(tornado.web.RequestHandler):
         try:
             body = json.loads(self.request.body)
         except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Invalid JSON body: {self.request.body!r}")
             self.set_status(400)
             self.write({"error": "invalid JSON"})
             return
 
+        logger.info(f"Timezone request body: {body}")
         new_tz = body.get("timezone")
         if not new_tz:
             self.set_status(400)
