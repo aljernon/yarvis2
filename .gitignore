@@ -18,3 +18,5 @@ session_name*.session
 token.pickle
 gmail_token.json
 credentials.json
+whoop_config.json
+whoop_token.json

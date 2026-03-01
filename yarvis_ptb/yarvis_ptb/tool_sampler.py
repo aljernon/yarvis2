@@ -59,6 +59,7 @@ from yarvis_ptb.tools.subagent_tool import build_subagent_tools
 from yarvis_ptb.tools.telegram_tools import get_telegram_tools
 from yarvis_ptb.tools.tool_output import GetToolOutputTool
 from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
+from yarvis_ptb.tools.whoop_tools import get_whoop_tools
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ GENERIC_LOCAL_TOOLS: list[LocalTool] = [
 TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 
 ANTON_DATA_TOOLS: list[LocalTool] = [GetLocationTool()] + (
-    get_calendar_tools() + get_gmail_tools() + get_gkeep_tools()
+    get_calendar_tools() + get_gmail_tools() + get_gkeep_tools() + get_whoop_tools()
 )
 
 

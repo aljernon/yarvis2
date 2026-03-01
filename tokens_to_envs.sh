@@ -13,6 +13,8 @@ files=(
     "token.pickle"
     "gmail_token.json"
     "session_name2.session"
+    "whoop_config.json"
+    "whoop_token.json"
 )
 
 # Loop through each file
