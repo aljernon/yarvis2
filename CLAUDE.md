@@ -71,6 +71,7 @@ The bot can schedule its own future invocations using the scheduling system:
 ## Deployment
 The project is hosted on Heroku with PostgreSQL database integration.
 - Heroku app name: `claude-telegram`
+- **Never push to Heroku directly** (`git push heroku`). Deploys happen automatically after pushing to GitHub.
 
 ## GCP Infrastructure (Signal API)
 A GCP VM runs `signal-cli-rest-api` to give Yarvis read access to Signal messages.
