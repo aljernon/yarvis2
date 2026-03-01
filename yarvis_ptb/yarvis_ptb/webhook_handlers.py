@@ -74,7 +74,7 @@ class TimezoneHandler(tornado.web.RequestHandler):
                     created_at=datetime.datetime.now(pytz.UTC),
                     user_id=SYSTEM_USER_ID,
                     message=(
-                        f"Phone timezone changed: {old_tz} \u2192 {new_tz}. "
+                        f"User's phone timezone changed: {old_tz} \u2192 {new_tz}. "
                         f"System timezone updated accordingly. "
                         f"All scheduled invocations, time references, and "
                         f'"today"/"tomorrow" boundaries now use the new timezone.'
