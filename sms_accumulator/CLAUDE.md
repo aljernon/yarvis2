@@ -43,6 +43,7 @@ On connect, libgm replays recent messages with `IsOld=true`. We skip these to av
 ### `GET /messages`
 Query params (all optional):
 - `hours` (float, default 24) — lookback window
+- `conversation_id` (string) — filter by conversation ID
 - `sender` (string) — partial match on sender or sender_name (SQL LIKE)
 - `limit` (int, default 100)
 
@@ -64,7 +65,7 @@ messages (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 )
 ```
-7-day retention, cleaned up hourly.
+100-day retention, cleaned up hourly.
 
 ## Deployment
 

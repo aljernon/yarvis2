@@ -29,7 +29,7 @@ const (
 	authFile      = dataDir + "/auth.json"
 	dbFile        = dataDir + "/sms_messages.db"
 	listenAddr    = ":8082"
-	retentionDays = 30
+	retentionDays = 100
 )
 
 var (
@@ -269,53 +269,66 @@ func backfillMessages(conversations []*gmproto.Conversation) {
 		if conv.GetLastMessageTimestamp() < cutoff {
 			continue
 		}
-		resp, err := client.FetchMessages(convID, 50, nil)
-		if err != nil {
-			log.Warn().Err(err).Str("conv", convID).Msg("Failed to fetch messages for backfill")
-			continue
-		}
-		for _, msg := range resp.GetMessages() {
-			if msg.GetTimestamp() < cutoff {
-				continue
+		var cursor *gmproto.Cursor
+		reachedCutoff := false
+		for !reachedCutoff {
+			resp, err := client.FetchMessages(convID, 100, cursor)
+			if err != nil {
+				log.Warn().Err(err).Str("conv", convID).Msg("Failed to fetch messages for backfill")
+				break
 			}
-			statusType := msg.GetMessageStatus().GetStatus()
-			if statusType >= 200 {
-				continue
+			msgs := resp.GetMessages()
+			if len(msgs) == 0 {
+				break
 			}
-			direction := "unknown"
-			if statusType >= 1 && statusType < 100 {
-				direction = "outgoing"
-			} else if statusType >= 100 && statusType < 200 {
-				direction = "incoming"
-			}
-			timestampMs := msg.GetTimestamp() / 1000
-			var body string
-			for _, info := range msg.GetMessageInfo() {
-				switch data := info.GetData().(type) {
-				case *gmproto.MessageInfo_MessageContent:
-					body = data.MessageContent.GetContent()
-				case *gmproto.MessageInfo_MediaContent:
-					if body == "" {
-						body = fmt.Sprintf("[media: %s]", data.MediaContent.GetMimeType())
+			for _, msg := range msgs {
+				if msg.GetTimestamp() < cutoff {
+					reachedCutoff = true
+					break
+				}
+				statusType := msg.GetMessageStatus().GetStatus()
+				if statusType >= 200 {
+					continue
+				}
+				direction := "unknown"
+				if statusType >= 1 && statusType < 100 {
+					direction = "outgoing"
+				} else if statusType >= 100 && statusType < 200 {
+					direction = "incoming"
+				}
+				timestampMs := msg.GetTimestamp() / 1000
+				var body string
+				for _, info := range msg.GetMessageInfo() {
+					switch data := info.GetData().(type) {
+					case *gmproto.MessageInfo_MessageContent:
+						body = data.MessageContent.GetContent()
+					case *gmproto.MessageInfo_MediaContent:
+						if body == "" {
+							body = fmt.Sprintf("[media: %s]", data.MediaContent.GetMimeType())
+						}
 					}
 				}
+				if body == "" {
+					continue
+				}
+				pid := msg.GetParticipantID()
+				sender := pid
+				senderName := ""
+				participantCacheMu.RLock()
+				if num, ok := participantCache[pid]; ok {
+					sender = num
+				}
+				if name, ok := participantNameCache[pid]; ok {
+					senderName = name
+				}
+				participantCacheMu.RUnlock()
+				storeMessage(msg.GetMessageID(), timestampMs, sender, senderName, body, direction, convID)
+				total++
 			}
-			if body == "" {
-				continue
+			cursor = resp.GetCursor()
+			if cursor == nil {
+				break
 			}
-			pid := msg.GetParticipantID()
-			sender := pid
-			senderName := ""
-			participantCacheMu.RLock()
-			if num, ok := participantCache[pid]; ok {
-				sender = num
-			}
-			if name, ok := participantNameCache[pid]; ok {
-				senderName = name
-			}
-			participantCacheMu.RUnlock()
-			storeMessage(msg.GetMessageID(), timestampMs, sender, senderName, body, direction, convID)
-			total++
 		}
 	}
 	log.Info().Int("messages", total).Msg("Backfill complete")
@@ -358,6 +371,12 @@ func handleMessages(w http.ResponseWriter, r *http.Request) {
 	if sender != "" {
 		query += " AND (sender LIKE ? OR sender_name LIKE ?)"
 		params = append(params, "%"+sender+"%", "%"+sender+"%")
+	}
+
+	convID := r.URL.Query().Get("conversation_id")
+	if convID != "" {
+		query += " AND conversation_id = ?"
+		params = append(params, convID)
 	}
 
 	query += " ORDER BY timestamp_ms DESC LIMIT ?"

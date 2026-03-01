@@ -6,6 +6,7 @@ import pathlib
 from inspect import cleandoc
 from typing import TYPE_CHECKING
 
+from yarvis_ptb.on_disk_memory import load_skills_by_name
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -88,6 +89,12 @@ class RunSubagentTool(LocalTool):
                     description="Model to use: haiku, sonnet, or opus. Default: haiku",
                     is_required=False,
                 ),
+                ArgSpec(
+                    name="skills",
+                    type=str,
+                    description="Comma-separated skill names from the Core Knowledge Repository to include in the agent's system prompt. Only allowed when creating a new agent (no agent_id).",
+                    is_required=False,
+                ),
             ],
         )
 
@@ -99,13 +106,20 @@ class RunSubagentTool(LocalTool):
         agent_id: int | None = None,
         tools: str | None = None,
         model: str | None = None,
+        skills: str | None = None,
         **kwargs: object,
     ) -> ToolResult:
         if agent_id is not None:
+            if skills is not None:
+                return ToolResult.error(
+                    "The 'skills' parameter can only be used when creating a new agent (without agent_id)."
+                )
             return await self._execute_resume(
                 agent_id=agent_id, message=message, tools=tools, model=model
             )
-        return await self._execute_new(message=message, tools=tools, model=model)
+        return await self._execute_new(
+            message=message, tools=tools, model=model, skills=skills
+        )
 
     async def _execute_new(
         self,
@@ -113,6 +127,7 @@ class RunSubagentTool(LocalTool):
         message: str,
         tools: str | None = None,
         model: str | None = None,
+        skills: str | None = None,
     ) -> ToolResult:
         # 0. Resolve model
         model_short = model or SUBAGENT_DEFAULT_MODEL
@@ -132,6 +147,15 @@ class RunSubagentTool(LocalTool):
 
         # 2. Build system prompt
         system = _load_subagent_system_prompt()
+
+        # 2a. Inject requested skills into system prompt
+        if skills:
+            skill_names = [s.strip() for s in skills.split(",") if s.strip()]
+            skill_content, missing = load_skills_by_name(skill_names)
+            if missing:
+                return ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
+            if skill_content:
+                system = f"{system}\n\n=== Reference Knowledge ===\nThe following skill files were provided to help you with this task.\n\n{skill_content}"
 
         # 3. Build messages — single user message
         messages: list[MessageParam] = [{"role": "user", "content": message}]

@@ -81,6 +81,25 @@ def list_memory_with_descriptions() -> list[dict[str, str]]:
     return memories
 
 
+def _render_skill(path: str, content: str) -> list[str]:
+    """Render a single skill file for inclusion in a prompt."""
+    skill_name = path.strip("/").split("/")[-2]
+    return [f"Content of skill {skill_name} - read from {path}", content, ""]
+
+
+def load_skills_by_name(names: list[str]) -> tuple[str, list[str]]:
+    """Load specific skills by folder name. Returns (combined content, missing names)."""
+    lines = []
+    missing = []
+    for name in names:
+        skill_path = MEMORY_PATH / name / "SKILL.md"
+        if skill_path.exists():
+            lines.extend(_render_skill(str(skill_path), skill_path.read_text()))
+        else:
+            missing.append(name)
+    return "\n".join(lines), missing
+
+
 def render_memory_content() -> str:
     """Render memory content for system prompt.
 
@@ -96,10 +115,7 @@ def render_memory_content() -> str:
         for path, content in sorted(
             autoload_memories.items(), key=lambda x: (SYSTEM_CORE not in x[0], x[0])
         ):
-            skill_name = path.strip("/").split("/")[-2]
-            lines.append(f"Content of skill {skill_name} - read from {path}")
-            lines.append(content)
-            lines.append("")
+            lines.extend(_render_skill(path, content))
 
     # Show descriptions of non-autoload files
     all_memories = list_memory_with_descriptions()
