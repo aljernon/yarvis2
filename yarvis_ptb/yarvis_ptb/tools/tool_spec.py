@@ -33,8 +33,9 @@ class ToolResult:
     def get_content(self) -> list[ToolResultContent]:
         content = []
         content.append({"type": "text", "text": self.text})
-        if self.images:
-            for img in self.images:
+        images = self.images
+        if images is not None:
+            for img in images:
                 content.append({"type": "image", "source": img})
         return content
 
@@ -135,9 +136,16 @@ class LocalTool(abc.ABC):
         try:
             return await self._execute(**kwargs)
         except Exception as e:
-            logger.exception(f"During execution of {self.name} got exception: {e}")
+            import traceback
+
+            tb_str = "".join(traceback.format_exception(e))
+            logger.error(f"During execution of {self.name} got exception:\n{tb_str}")
+            # Include exception type and last frame in the error returned to the model
+            tb_lines = traceback.format_tb(e.__traceback__)
+            last_frame = tb_lines[-1].strip() if tb_lines else "no traceback"
             return ToolResult.error(
-                f"During execution of {self.name} got exception: {e}"
+                f"During execution of {self.name} got {type(e).__name__}: {e}\n"
+                f"  at: {last_frame}"
             )
 
     @abc.abstractmethod

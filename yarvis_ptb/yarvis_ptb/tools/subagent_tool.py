@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import datetime
 import logging
 import pathlib
 from inspect import cleandoc
+from typing import TYPE_CHECKING
 
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
@@ -14,6 +17,11 @@ from yarvis_ptb.storage import (
     update_agent_meta,
 )
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
+
+if TYPE_CHECKING:
+    from anthropic.types import MessageParam
+
+    from yarvis_ptb.tool_sampler import ClaudeCallInfo
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +91,7 @@ class RunSubagentTool(LocalTool):
             ],
         )
 
+    # pyre-ignore[14]: Named params intentionally narrow **kwargs from base class
     async def _execute(
         self,
         *,
@@ -90,7 +99,7 @@ class RunSubagentTool(LocalTool):
         agent_id: int | None = None,
         tools: str | None = None,
         model: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> ToolResult:
         if agent_id is not None:
             return await self._execute_resume(
@@ -125,7 +134,7 @@ class RunSubagentTool(LocalTool):
         system = _load_subagent_system_prompt()
 
         # 3. Build messages — single user message
-        messages = [{"role": "user", "content": message}]
+        messages: list[MessageParam] = [{"role": "user", "content": message}]
 
         # 4. Parse tool names
         tool_names = _parse_tool_names(tools)
@@ -140,7 +149,7 @@ class RunSubagentTool(LocalTool):
                 model_id=model_id,
             )
         except Exception as e:
-            return ToolResult.error(f"Agent failed: {e}")
+            return ToolResult.error(f"Agent failed with {type(e).__name__}: {e}")
 
         # 6. Save messages and return
         return self._finalize(
@@ -184,7 +193,7 @@ class RunSubagentTool(LocalTool):
 
         # 5. Rebuild conversation history from DB
         db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
-        messages: list[dict] = []
+        messages: list[MessageParam] = []
         for msg in db_msgs:
             if msg.user_id == BOT_USER_ID:
                 # Bot message — expand message_params into the conversation
@@ -208,7 +217,9 @@ class RunSubagentTool(LocalTool):
                 model_id=model_id,
             )
         except Exception as e:
-            return ToolResult.error(f"Agent #{agent_id} failed: {e}")
+            return ToolResult.error(
+                f"Agent #{agent_id} failed with {type(e).__name__}: {e}"
+            )
 
         # 8. Save and return (hidden if frozen)
         return self._finalize(
@@ -224,11 +235,11 @@ class RunSubagentTool(LocalTool):
         self,
         *,
         system: str,
-        messages: list[dict],
+        messages: list[MessageParam],
         tool_names: list[str],
         agent_id: int,
         model_id: str,
-    ) -> tuple[list[dict], list, str]:
+    ) -> tuple[list[MessageParam], list[ClaudeCallInfo], str]:
         """Run the agent query. Returns (message_params, claude_calls, model_id)."""
         from yarvis_ptb.interruption_scope_internal import INTERRUPTABLES
         from yarvis_ptb.tool_sampler import process_subagent_query
@@ -262,8 +273,8 @@ class RunSubagentTool(LocalTool):
         *,
         agent_id: int,
         message: str,
-        message_params: list[dict],
-        claude_calls: list,
+        message_params: list[MessageParam],
+        claude_calls: list[ClaudeCallInfo],
         model_id: str,
         frozen: bool = False,
     ) -> ToolResult:
@@ -372,7 +383,7 @@ def _load_subagent_system_prompt() -> str:
     return prompt
 
 
-def _extract_final_text(message_params: list[dict]) -> str | None:
+def _extract_final_text(message_params: list[MessageParam]) -> str | None:
     """Extract the final text from message_params (last assistant turn)."""
     for msg in reversed(message_params):
         if msg.get("role") == "assistant":

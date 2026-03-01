@@ -524,8 +524,14 @@ def format_tool_call_verbose(tool_call: ToolUseBlockParam) -> str:
 
 
 def format_tool_result_verbose(tool_call: ToolUseBlockParam, result: dict) -> str:
+    if not isinstance(result, dict):
+        logger.warning(
+            f"format_tool_result_verbose: expected dict, got {type(result).__name__} "
+            f"for tool {tool_call['name']}: {json.dumps(result)[:200]}"
+        )
+        return json.dumps(result, indent=2)
     match tool_call["name"]:
-        case "bash_run" | "python_repl":
+        case "bash_run" | "python_repl" if "stdout" in result and "stderr" in result:
             if not (result["stdout"]) or not (result["stderr"]):
                 return (result["stdout"] + result["stderr"]).strip()
             else:
