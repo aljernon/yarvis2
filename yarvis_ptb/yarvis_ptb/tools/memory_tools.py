@@ -47,7 +47,9 @@ class ReadMemoryTool(LocalTool):
 
         try:
             content = skill_path.read_text()
-            return ToolResult(f"Content of knowledge file '{name}':\n\n{content}")
+            return ToolResult(
+                f"Content of knowledge file '{name}' (path: {skill_path}):\n\n{content}"
+            )
         except Exception as e:
             logger.exception(f"Error reading knowledge file {name}: {e}")
             return ToolResult.error(f"Error reading knowledge file: {str(e)}")
