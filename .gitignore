@@ -9,6 +9,7 @@ __pycache__
 *.egg-info
 .pyre
 memory
+sms_accumulator/sms-accumulator
 .vscode
 
 
