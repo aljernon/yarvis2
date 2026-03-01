@@ -420,7 +420,8 @@ def render_claude_response_verbose(
     mesages: list[MessageParam], skip_first_n: int | None = None
 ) -> list[str]:
     chunks = []
-    last_tool_call: ToolUseBlockParam | None = None
+    # Map tool_use_id -> tool_use block for matching results to their calls
+    tool_calls_by_id: dict[str, ToolUseBlockParam] = {}
     for i, message in enumerate(mesages):
         if isinstance(message["content"], str):
             chunks.append("**ASSISTANT**\n" + str(message))
@@ -430,8 +431,8 @@ def render_claude_response_verbose(
                 if content["type"] == "text":
                     chunks.append(content["text"])
                 elif content["type"] == "tool_use":
-                    last_tool_call = content
-                    chunks.append(format_tool_call_verbose(last_tool_call))
+                    tool_calls_by_id[content["id"]] = content
+                    chunks.append(format_tool_call_verbose(content))
                 elif content["type"] == "tool_result":
                     status = (
                         "**SUCCESS**" if not content.get("is_error") else "**ERROR**"
@@ -444,15 +445,16 @@ def render_claude_response_verbose(
                             x["text"] if x["type"] == "text" else "[IMAGE]"
                             for x in result
                         )
+                    tool_call = tool_calls_by_id.get(content.get("tool_use_id", ""))
                     try:
                         result_dict = json.loads(result_str)
                     except ValueError:
                         pass
                     else:
-                        assert last_tool_call is not None, content
-                        result_str = format_tool_result_verbose(
-                            last_tool_call, result_dict
-                        )
+                        if tool_call is not None:
+                            result_str = format_tool_result_verbose(
+                                tool_call, result_dict
+                            )
 
                     chunks.append(f"{status}\n```\n{result_str}\n```")
 
@@ -462,8 +464,8 @@ def render_claude_response_verbose(
                     logger.error(f"Unknown content type: {content}")
                     chunks.append(content)
         if skip_first_n is not None and i < skip_first_n:
-            # when skip first is set, we only use the initial messages to get
-            # last_tool_call.
+            # when skip first is set, we only use the initial messages to
+            # populate tool_calls_by_id.
             chunks.clear()
     return chunks
 
