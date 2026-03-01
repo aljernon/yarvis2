@@ -42,7 +42,7 @@ PER_PAGE = 500
 
 
 def strip_thinking_blocks(messages: list[dict]) -> list[dict]:
-    """Remove thinking/redacted_thinking blocks from messages for token counting."""
+    """Remove thinking/redacted_thinking blocks and empty text blocks from messages for token counting."""
     cleaned = []
     for msg in messages:
         content = msg.get("content")
@@ -52,12 +52,18 @@ def strip_thinking_blocks(messages: list[dict]) -> list[dict]:
                 for b in content
                 if not (
                     isinstance(b, dict)
-                    and b.get("type") in ("thinking", "redacted_thinking")
+                    and (
+                        b.get("type") in ("thinking", "redacted_thinking")
+                        or (b.get("type") == "text" and not b.get("text", "").strip())
+                    )
                 )
             ]
             if filtered:
                 cleaned.append({**msg, "content": filtered})
             # Skip messages that become empty after stripping
+        elif isinstance(content, str) and not content.strip():
+            # Skip empty string content
+            continue
         else:
             cleaned.append(msg)
     return cleaned
