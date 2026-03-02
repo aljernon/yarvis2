@@ -53,6 +53,7 @@ from yarvis_ptb.tools.location import GetLocationTool
 from yarvis_ptb.tools.memory_tools import build_memory_tools
 from yarvis_ptb.tools.message_search_tool import build_message_search_tools
 from yarvis_ptb.tools.message_tool import build_message_tools
+from yarvis_ptb.tools.nest_tools import get_nest_tools
 from yarvis_ptb.tools.python_repl import PythonREPLTool
 from yarvis_ptb.tools.scheduling_tools import build_scheduling_tools
 from yarvis_ptb.tools.subagent_tool import build_subagent_tools
@@ -76,7 +77,11 @@ GENERIC_LOCAL_TOOLS: list[LocalTool] = [
 TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 
 ANTON_DATA_TOOLS: list[LocalTool] = [GetLocationTool()] + (
-    get_calendar_tools() + get_gmail_tools() + get_gkeep_tools() + get_whoop_tools()
+    get_calendar_tools()
+    + get_gmail_tools()
+    + get_gkeep_tools()
+    + get_whoop_tools()
+    + get_nest_tools()
 )
 
 

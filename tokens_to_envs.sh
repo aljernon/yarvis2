@@ -15,6 +15,8 @@ files=(
     "session_name2.session"
     "whoop_config.json"
     "whoop_token.json"
+    "nest_config.json"
+    "nest_token.json"
 )
 
 # Loop through each file
