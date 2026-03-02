@@ -1,5 +1,4 @@
 import functools
-import json
 import os
 from typing import Optional
 
@@ -18,36 +17,6 @@ def get_gkeep() -> gkeepapi.Keep:
     email = os.environ["KEEP_EMAIL"]
     keep.authenticate(email, master_token)
     return keep
-
-
-def dump_memory(memory: str):
-    keep = get_gkeep()
-    if not list(keep.find("MEMORY_DUMP", archived=False)):
-        note = keep.createNote("MEMORY_DUMP", "")
-        label_obj = keep.findLabel(HIDDEN_LABEL)
-        if not label_obj:
-            label_obj = keep.createLabel(HIDDEN_LABEL)
-
-        assert isinstance(note, gkeepapi.node.TopLevelNode)
-
-        note.labels.add(label_obj)
-        keep.sync()
-    # TODO: figure out why label matching is not working
-    # [note] = keep.find("MEMORY_DUMP", labels=[HIDDEN_LABEL])
-    [note] = keep.find("MEMORY_DUMP", archived=False)
-    note.text = memory
-    keep.sync()
-
-
-def load_memory() -> list[dict] | None:
-    keep = get_gkeep()
-    notes = keep.find("MEMORY_DUMP", archived=False)
-    if not notes:
-        return None
-    [note] = notes
-    data = json.loads(note.text)
-    assert isinstance(data, list), data
-    return data
 
 
 class KeepBaseTool(LocalTool):
