@@ -31,7 +31,7 @@ REDIRECT_URI = "http://localhost:8765/callback"
 CONFIG_PATH = PROJECT_ROOT / "whoop_config.json"
 TOKEN_PATH = PROJECT_ROOT / "whoop_token.json"
 
-SCOPES = "read:recovery read:sleep read:workout read:cycles read:profile read:body_measurement"
+SCOPES = "offline read:recovery read:sleep read:workout read:cycles read:profile read:body_measurement"
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
@@ -116,12 +116,15 @@ def main():
     print(f"Config saved to {CONFIG_PATH}")
 
     # Save token file in whoopy's TokenInfo format
+    from datetime import datetime, timezone
+
     token_save = {
         "access_token": token_data["access_token"],
         "expires_in": token_data.get("expires_in", 3600),
         "refresh_token": token_data.get("refresh_token"),
         "scopes": token_data.get("scope", SCOPES).split(),
         "token_type": token_data.get("token_type", "Bearer"),
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }
     with open(TOKEN_PATH, "w") as f:
         json.dump(token_save, f, indent=2)

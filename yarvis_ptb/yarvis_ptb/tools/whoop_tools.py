@@ -49,6 +49,7 @@ def _refresh_token(token_data: dict) -> dict:
             "refresh_token": refresh_token,
             "client_id": config["client_id"],
             "client_secret": config["client_secret"],
+            "scope": "offline",
         },
     )
     resp.raise_for_status()
