@@ -7,10 +7,10 @@ Reflect on recent Claude Code sessions for this project to identify workflow imp
 
 ## Step 1: Gather recent session transcripts
 
-Find the 5 most recent session JSONL files for this project (by modification time):
+Find the 6 most recent session JSONL files for this project (by modification time), then **skip the first one** (it's the current `/reflect` session):
 
 ```bash
-ls -t ~/.claude/projects/-Users-anton-projects-yarvis/*.jsonl | head -5
+ls -t ~/.claude/projects/-Users-anton-projects-yarvis/*.jsonl | head -6 | tail -5
 ```
 
 Read each session file. Sessions can be large — for files over 200KB, read the first 500 and last 500 lines to capture the start and end of the conversation.
@@ -40,6 +40,9 @@ For each session, look for these patterns:
 - Code style violations that were corrected
 - Project-specific patterns Claude didn't follow
 - Environment setup steps Claude got wrong
+
+** Unclear things in the code:**
+- Missing CLAUDE.md/rules files that could reduce research time next time CC handles similar task
 
 ## Step 3: Read the reflect command itself
 

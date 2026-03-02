@@ -68,10 +68,16 @@ The bot can schedule its own future invocations using the scheduling system:
 - Scheduled invocations are stored in the database
 - Each invocation includes metadata, reason, and timing information
 
+## Credentials & Environment Variables
+- API credentials (client IDs, secrets) go in `.env` (gitignored) and must also be set on Heroku via `heroku config:set`
+- OAuth token files (e.g. `whoop_token.json`, `nest_token.json`) are shipped to Heroku via `tokens_to_envs.sh`
+- When adding a new integration, always add its env vars to both `.env` and Heroku
+
 ## Deployment
 The project is hosted on Heroku with PostgreSQL database integration.
 - Heroku app name: `claude-telegram`
 - **Never push to Heroku directly** (`git push heroku`). Deploys happen automatically after pushing to GitHub.
+- `update_tokens.sh` must be run inside the conda env: `conda run -n clam ./update_tokens.sh`
 
 ## GCP Infrastructure (Signal API)
 A GCP VM runs `signal-cli-rest-api` to give Yarvis read access to Signal messages.
