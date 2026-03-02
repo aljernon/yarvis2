@@ -191,7 +191,12 @@ def convert_db_messages_to_claude_messages(
                 )
 
             is_voice_message = meta.get("is_voice", False)
-            full_message = f"<system>Sent by {USER_ID_MAP.get(msg.user_id, f'unknown user ({msg.user_id})')} at {msg.created_at.isoformat()} {is_voice_message=}</system>\n{msg.message}"
+            reply_prefix = ""
+            if reply_to := meta.get("reply_to"):
+                text = reply_to["text"]
+                display_text = text[:200] + "..." if len(text) > 200 else text
+                reply_prefix = f"[Replying to {reply_to['from']} at {reply_to.get('date', '?')}: \"{display_text}\"]\n"
+            full_message = f"<system>Sent by {USER_ID_MAP.get(msg.user_id, f'unknown user ({msg.user_id})')} at {msg.created_at.isoformat()} {is_voice_message=}</system>\n{reply_prefix}{msg.message}"
             content_chunks.append({"type": "text", "text": full_message})
 
             role_messages.append({"role": "user", "content": content_chunks})

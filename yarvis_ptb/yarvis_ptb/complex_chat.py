@@ -254,6 +254,20 @@ async def handle_message_root_user_assistant(
         logger.warning(f"Unsupported message type: {update.message}")
         return
 
+    # Capture quote-reply context if the user is replying to a specific message
+    if update.message.reply_to_message:
+        reply_msg = update.message.reply_to_message
+        reply_text = reply_msg.text or reply_msg.caption or ""
+        if reply_text:
+            initial_db_message.meta = initial_db_message.meta or {}
+            initial_db_message.meta["reply_to"] = {
+                "text": reply_text,
+                "from": reply_msg.from_user.first_name
+                if reply_msg.from_user
+                else "Unknown",
+                "date": reply_msg.date.isoformat() if reply_msg.date else None,
+            }
+
     await process_multi_message_claude_invocation(
         curr=curr,
         application=context.application,
