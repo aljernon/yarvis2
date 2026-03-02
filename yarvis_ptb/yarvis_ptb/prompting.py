@@ -396,7 +396,8 @@ def render_claude_response_short(
         else:
             for content in message["content"]:
                 if content["type"] == "text":
-                    chunks.append(content["text"])
+                    if content["text"]:
+                        chunks.append(content["text"])
                 elif content["type"] == "tool_use":
                     tool_calls.append(content)
                 elif content["type"] == "tool_result":
@@ -434,7 +435,8 @@ def render_claude_response_verbose(
             content: TextBlockParam | ToolUseBlockParam | ToolResultBlockParam
             for content in message["content"]:  # type: ignore
                 if content["type"] == "text":
-                    chunks.append(content["text"])
+                    if content["text"]:
+                        chunks.append(content["text"])
                 elif content["type"] == "tool_use":
                     tool_calls_by_id[content["id"]] = content
                     chunks.append(format_tool_call_verbose(content))

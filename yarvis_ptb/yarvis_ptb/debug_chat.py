@@ -85,6 +85,8 @@ async def send_message_to_debug_chat_with_retries(
                     suffix=chunk.file_suffix,
                 )
             else:
+                if not chunk:
+                    return
                 await reply_maybe_markdown(bot, FULL_LOG_CHAT_ID, chunk)
         except (telegram.error.TimedOut, telegram.error.RetryAfter) as e:
             if isinstance(e, telegram.error.RetryAfter):
