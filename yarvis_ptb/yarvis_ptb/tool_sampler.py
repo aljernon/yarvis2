@@ -693,9 +693,6 @@ async def _process_query_with_tools(
         )
         if should_stop_after:
             logger.info("Stopping sampling loop early due to stop_after flag")
-            extra_messages.append(
-                {"role": "assistant", "content": [{"type": "text", "text": ""}]}
-            )
             break
         if partial_sample.stop_reason != "tool_use":
             logger.info(
