@@ -9,6 +9,11 @@ from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
 logger = logging.getLogger(__name__)
 
+
+class NestDeviceError(Exception):
+    """Raised when a Nest device lookup or operation fails."""
+
+
 NEST_CONFIG_PATH = PROJECT_ROOT / "nest_config.json"
 NEST_TOKEN_PATH = PROJECT_ROOT / "nest_token.json"
 
@@ -213,6 +218,8 @@ class NestDeviceTool(LocalTool):
                 return ToolResult.error(
                     f"Invalid action: {action}. Must be one of: list, status, set_mode, set_temperature."
                 )
+        except NestDeviceError as e:
+            return ToolResult.error(str(e))
         except FileNotFoundError:
             return ToolResult.error(
                 "Nest token files not found. Run nest_auth.py to authenticate."
@@ -220,19 +227,21 @@ class NestDeviceTool(LocalTool):
         except Exception as e:
             return ToolResult.error(f"Nest API error: {e}")
 
-    def _find_device(self, device_name: str | None) -> tuple[dict | None, str | None]:
-        """Find device by custom name. Returns (device, error_msg)."""
+    def _find_device(self, device_name: str | None) -> dict:
+        """Find device by custom name. Raises NestDeviceError if not found."""
         if not device_name:
-            return None, "device_name is required for this action."
+            raise NestDeviceError("device_name is required for this action.")
         project_id = _get_project_id()
         resp = _nest_api_get(f"/enterprises/{project_id}/devices")
         resp.raise_for_status()
         devices = resp.json().get("devices", [])
         for d in devices:
             if _get_device_display_name(d).lower() == device_name.lower():
-                return d, None
+                return d
         names = [_get_device_display_name(d) for d in devices]
-        return None, f"Device '{device_name}' not found. Available: {', '.join(names)}"
+        raise NestDeviceError(
+            f"Device '{device_name}' not found. Available: {', '.join(names)}"
+        )
 
     def _list_devices(self) -> ToolResult:
         project_id = _get_project_id()
@@ -245,19 +254,13 @@ class NestDeviceTool(LocalTool):
         return ToolResult.success(json.dumps(summaries, indent=2))
 
     def _get_status(self, device_name: str | None) -> ToolResult:
-        device, err = self._find_device(device_name)
-        if err:
-            return ToolResult.error(err)
-        assert device is not None
+        device = self._find_device(device_name)
         return ToolResult.success(json.dumps(_format_device_summary(device), indent=2))
 
     def _set_mode(self, device_name: str | None, mode: str | None) -> ToolResult:
         if not mode:
-            return ToolResult.error("mode is required for set_mode action.")
-        device, err = self._find_device(device_name)
-        if err:
-            return ToolResult.error(err)
-        assert device is not None
+            raise NestDeviceError("mode is required for set_mode action.")
+        device = self._find_device(device_name)
         device_id = device["name"]
         resp = _nest_api_post(
             f"/{device_id}:executeCommand",
@@ -273,13 +276,10 @@ class NestDeviceTool(LocalTool):
         self, device_name: str | None, temperature_f: float | None
     ) -> ToolResult:
         if temperature_f is None:
-            return ToolResult.error(
+            raise NestDeviceError(
                 "temperature_f is required for set_temperature action."
             )
-        device, err = self._find_device(device_name)
-        if err:
-            return ToolResult.error(err)
-        assert device is not None
+        device = self._find_device(device_name)
 
         # Determine command based on current mode
         traits = device.get("traits", {})
@@ -302,7 +302,7 @@ class NestDeviceTool(LocalTool):
                 "coolCelsius": round(temp_c + range_c, 1),
             }
         else:
-            return ToolResult.error(
+            raise NestDeviceError(
                 f"Cannot set temperature when mode is {mode}. Set mode to HEAT, COOL, or HEATCOOL first."
             )
 
