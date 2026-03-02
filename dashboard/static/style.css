@@ -331,6 +331,40 @@ button:hover { background: #ece4ea; }
   margin-bottom: 12px;
 }
 
+.skills-summary {
+  margin-bottom: 12px;
+  font-size: 0.9em;
+  line-height: 2;
+}
+
+.skill-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: monospace;
+  cursor: pointer;
+}
+
+.skill-badge:hover {
+  opacity: 0.7;
+}
+
+.skill-badge.autoload {
+  background: #d4b5c4;
+  color: #3a3040;
+}
+
+.skill-badge.on-demand {
+  background: #a3b4c8;
+  color: #3a3040;
+}
+
+.skill-badge.tool {
+  background: #e8e0e4;
+  color: #5a4860;
+}
+
 .meta-json {
   max-width: 300px;
   max-height: 100px;

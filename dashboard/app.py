@@ -36,6 +36,7 @@ from yarvis_ptb.storage import (
     get_messages,
     get_schedules,
 )
+from yarvis_ptb.tool_sampler import get_tool_specs_for_config
 
 DEFAULT_CHAT_ID = ROOT_USER_ID
 PER_PAGE = 500
@@ -123,10 +124,14 @@ def _cache_set(key: str, tokens: int):
         f.write(str(tokens))
 
 
-def count_tokens_cached(*, system: str | None = None, messages: list[dict]) -> int:
+def count_tokens_cached(
+    *, system: str | None = None, messages: list[dict], tools: list[dict] | None = None
+) -> int:
     """Count tokens with on-disk caching keyed by content hash."""
     cache_data = json.dumps(
-        {"system": system, "messages": messages}, sort_keys=True, default=str
+        {"system": system, "messages": messages, "tools": tools},
+        sort_keys=True,
+        default=str,
     )
     key = _cache_key(cache_data)
     cached = _cache_get(key)
@@ -135,6 +140,8 @@ def count_tokens_cached(*, system: str | None = None, messages: list[dict]) -> i
     kwargs = {"model": TOKEN_COUNT_MODEL, "messages": messages}
     if system is not None:
         kwargs["system"] = system
+    if tools is not None:
+        kwargs["tools"] = tools
     resp = anthropic_client.messages.count_tokens(**kwargs)
     _cache_set(key, resp.input_tokens)
     return resp.input_tokens
@@ -492,12 +499,16 @@ def api_agent_view():
                         if source.get("type") == "base64":
                             source["data"] = "[truncated]"
 
+        tool_specs = get_tool_specs_for_config(DEFAULT_COMPLEX_CHAT_CONFIG)
+        tool_names = [t["name"] for t in tool_specs]
+
         return jsonify(
             {
                 "system_prompt": system_prompt,
                 "history": history,
                 "num_messages": len(history),
                 "num_db_turns": len(messages),
+                "tools": tool_names,
             }
         )
     finally:
@@ -522,6 +533,8 @@ def api_agent_view_tokens():
             put_context_at_the_beginning=False,
             scheduled_invocations=scheduled_invocations,
         )
+
+        tool_specs = get_tool_specs_for_config(DEFAULT_COMPLEX_CHAT_CONFIG)
 
         def has_tool_use(msg: dict) -> bool:
             content = msg.get("content", [])
@@ -563,10 +576,16 @@ def api_agent_view_tokens():
                     pass
             return "\n".join(parts)
 
-        # System prompt tokens
+        # System prompt tokens (without tools)
+        system_tokens_no_tools = count_tokens_cached(
+            system=system_prompt,
+            messages=[{"role": "user", "content": "x"}],
+        )
+        # System prompt tokens (with tools)
         system_tokens = count_tokens_cached(
             system=system_prompt,
             messages=[{"role": "user", "content": "x"}],
+            tools=tool_specs,
         )
 
         # Phase 1: parallel approximate counts for tool_use messages
@@ -599,7 +618,9 @@ def api_agent_view_tokens():
                 continue
 
             conversation = strip_thinking_blocks(history[: i + 1])
-            total = count_tokens_cached(system=system_prompt, messages=conversation)
+            total = count_tokens_cached(
+                system=system_prompt, messages=conversation, tools=tool_specs
+            )
             segment_tokens = total - prev_total
             is_pair = i > 0 and has_tool_use(history[i - 1])
             results[i] = {
@@ -618,7 +639,9 @@ def api_agent_view_tokens():
         return jsonify(
             {
                 "total_tokens": total_tokens,
-                "system_tokens": system_tokens,
+                "system_tokens": system_tokens_no_tools,
+                "tool_tokens": system_tokens - system_tokens_no_tools,
+                "num_tools": len(tool_specs),
                 "messages": results,
             }
         )

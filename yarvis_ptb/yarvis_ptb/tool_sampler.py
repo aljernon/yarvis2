@@ -49,7 +49,6 @@ from yarvis_ptb.tools.gcal_tools import get_calendar_tools
 from yarvis_ptb.tools.gkeep_tools import get_gkeep_tools
 from yarvis_ptb.tools.gmail_tool import get_gmail_tools
 from yarvis_ptb.tools.image_tools import build_image_tools
-from yarvis_ptb.tools.location import GetLocationTool
 from yarvis_ptb.tools.memory_tools import build_memory_tools
 from yarvis_ptb.tools.message_search_tool import build_message_search_tools
 from yarvis_ptb.tools.message_tool import build_message_tools
@@ -76,7 +75,7 @@ GENERIC_LOCAL_TOOLS: list[LocalTool] = [
 
 TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 
-ANTON_DATA_TOOLS: list[LocalTool] = [GetLocationTool()] + (
+ANTON_DATA_TOOLS: list[LocalTool] = (
     get_calendar_tools()
     + get_gmail_tools()
     + get_gkeep_tools()
@@ -281,6 +280,15 @@ def _build_tools_from_classes(
         else:
             raise ValueError(f"Unknown tool class: {tool_class}")
     return all_local_tool_objects
+
+
+def get_tool_specs_for_config(chat_config: ChatConfig) -> list[ClaudeTool]:
+    """Get tool specs for a chat config without needing runtime dependencies.
+
+    Safe to call without DB cursor, bot, or chat_id — only used for spec generation.
+    """
+    tools = get_tools_for_config(chat_config, None, 0, None)
+    return [t.spec().to_claude_tool() for t in tools]
 
 
 async def dummy_on_update(messages: list[MessageParam]) -> None:

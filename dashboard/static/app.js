@@ -74,7 +74,8 @@ function renderContentBlocks(blocks) {
       const headerLabel = isSendMessageFinal ? `${block.name}/message/final` : (singleStr ? `${block.name}/${keys[0]}` : block.name);
       const startOpen = block.name === "send_message";
       const bytes = new Blob([inputStr]).size;
-      html += `<div class="tool-use-block"><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow${startOpen ? " open" : ""}" id="arrow-${id}">&#9654;</span> <strong>Tool:</strong> ${escapeHtml(headerLabel)} <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content${startOpen ? " open" : ""}" id="${id}">${escapeHtml(inputStr)}</div></div>`;
+      const skillAttr = block.name === "read_memory" && block.input && block.input.name ? ` data-skill-name="${escapeHtml(block.input.name)}"` : "";
+      html += `<div class="tool-use-block"${skillAttr}><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow${startOpen ? " open" : ""}" id="arrow-${id}">&#9654;</span> <strong>Tool:</strong> ${escapeHtml(headerLabel)} <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content${startOpen ? " open" : ""}" id="${id}">${escapeHtml(inputStr)}</div></div>`;
     } else if (block.type === "tool_result") {
       const id = "tr-" + uid();
       let content = "";
@@ -396,6 +397,15 @@ function toggleCollapsible(id) {
   if (arrow) arrow.classList.toggle("open");
 }
 
+function scrollToSkill(name) {
+  const el = document.querySelector(`[data-skill-name="${name}"]`);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.style.outline = "2px solid #e05068";
+    setTimeout(() => el.style.outline = "", 1500);
+  }
+}
+
 // ── Agent view page ─────────────────────────────────────────────────────────
 
 function renderSystemPrompt(text) {
@@ -431,7 +441,7 @@ function renderSystemPrompt(text) {
     if (part.type === "skill") {
       const id = "skill-" + uid();
       const bytes = new Blob([part.content]).size;
-      html += `<div class="tool-use-block"><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>Skill: ${escapeHtml(part.name)}</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(part.content)}</div></div>`;
+      html += `<div class="tool-use-block" data-skill-name="${escapeHtml(part.name)}"><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>Skill: ${escapeHtml(part.name)}</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(part.content)}</div></div>`;
     } else {
       const id = "systxt-" + uid();
       const bytes = new Blob([part.content]).size;
@@ -458,7 +468,8 @@ async function fetchAgentTokens() {
     if (sysHeader && !sysHeader.querySelector(".token-info")) {
       const span = document.createElement("span");
       span.className = "token-info";
-      span.textContent = `${data.system_tokens} tok`;
+      const toolInfo = data.tool_tokens ? ` + ${data.tool_tokens} tools (${data.num_tools})` : "";
+      span.textContent = `${data.system_tokens} tok${toolInfo}`;
       sysHeader.appendChild(span);
     }
 
@@ -531,6 +542,44 @@ async function loadAgentView() {
 
     // System prompt — split into skill sub-blocks
     html += renderSystemPrompt(data.system_prompt);
+
+    // Collect loaded skills: autoloaded from system prompt + on-demand from read_memory calls
+    const autoloadedSkills = [];
+    const skillRegex2 = /^Content of skill (\S+) - read from .+$/mg;
+    let sm;
+    while ((sm = skillRegex2.exec(data.system_prompt)) !== null) {
+      autoloadedSkills.push(sm[1]);
+    }
+    const onDemandSkills = [];
+    for (const msg of data.history) {
+      if (!Array.isArray(msg.content)) continue;
+      for (const block of msg.content) {
+        if (block.type === "tool_use" && block.name === "read_memory" && block.input && block.input.name) {
+          onDemandSkills.push(block.input.name);
+        }
+      }
+    }
+    if (autoloadedSkills.length > 0 || onDemandSkills.length > 0) {
+      let skillsHtml = '<div class="skills-summary"><strong>Skills:</strong> ';
+      for (const s of autoloadedSkills) {
+        skillsHtml += `<span class="skill-badge autoload" onclick="scrollToSkill('${escapeHtml(s)}')">${escapeHtml(s)}</span> `;
+      }
+      for (const s of onDemandSkills) {
+        skillsHtml += `<span class="skill-badge on-demand" onclick="scrollToSkill('${escapeHtml(s)}')">${escapeHtml(s)}</span> `;
+      }
+      skillsHtml += '</div>';
+      html += skillsHtml;
+    }
+
+    // Tools list
+    if (data.tools && data.tools.length > 0) {
+      let toolsHtml = '<div class="skills-summary"><strong>Tools (' + data.tools.length + '):</strong> ';
+      for (const t of data.tools) {
+        toolsHtml += `<span class="skill-badge tool">${escapeHtml(t)}</span> `;
+      }
+      toolsHtml += '</div>';
+      html += toolsHtml;
+    }
 
     // Message history — group into turn-cards like messages page
     // Each turn-card contains consecutive messages of compatible roles
