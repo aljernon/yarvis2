@@ -28,7 +28,6 @@ from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
     Invocation,
-    VariablesForChat,
     create_agent,
     get_messages,
     get_schedules,
@@ -191,7 +190,7 @@ async def run_force_reflect(
 
     # Fetch and format scheduled invocations
     scheduled_invocations = get_schedules(curr, chat_id)
-    target_tz = get_timezone(True)
+    target_tz = get_timezone(complex_chat=True)
     if scheduled_invocations:
         inv_lines = []
         for sched in scheduled_invocations:
@@ -284,29 +283,40 @@ AUTO_REFLECT_PROMPT = """\
 This is an automatic self-reflection triggered by the system, not a user message. \
 Please read the auto-reflect skill using read_memory tool (name: "auto-reflect") and follow its instructions."""
 
-# TODO: Add a daily 3am reflection that bypasses idle window/substance checks
+DAILY_REFLECT_HOUR = 4  # 4am local time
 AUTO_REFLECT_COOLDOWN_SECS = 3600  # 1 hour
 AUTO_REFLECT_IDLE_MIN_SECS = 210  # 3:30
 AUTO_REFLECT_IDLE_MAX_SECS = 270  # 4:30
 MIN_USER_MESSAGES_FOR_REFLECT = 5
 MIN_TOOL_CALLS_FOR_REFLECT = 10
-LAST_AUTO_REFLECT_TIME_VAR = "LAST_AUTO_REFLECT_TIME"
+
+
+def _get_last_reflect_time(curr, chat_id: int) -> datetime.datetime | None:
+    """Query the most recent reflection placeholder from messages."""
+    curr.execute(
+        """
+        SELECT created_at FROM messages
+        WHERE chat_id = %s AND agent_id IS NULL AND is_visible = true
+          AND meta @> '{"is_reflection": true}'
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        (chat_id,),
+    )
+    row = curr.fetchone()
+    return row[0].astimezone(DEFAULT_TIMEZONE) if row else None
 
 
 async def should_auto_reflect(curr, chat_id: int) -> bool:
-    """Check if auto-reflection should be triggered."""
+    """Check if idle-triggered auto-reflection should run."""
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
 
-    # Check cooldown: at least 1 hour since last auto-reflection
-    chat_vars = VariablesForChat(curr, chat_id)
-    last_reflect = chat_vars.get(LAST_AUTO_REFLECT_TIME_VAR)
+    # Check cooldown: at least 1 hour since last reflection
+    last_reflect = _get_last_reflect_time(curr, chat_id)
     if last_reflect is not None:
-        since_last_reflect = (now - last_reflect).total_seconds()
-        if since_last_reflect < AUTO_REFLECT_COOLDOWN_SECS:
+        if (now - last_reflect).total_seconds() < AUTO_REFLECT_COOLDOWN_SECS:
             return False
 
     # Check idle time: between 3:30 and 4:30 since last user message
-    # get_messages returns ASC order, so last element is most recent
     recent_messages = get_messages(curr, chat_id, limit=50)
     if not recent_messages:
         return False
@@ -325,23 +335,12 @@ async def should_auto_reflect(curr, chat_id: int) -> bool:
     if idle_secs < AUTO_REFLECT_IDLE_MIN_SECS or idle_secs > AUTO_REFLECT_IDLE_MAX_SECS:
         return False
 
-    # Count user messages and tool calls since the last auto-reflect placeholder.
-    # Skip reflection if conversation is too thin.
+    # Count user messages and tool calls since the last reflection.
+    # Skip if conversation is too thin.
     user_msg_count = 0
     tool_call_count = 0
     for msg in reversed(recent_messages):
-        if (
-            msg.user_id == BOT_USER_ID
-            and msg.message == "USE_CONTENT_FROM_META"
-            and msg.meta
-            and any(
-                "Self-reflection completed" in block.get("text", "")
-                for mp in msg.meta.get("message_params", [])
-                if isinstance(mp.get("content"), list)
-                for block in mp["content"]
-                if isinstance(block, dict)
-            )
-        ):
+        if msg.meta and msg.meta.get("is_reflection"):
             break
         if msg.user_id > 0:
             user_msg_count += 1
@@ -363,6 +362,38 @@ async def should_auto_reflect(curr, chat_id: int) -> bool:
         user_msg_count < MIN_USER_MESSAGES_FOR_REFLECT
         and tool_call_count < MIN_TOOL_CALLS_FOR_REFLECT
     ):
+        return False
+
+    return True
+
+
+def should_daily_reflect(curr, chat_id: int) -> bool:
+    """Check if the daily 4am reflection should run.
+
+    Triggers once per day at DAILY_REFLECT_HOUR local time, unless there's
+    already been a reflection with no new user messages since.
+    """
+    local_tz = get_timezone(complex_chat=True)
+    now_local = datetime.datetime.now(local_tz)
+
+    # Only trigger during the 4am hour
+    if now_local.hour != DAILY_REFLECT_HOUR:
+        return False
+
+    # Check if there's been a reflection today already
+    last_reflect = _get_last_reflect_time(curr, chat_id)
+    if last_reflect is not None:
+        if last_reflect.astimezone(local_tz).date() == now_local.date():
+            return False
+
+    # Check if there are any user messages since the last reflect
+    recent_messages = get_messages(curr, chat_id, limit=1)
+    if not recent_messages:
+        return False
+    last_msg = recent_messages[-1]
+    if last_msg.user_id <= 0:
+        return False
+    if last_reflect is not None and last_msg.created_at <= last_reflect:
         return False
 
     return True
@@ -487,17 +518,11 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
                 created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                 user_id=BOT_USER_ID,
                 message="USE_CONTENT_FROM_META",
-                meta={"message_params": placeholder_params},
+                meta={"message_params": placeholder_params, "is_reflection": True},
             ),
         )
 
-        # 7. Update last auto-reflect time
-        chat_vars = VariablesForChat(curr, chat_id)
-        chat_vars.set(
-            LAST_AUTO_REFLECT_TIME_VAR, datetime.datetime.now(DEFAULT_TIMEZONE)
-        )
-
-        # 8. Commit memory changes
+        # 7. Commit memory changes
         commit_memory()
 
         summary = render_claude_response_short(result_params)

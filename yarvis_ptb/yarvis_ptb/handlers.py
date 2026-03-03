@@ -26,6 +26,7 @@ from yarvis_ptb.daily_self_reflect import (
     run_auto_reflect,
     run_force_reflect,
     should_auto_reflect,
+    should_daily_reflect,
 )
 from yarvis_ptb.debug_chat import (
     add_debug_message_to_queue,
@@ -707,9 +708,12 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                         invocation_type="schedule", db_invocation=sched
                     ),
                 )
-        # Auto-reflection check
+        # Auto-reflection check (idle-triggered or daily 4am)
         try:
-            if await should_auto_reflect(curr, ROOT_USER_ID):
+            should_reflect = await should_auto_reflect(
+                curr, ROOT_USER_ID
+            ) or should_daily_reflect(curr, ROOT_USER_ID)
+            if should_reflect:
                 await run_auto_reflect(
                     curr, ROOT_USER_ID, context.application, context.bot
                 )
