@@ -505,6 +505,10 @@ async def handler_kill(auth: AuthInfo, update: Update, context: CallbackContext)
         return
     message = ensure(update.message)
     with context.bot_data["conn"].cursor() as curr:
+        # Delete any per-chat overrides that could shadow the global
+        curr.execute(
+            "DELETE FROM chat_variables WHERE name = 'KILL_SWITCH' AND chat_id IS NOT NULL"
+        )
         chat_vars = VariablesForChat(curr, ROOT_USER_ID)
         chat_vars.set_global(chat_vars.KILL_SWITCH, True)
         context.bot_data["conn"].commit()
