@@ -24,6 +24,21 @@ from yarvis_ptb.yarvis_ptb.handlers import (
     handle_voice_message,
     handler_interrupt,
 )
+from yarvis_ptb.yarvis_ptb.logging import setup_logging
+from yarvis_ptb.yarvis_ptb.ptb_util import (
+    set_last_message_id,
+)
+from yarvis_ptb.yarvis_ptb.settings import (
+    BOT_FULL_NAME,
+    FULL_LOG_CHAT_ID,
+    ROOT_USER_ID,
+    load_env,
+)
+from yarvis_ptb.yarvis_ptb.storage import VariablesForChat, connect
+from yarvis_ptb.yarvis_ptb.util import ensure
+from yarvis_ptb.yarvis_ptb.webhook_handlers import TimezoneHandler
+
+logger = logging.getLogger(__name__)
 
 
 async def log_all_updates(update: Update, context):
@@ -42,26 +57,7 @@ async def log_all_updates(update: Update, context):
             f"video_note={bool(msg.video_note)}, "
             f"from_user={msg.from_user.id if msg.from_user else None}"
         )
-        # Log full update for debugging
         logger.info(f"Full update: {update.to_dict()}")
-
-
-from yarvis_ptb.yarvis_ptb.logging import setup_logging
-from yarvis_ptb.yarvis_ptb.ptb_util import (
-    set_last_message_id,
-)
-from yarvis_ptb.yarvis_ptb.settings import (
-    BOT_FULL_NAME,
-    FULL_LOG_CHAT_ID,
-    ROOT_USER_ID,
-    load_env,
-)
-from yarvis_ptb.yarvis_ptb.storage import VariablesForChat, connect
-from yarvis_ptb.yarvis_ptb.util import ensure
-from yarvis_ptb.yarvis_ptb.webhook_handlers import TimezoneHandler
-
-# Set up logging
-logger = logging.getLogger(__name__)
 
 
 CHATS_WITH_COMMANDS = [
