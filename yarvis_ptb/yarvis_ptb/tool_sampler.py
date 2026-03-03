@@ -30,7 +30,7 @@ from anthropic.types.beta import (
 
 from yarvis_ptb.chat_config import ChatConfig
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
-from yarvis_ptb.prompt_consts import INTERRUPTION_MESSAGE, OVERLOAD_MESSAGE_TPL
+from yarvis_ptb.prompt_consts import INTERRUPTION_MESSAGE, SAMPLING_FAILED_MESSAGE_TPL
 from yarvis_ptb.prompting import NormalizedMessageParam, normalize_message_param
 from yarvis_ptb.ptb_util import (
     InterruptionScope,
@@ -395,16 +395,6 @@ async def _process_query_with_tools(
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
     async_client = get_async_anthropic_client()
 
-    @tenacity.retry(
-        retry=tenacity.retry_if_exception_type(ANTHROPIC_EXCEPTIONS_TO_RETRY)
-        & tenacity.retry_if_not_exception_type(RateLimitError),
-        wait=tenacity.wait_exponential(multiplier=2, min=2, max=60),
-        stop=tenacity.stop_after_attempt(5),
-        before_sleep=lambda retry_state: logger.warning(
-            f"API error, retrying in {retry_state.next_action and retry_state.next_action.sleep} seconds... "
-            f"(Attempt {retry_state.attempt_number})"
-        ),
-    )
     def _get_retry_after(retry_state) -> float:
         exc = retry_state.outcome.exception()
         if isinstance(exc, RateLimitError) and exc.response:
@@ -416,6 +406,16 @@ async def _process_query_with_tools(
                     pass
         return 35.0
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(ANTHROPIC_EXCEPTIONS_TO_RETRY)
+        & tenacity.retry_if_not_exception_type(RateLimitError),
+        wait=tenacity.wait_exponential(multiplier=2, min=2, max=60),
+        stop=tenacity.stop_after_attempt(5),
+        before_sleep=lambda retry_state: logger.warning(
+            f"API error, retrying in {retry_state.next_action and retry_state.next_action.sleep} seconds... "
+            f"(Attempt {retry_state.attempt_number})"
+        ),
+    )
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(RateLimitError),
         wait=_get_retry_after,
@@ -607,18 +607,19 @@ async def _process_query_with_tools(
 
         try:
             partial_sample = await run_query_and_count_tokens()
-        except tenacity.RetryError as e:
-            logger.warning("Failed to retry sampling")
+        except Exception as e:
+            if isinstance(e, tenacity.RetryError):
+                exc_str = str(e.last_attempt.exception())
+            else:
+                exc_str = f"{type(e).__name__}: {e}"
+            logger.warning(f"Sampling failed: {exc_str}")
             partial_sample = PartialSample(
                 num_prompt_tokens=-1,
                 num_cached_tokens=-1,
                 num_cache_creation_tokens=0,
                 num_output_tokens=0,
                 content=[
-                    TextBlock(
-                        type="text",
-                        text=OVERLOAD_MESSAGE_TPL % e.last_attempt.exception(),
-                    )
+                    TextBlock(type="text", text=SAMPLING_FAILED_MESSAGE_TPL % exc_str)
                 ],
                 stop_reason="interrupt",
                 seconds_till_start=-1,

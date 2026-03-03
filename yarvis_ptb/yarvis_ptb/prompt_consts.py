@@ -1,7 +1,7 @@
 from yarvis_ptb.settings import BOT_FULL_NAME, HISTORY_LENGTH_TURNS
 
 INTERRUPTION_MESSAGE = "<system>Generation interrupted by user</system>"
-OVERLOAD_MESSAGE_TPL = (
+SAMPLING_FAILED_MESSAGE_TPL = (
     "<system>The generation failed as API request raised exception: %s</system>"
 )
 

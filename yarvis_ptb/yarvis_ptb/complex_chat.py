@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+import traceback
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
@@ -21,6 +22,7 @@ from yarvis_ptb.chat_config import ChatConfig
 from yarvis_ptb.debug_chat import (
     MessageAsFile,
     add_debug_message_to_queue,
+    force_send_to_debug_chat,
     maybe_send_messages_to_debug_chat,
 )
 from yarvis_ptb.message_search import save_message_and_update_index
@@ -463,22 +465,47 @@ async def _process_multi_message_claude_invocation_inner(
         logger.info(
             f"Divining into tool_sampler.process_query: {chat_id=} {telegram_message_id=}"
         )
-        (
-            message_params,
-            maybe_claude_calls,
-            tool_init_time,
-            subagent_usages,
-        ) = await tool_sampler.process_query(
-            curr=curr,
-            bot=bot,
-            chat_config=chat_config,
-            chat_id=chat_id,
-            system=system,
-            messages=message_params,
-            on_update=update_message_output,
-            scope=scope,
-            job_queue=application.job_queue,
-        )
+        try:
+            (
+                message_params,
+                maybe_claude_calls,
+                tool_init_time,
+                subagent_usages,
+            ) = await tool_sampler.process_query(
+                curr=curr,
+                bot=bot,
+                chat_config=chat_config,
+                chat_id=chat_id,
+                system=system,
+                messages=message_params,
+                on_update=update_message_output,
+                scope=scope,
+                job_queue=application.job_queue,
+            )
+        except Exception:
+            tb = traceback.format_exc()
+            logger.exception("process_query crashed")
+            await force_send_to_debug_chat(f"**process_query CRASHED**\n```\n{tb}\n```")
+            error_line = tb.splitlines()[-1]
+            if output_message is not None:
+                await reply_maybe_markdown(
+                    bot,
+                    chat_id,
+                    f"Generation failed: {error_line}",
+                    message=output_message,
+                    final_update=True,
+                )
+            if not skip_db:
+                if initial_db_message is not None:
+                    save_message_and_update_index(curr, initial_db_message)
+                error_msg = DbMessage(
+                    chat_id=chat_id,
+                    created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                    user_id=SYSTEM_USER_ID,
+                    message=f"Generation failed: {error_line}",
+                )
+                save_message_and_update_index(curr, error_msg)
+            return
 
     prompt_size: int | None
     cost: float | None = None
