@@ -496,20 +496,20 @@ async def handler_force_reflect(update: Update, context: CallbackContext):
         await reply_maybe_markdown(context.bot, chat_id, f"Reflection failed: {e}")
 
 
-@RegisteredCommandHandler.register()
+@RegisteredCommandHandler.register(
+    description="Kill the bot (revive via DB + heroku restart)"
+)
 @auth_decorator
-async def handler_kill_switch(auth: AuthInfo, update: Update, context: CallbackContext):
+async def handler_kill(auth: AuthInfo, update: Update, context: CallbackContext):
     if not auth.is_root_user_complex_chat:
         return
     message = ensure(update.message)
     with context.bot_data["conn"].cursor() as curr:
-        argument = ensure(message.text).split(" ", 1)[-1].strip().lower()
-        target_value = argument not in ("false", "off")
-        chat_vars = VariablesForChat(curr, message.chat_id)
-        chat_vars.set(chat_vars.KILL_SWITCH, target_value)
-        await message.reply_text(
-            f"Set kill_swtich for {message.chat_id} to {target_value}"
-        )
+        chat_vars = VariablesForChat(curr, ROOT_USER_ID)
+        chat_vars.set_global(chat_vars.KILL_SWITCH, True)
+        context.bot_data["conn"].commit()
+    await message.reply_text("Kill switch ON — restarting into dead loop")
+    hard_restart()
 
 
 @RegisteredCommandHandler.register()

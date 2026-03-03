@@ -230,8 +230,33 @@ def main():
         )
 
 
+def wait_for_kill_switch():
+    """Block startup while kill switch is on, re-checking every 60s."""
+    import time
+
+    from yarvis_ptb.yarvis_ptb.storage import VariablesForChat
+
+    with connect() as conn:
+        with conn.cursor() as curr:
+            chat_vars = VariablesForChat(curr, ROOT_USER_ID)
+            if not chat_vars.get(chat_vars.KILL_SWITCH):
+                return
+            logger.warning(
+                "Kill switch is ON — bot will not start. Rechecking every 60s..."
+            )
+    while True:
+        time.sleep(60)
+        with connect() as conn:
+            with conn.cursor() as curr:
+                chat_vars = VariablesForChat(curr, ROOT_USER_ID)
+                if not chat_vars.get(chat_vars.KILL_SWITCH):
+                    logger.info("Kill switch turned OFF — starting bot")
+                    return
+
+
 if __name__ == "__main__":
     load_env()
     setup_logging()
+    wait_for_kill_switch()
 
     main()
