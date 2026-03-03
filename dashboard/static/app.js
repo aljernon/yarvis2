@@ -425,14 +425,26 @@ function renderSystemPrompt(text) {
     return `<div class="turn-card"><div class="turn-header" id="system-prompt-header"><span class="sender system">System Prompt</span><span class="turn-bytes">${sysBytes}b</span><span class="toggle-arrow open" id="arrow-${outerId}" onclick="toggleCollapsible('${outerId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content open" id="${outerId}" style="max-height:800px">${escapeHtml(text)}</div></div>`;
   }
 
-  // Split into parts: text before first skill, then each skill until next
+  // Find where skills section ends (e.g. "Available Knowledge Files" or other section headers)
+  const lastSkillMatch = matches[matches.length - 1];
+  const postSkillRegex = /^\n*===\s/m;
+  const afterLastSkill = text.slice(lastSkillMatch.index);
+  // Search for a section header after the first line of the last skill
+  const firstNewline = afterLastSkill.indexOf("\n");
+  const postMatch = firstNewline >= 0 ? postSkillRegex.exec(afterLastSkill.slice(firstNewline)) : null;
+  const skillsEndIndex = postMatch ? lastSkillMatch.index + firstNewline + postMatch.index : text.length;
+
+  // Split into parts: text before first skill, each skill, then trailing text
   const parts = [];
   if (matches[0].index > 0) {
     parts.push({ type: "text", content: text.slice(0, matches[0].index) });
   }
   for (let i = 0; i < matches.length; i++) {
-    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+    const end = i + 1 < matches.length ? matches[i + 1].index : skillsEndIndex;
     parts.push({ type: "skill", name: matches[i].name, content: text.slice(matches[i].index, end) });
+  }
+  if (skillsEndIndex < text.length) {
+    parts.push({ type: "text", content: text.slice(skillsEndIndex) });
   }
 
   let html = `<div class="turn-card"><div class="turn-header" id="system-prompt-header"><span class="sender system">System Prompt</span><span class="turn-bytes">${sysBytes}b</span><span class="toggle-arrow open" id="arrow-${outerId}" onclick="toggleCollapsible('${outerId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content open" id="${outerId}" style="max-height:none">`;
