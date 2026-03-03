@@ -24,7 +24,7 @@ from yarvis_ptb.complex_chat import (
 )
 from yarvis_ptb.daily_self_reflect import (
     run_auto_reflect,
-    run_reflect,
+    run_force_reflect,
     should_auto_reflect,
 )
 from yarvis_ptb.debug_chat import (
@@ -466,18 +466,18 @@ async def handler_todo(update: Update, context: CallbackContext):
     description="Run self-reflection on recent conversations"
 )
 @auth_decorator_all_complex_chats
-async def handler_reflect(update: Update, context: CallbackContext):
+async def handler_force_reflect(update: Update, context: CallbackContext):
     chat_id = ensure(update.message).chat_id
     assert chat_id == ROOT_USER_ID
     message = ensure(update.message)
 
-    # Parse optional max_turns argument: /reflect [N]
+    # Parse optional max_turns argument: /force_reflect [N]
     max_turns = None
     if context.args:
         try:
             max_turns = int(context.args[0])
         except ValueError:
-            await message.reply_text("Usage: /reflect [max_turns]")
+            await message.reply_text("Usage: /force_reflect [max_turns]")
             return
 
     status_msg = await message.reply_text(
@@ -485,7 +485,7 @@ async def handler_reflect(update: Update, context: CallbackContext):
     )
     try:
         with context.bot_data["conn"].cursor() as curr:
-            response_text = await run_reflect(
+            response_text = await run_force_reflect(
                 curr, chat_id, context.bot, max_turns=max_turns
             )
             context.bot_data["conn"].commit()

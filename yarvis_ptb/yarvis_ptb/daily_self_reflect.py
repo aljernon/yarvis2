@@ -6,6 +6,14 @@ import httpx
 import tenacity
 from anthropic.types import MessageParam
 
+from yarvis_ptb.complex_chat import (
+    COMPLEX_CHAT_LOCK,
+    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
+    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
+    DEFAULT_COMPLEX_CHAT_CONFIG,
+)
+from yarvis_ptb.debug_chat import add_debug_message_to_queue
+from yarvis_ptb.message_search import save_message_and_update_index
 from yarvis_ptb.on_disk_memory import commit_memory, render_memory_content
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
 from yarvis_ptb.prompting import (
@@ -14,6 +22,7 @@ from yarvis_ptb.prompting import (
     render_claude_response_short,
     render_mesage_param_exact,
 )
+from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -26,7 +35,7 @@ from yarvis_ptb.storage import (
     save_message,
 )
 from yarvis_ptb.timezones import get_timezone
-from yarvis_ptb.tool_sampler import process_subagent_query
+from yarvis_ptb.tool_sampler import process_query, process_subagent_query
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +178,9 @@ def _trim_conversation_to_token_budget(
     return result
 
 
-async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> str:
+async def run_force_reflect(
+    curr, chat_id: int, bot, max_turns: int | None = None
+) -> str:
     messages = get_messages(curr, chat_id, limit=max_turns)
     claude_messages = convert_db_messages_to_claude_messages(messages)
 
@@ -214,15 +225,29 @@ async def run_reflect(curr, chat_id: int, bot, max_turns: int | None = None) -> 
     )
 
     # Build the user message
+    user_message_text = REFLECT_PROMPT.format(
+        conversation=conversation_text,
+        scheduled_invocations=invocations_text,
+    )
     user_message: MessageParam = {
         "role": "user",
-        "content": REFLECT_PROMPT.format(
-            conversation=conversation_text,
-            scheduled_invocations=invocations_text,
-        ),
+        "content": user_message_text,
     }
 
     agent_id = create_agent(curr, chat_id, meta={"type": "reflect"})
+
+    # Save the prompt we sent to the agent
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    save_message(
+        curr,
+        DbMessage(
+            created_at=now,
+            chat_id=chat_id,
+            user_id=SYSTEM_USER_ID,
+            message=user_message_text,
+            agent_id=agent_id,
+        ),
+    )
 
     msg_params, _claude_calls = await process_subagent_query(
         system=system,
@@ -346,22 +371,11 @@ async def should_auto_reflect(curr, chat_id: int) -> bool:
 async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
     """Run automatic self-reflection using the warm cache from recent conversation.
 
-    Unlike run_reflect(), this uses the same message-building pipeline as
+    Unlike run_force_reflect(), this uses the same message-building pipeline as
     process_multi_message_claude_invocation to get a cache hit on the prompt prefix.
     Results are saved under an agent_id (visible on dashboard, not in main history).
     A placeholder assistant message is inserted into main history.
     """
-    from yarvis_ptb import tool_sampler
-    from yarvis_ptb.complex_chat import (
-        COMPLEX_CHAT_LOCK,
-        COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-        COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
-        DEFAULT_COMPLEX_CHAT_CONFIG,
-    )
-    from yarvis_ptb.debug_chat import add_debug_message_to_queue
-    from yarvis_ptb.message_search import save_message_and_update_index
-    from yarvis_ptb.ptb_util import InterruptionScope
-
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
     chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
 
@@ -408,7 +422,7 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
             claude_calls,
             tool_init_time,
             subagent_usages,
-        ) = await tool_sampler.process_query(
+        ) = await process_query(
             curr=curr,
             bot=bot,
             chat_config=chat_config,
@@ -420,21 +434,19 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
             job_queue=application.job_queue,
         )
 
-        # 5. Save trigger message to main history
-        save_message_and_update_index(
+        # 5. Save trigger + bot response under agent
+        agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})
+
+        save_message(
             curr,
             DbMessage(
                 created_at=now,
                 chat_id=chat_id,
                 user_id=SYSTEM_USER_ID,
                 message=AUTO_REFLECT_PROMPT,
+                agent_id=agent_id,
             ),
         )
-
-        # Create agent and save bot response under it
-        agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})
-
-        # Save bot response under agent_id
         save_message(
             curr,
             DbMessage(
@@ -447,7 +459,16 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
             ),
         )
 
-        # 6. Insert placeholder in main history
+        # 6. Save trigger + placeholder to main history
+        save_message_and_update_index(
+            curr,
+            DbMessage(
+                created_at=now,
+                chat_id=chat_id,
+                user_id=SYSTEM_USER_ID,
+                message=AUTO_REFLECT_PROMPT,
+            ),
+        )
         placeholder_params: list[MessageParam] = [
             {
                 "role": "assistant",

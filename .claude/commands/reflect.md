@@ -5,9 +5,17 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, Agent
 
 Reflect on recent Claude Code sessions for this project to identify workflow improvements. Analyze conversations for mistakes, user corrections, inefficiencies, and missed patterns — then propose concrete improvements to CLAUDE.md or .claude/rules/*.md files.
 
-## Step 1: Gather recent session transcripts
+Arguments: $ARGUMENTS
 
-Find the 6 most recent session JSONL files for this project (by modification time), then **skip the first one** (it's the current `/reflect` session):
+## Step 1: Gather session transcripts
+
+**If arguments contain "current" or "this":** Reflect on the current session only. The current session is the most recent JSONL file:
+
+```bash
+ls -t ~/.claude/projects/-Users-anton-projects-yarvis/*.jsonl | head -1
+```
+
+**Otherwise (default):** Find the 6 most recent session JSONL files (by modification time), then **skip the first one** (it's the current `/reflect` session):
 
 ```bash
 ls -t ~/.claude/projects/-Users-anton-projects-yarvis/*.jsonl | head -6 | tail -5
