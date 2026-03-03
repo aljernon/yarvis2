@@ -3,6 +3,7 @@ import logging
 import os
 
 import httpx
+import tenacity
 from anthropic.types import MessageParam
 
 from yarvis_ptb.on_disk_memory import commit_memory, render_memory_content
@@ -64,8 +65,30 @@ Do NOT:
 """
 
 
-def _count_tokens(system: str, messages: list[MessageParam]) -> int:
-    """Count tokens using the Anthropic count_tokens API."""
+def _estimate_tokens(system: str, messages: list[MessageParam]) -> int:
+    """Rough token estimate: ~4 chars per token."""
+    total_chars = len(system)
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            total_chars += len(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and "text" in block:
+                    total_chars += len(block["text"])
+    return total_chars // 4
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type((httpx.HTTPStatusError, httpx.HTTPError)),
+    wait=tenacity.wait_exponential(multiplier=2, min=2, max=30),
+    stop=tenacity.stop_after_attempt(3),
+    before_sleep=lambda retry_state: logger.warning(
+        f"count_tokens API error, retrying in {retry_state.next_action and retry_state.next_action.sleep}s... "
+        f"(Attempt {retry_state.attempt_number})"
+    ),
+)
+def _count_tokens_with_retry(system: str, messages: list[MessageParam]) -> int:
     resp = httpx.post(
         "https://api.anthropic.com/v1/messages/count_tokens",
         headers={
@@ -80,8 +103,24 @@ def _count_tokens(system: str, messages: list[MessageParam]) -> int:
         },
         timeout=30,
     )
+    if resp.status_code != 200:
+        logger.warning(
+            "count_tokens API returned %s: %s", resp.status_code, resp.text[:500]
+        )
     resp.raise_for_status()
     return resp.json()["input_tokens"]
+
+
+def _count_tokens(system: str, messages: list[MessageParam]) -> int:
+    """Count tokens using the Anthropic count_tokens API, with fallback to estimation."""
+    try:
+        return _count_tokens_with_retry(system, messages)
+    except tenacity.RetryError as e:
+        logger.warning(
+            "count_tokens API failed after retries (%s), falling back to estimation",
+            e.last_attempt.exception(),
+        )
+        return _estimate_tokens(system, messages)
 
 
 def _trim_conversation_to_token_budget(
