@@ -1,6 +1,7 @@
 import collections
 import logging
 import os
+import time
 from asyncio import BoundedSemaphore
 from typing import Any, Awaitable
 
@@ -55,7 +56,7 @@ from yarvis_ptb.yarvis_ptb.settings import (
     ROOT_USER_ID,
     load_env,
 )
-from yarvis_ptb.yarvis_ptb.storage import connect
+from yarvis_ptb.yarvis_ptb.storage import VariablesForChat, connect
 from yarvis_ptb.yarvis_ptb.util import ensure
 from yarvis_ptb.yarvis_ptb.webhook_handlers import TimezoneHandler
 
@@ -232,10 +233,6 @@ def main():
 
 def wait_for_kill_switch():
     """Block startup while kill switch is on, re-checking every 60s."""
-    import time
-
-    from yarvis_ptb.yarvis_ptb.storage import VariablesForChat
-
     with connect() as conn:
         with conn.cursor() as curr:
             chat_vars = VariablesForChat(curr, ROOT_USER_ID)
