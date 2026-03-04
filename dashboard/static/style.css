@@ -312,6 +312,9 @@ button:hover { background: #ece4ea; }
 .inv-table tr.active { background: #eef8f9; }
 .inv-table tr.inactive { background: #fff; opacity: 0.7; }
 
+.inv-table tr.schedule-main td { border-top: 2px solid #d4b5c4; }
+.inv-table tr.schedule-context td { border-bottom: none; }
+
 .status-dot {
   display: inline-block;
   width: 8px;

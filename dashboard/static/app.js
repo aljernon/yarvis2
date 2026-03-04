@@ -352,21 +352,25 @@ async function loadSchedules() {
   let html = `<table class="inv-table">
     <thead><tr>
       <th>Status</th><th>ID</th><th>Type</th><th>Spec</th><th>Next Run</th>
-      <th>Title</th><th>Context</th>
+      <th>Title</th>
     </tr></thead><tbody>`;
 
   for (const s of data.schedules) {
     const cls = s.is_active ? "active" : "inactive";
     const dot = `<span class="status-dot ${cls}"></span>${s.is_active ? "Active" : "Inactive"}`;
-    html += `<tr class="${cls}">
+    html += `<tr class="${cls} schedule-main">
       <td>${dot}</td>
       <td>${s.id}</td>
       <td>${escapeHtml(s.schedule_type)}</td>
       <td>${s.schedule_spec ? escapeHtml(s.schedule_spec) : "—"}</td>
       <td>${formatTimestamp(s.next_run_at)}<br><span class="relative-time">${relativeTime(s.next_run_at)}</span></td>
       <td>${escapeHtml(s.title)}</td>
-      <td>${s.context ? escapeHtml(s.context) : "—"}</td>
     </tr>`;
+    if (s.context) {
+      html += `<tr class="${cls} schedule-context">
+        <td colspan="6" style="white-space:pre-wrap;padding-left:2em;opacity:0.85">${escapeHtml(s.context).replace(/\\n/g, "\n")}</td>
+      </tr>`;
+    }
   }
 
   html += "</tbody></table>";
