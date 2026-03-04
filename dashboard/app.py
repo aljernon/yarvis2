@@ -172,9 +172,9 @@ def messages_page():
     return render_template("messages.html")
 
 
-@app.route("/invocations")
-def invocations_page():
-    return render_template("invocations.html")
+@app.route("/schedules")
+def schedules_page():
+    return render_template("schedules.html")
 
 
 @app.route("/agent")
@@ -434,38 +434,41 @@ def api_turn_tokens(turn_id: int):
         conn.close()
 
 
-@app.route("/api/invocations")
-def api_invocations():
+@app.route("/api/schedules")
+def api_schedules():
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT id, created_at, scheduled_at, chat_id, is_active, is_recurring, reason, meta
-                FROM invocations
-                ORDER BY is_active DESC, scheduled_at DESC
+                SELECT id, created_at, next_run_at, chat_id, is_active,
+                       title, context, schedule_type, schedule_spec, meta
+                FROM schedules
+                ORDER BY is_active DESC, next_run_at ASC
             """)
             rows = cur.fetchall()
 
-        invocations = []
+        schedules = []
         for row in rows:
-            invocations.append(
+            schedules.append(
                 {
                     "id": row["id"],
                     "created_at": row["created_at"].isoformat()
                     if row["created_at"]
                     else None,
-                    "scheduled_at": row["scheduled_at"].isoformat()
-                    if row["scheduled_at"]
+                    "next_run_at": row["next_run_at"].isoformat()
+                    if row["next_run_at"]
                     else None,
                     "chat_id": row["chat_id"],
                     "is_active": row["is_active"],
-                    "is_recurring": row["is_recurring"],
-                    "reason": row["reason"],
+                    "schedule_type": row["schedule_type"],
+                    "schedule_spec": row["schedule_spec"],
+                    "title": row["title"],
+                    "context": row["context"],
                     "meta": row["meta"] or {},
                 }
             )
 
-        return jsonify({"invocations": invocations})
+        return jsonify({"schedules": schedules})
     finally:
         conn.close()
 
@@ -660,10 +663,8 @@ def api_stats():
             cur.execute("SELECT COUNT(*) as cnt FROM messages WHERE is_visible = true")
             visible_messages = cur.fetchone()["cnt"]
 
-            cur.execute(
-                "SELECT COUNT(*) as cnt FROM invocations WHERE is_active = true"
-            )
-            active_invocations = cur.fetchone()["cnt"]
+            cur.execute("SELECT COUNT(*) as cnt FROM schedules WHERE is_active = true")
+            active_schedules = cur.fetchone()["cnt"]
 
             cur.execute("SELECT COUNT(DISTINCT chat_id) as cnt FROM messages")
             unique_chats = cur.fetchone()["cnt"]
@@ -672,7 +673,7 @@ def api_stats():
             {
                 "total_messages": total_messages,
                 "visible_messages": visible_messages,
-                "active_invocations": active_invocations,
+                "active_schedules": active_schedules,
                 "unique_chats": unique_chats,
             }
         )

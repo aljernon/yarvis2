@@ -203,7 +203,7 @@ async def run_force_reflect(
             else:
                 type_desc = sched.schedule_type
             inv_lines.append(
-                f"- (id={sched.schedule_id}) {type_desc}; next at {sched.next_run_at.astimezone(target_tz)}; reason: '{sched.reason}'"
+                f"- (id={sched.schedule_id}) {type_desc}; next at {sched.next_run_at.astimezone(target_tz)}; title: '{sched.title}'"
             )
         invocations_text = "\n".join(inv_lines)
     else:

@@ -1,6 +1,6 @@
 # Dashboard
 
-Local-only Flask app for inspecting Yarvis conversation history, scheduled invocations, and the full agent context window.
+Local-only Flask app for inspecting Yarvis conversation history and the full agent context window.
 
 ## Running
 
@@ -20,7 +20,6 @@ SETTINGS_NAME=anton conda run -n clam python dashboard/app.py
 | Route | Template | Description |
 |-------|----------|-------------|
 | `/` / `/messages` | `messages.html` | Browse conversation history, paginated, with search and byte-size filters |
-| `/invocations` | `invocations.html` | View scheduled invocations (active/inactive) |
 | `/agent` | `agent.html` | Full agent context window: system prompt + message history as Claude sees it |
 
 ## API Endpoints
@@ -30,7 +29,6 @@ SETTINGS_NAME=anton conda run -n clam python dashboard/app.py
 | `GET /api/chats` | List chats with message counts |
 | `GET /api/messages?page=&chat_id=&search=&min_bytes=` | Paginated messages for a chat |
 | `GET /api/turn/<id>/tokens` | Token count breakdown for a single DB turn |
-| `GET /api/invocations` | All scheduled invocations |
 | `GET /api/agent-view` | Full agent context (system prompt + history) |
 | `GET /api/agent-view/tokens` | Token counts for the full agent context |
 | `GET /api/stats` | Summary stats shown in nav bar |

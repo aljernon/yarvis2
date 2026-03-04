@@ -2,27 +2,6 @@ INIT_VECTOR = """
 CREATE EXTENSION IF NOT EXISTS vector;
 """
 
-INIT_INVOCATIONS_QUERY = """
-CREATE TABLE IF NOT EXISTS invocations (
-   id SERIAL PRIMARY KEY,
-   created_at TIMESTAMPTZ NOT NULL,
-   scheduled_at TIMESTAMPTZ NOT NULL,
-   chat_id BIGINT NOT NULL,
-   embedding vector(384),
-   is_active BOOLEAN NOT NULL DEFAULT true,
-   is_recurring BOOLEAN NOT NULL DEFAULT false,
-   reason TEXT NOT NULL,
-   meta JSONB
-);
-
-CREATE INDEX IF NOT EXISTS idx_invocations_chat_active ON invocations (chat_id, is_active);
-
-
-CREATE INDEX  IF NOT EXISTS messages_embedding_idx ON messages
-USING ivfflat (embedding vector_ip_ops)  -- or vector_cosine_ops
-WITH (lists = 100);
-"""
-
 INIT_SCHEDULES_QUERY = """
 CREATE TABLE IF NOT EXISTS schedules (
     id SERIAL PRIMARY KEY,
@@ -30,7 +9,7 @@ CREATE TABLE IF NOT EXISTS schedules (
     next_run_at TIMESTAMPTZ NOT NULL,
     chat_id BIGINT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT true,
-    reason TEXT NOT NULL,
+    title TEXT NOT NULL,
     context TEXT,
     schedule_type VARCHAR(20) NOT NULL,
     schedule_spec TEXT,
@@ -40,20 +19,13 @@ CREATE TABLE IF NOT EXISTS schedules (
 CREATE INDEX IF NOT EXISTS idx_schedules_active ON schedules (is_active) WHERE is_active = true;
 """
 
-MIGRATE_INVOCATIONS_TO_SCHEDULES = """
-INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, reason, schedule_type, schedule_spec, meta)
-SELECT created_at, scheduled_at, chat_id, is_active, reason,
-       CASE WHEN is_recurring THEN 'every' ELSE 'at' END,
-       CASE WHEN is_recurring THEN '1d' ELSE NULL END,
-       meta
-FROM invocations
-WHERE is_active = true
-AND NOT EXISTS (
-    SELECT 1 FROM schedules
-    WHERE schedules.chat_id = invocations.chat_id
-    AND schedules.reason = invocations.reason
-    AND schedules.is_active = true
-);
+MIGRATE_SCHEDULES_REASON_TO_TITLE = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'schedules' AND column_name = 'reason') THEN
+        ALTER TABLE schedules RENAME COLUMN reason TO title;
+    END IF;
+END $$;
 """
 
 

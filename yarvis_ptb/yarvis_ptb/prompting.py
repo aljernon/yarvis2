@@ -108,7 +108,7 @@ def build_context_info(
             invocation_dict["scheduled_at"] = (
                 invocation.db_invocation.next_run_at.astimezone(target_tz).isoformat()
             )
-            invocation_dict["reason"] = invocation.db_invocation.reason
+            invocation_dict["title"] = invocation.db_invocation.title
             if invocation.db_invocation.context:
                 invocation_dict["context"] = invocation.db_invocation.context
         system_parts.append(f"<invocation>{invocation_dict}</invocation>")
@@ -134,15 +134,15 @@ def build_context_info(
                 next_at = sched.next_run_at.astimezone(target_tz)
                 if sched.schedule_type == "at":
                     str_chunks.append(
-                        f"(scheduled_id={sched.schedule_id}) at {next_at}; reason: '{sched.reason}'"
+                        f"(scheduled_id={sched.schedule_id}) at {next_at}; title: '{sched.title}'"
                     )
                 elif sched.schedule_type == "cron":
                     str_chunks.append(
-                        f"(scheduled_id={sched.schedule_id}) cron \"{sched.schedule_spec}\"; next at {next_at}; reason: '{sched.reason}'"
+                        f"(scheduled_id={sched.schedule_id}) cron \"{sched.schedule_spec}\"; next at {next_at}; title: '{sched.title}'"
                     )
                 elif sched.schedule_type == "every":
                     str_chunks.append(
-                        f"(scheduled_id={sched.schedule_id}) every {sched.schedule_spec}; next at {next_at}; reason: '{sched.reason}'"
+                        f"(scheduled_id={sched.schedule_id}) every {sched.schedule_spec}; next at {next_at}; title: '{sched.title}'"
                     )
 
         scheduled_invocations_str = "\n".join(str_chunks)

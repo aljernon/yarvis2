@@ -10,14 +10,13 @@ import psycopg2
 
 from yarvis_ptb.queries import (
     INIT_AGENTS_QUERY,
-    INIT_INVOCATIONS_QUERY,
     INIT_MEMORY_QUERY,
     INIT_MESSAGES_QUERY,
     INIT_SCHEDULES_QUERY,
     INIT_VARIABLES_QUERY,
     INIT_VECTOR,
-    MIGRATE_INVOCATIONS_TO_SCHEDULES,
     MIGRATE_MESSAGES_AGENT_ID,
+    MIGRATE_SCHEDULES_REASON_TO_TITLE,
 )
 from yarvis_ptb.settings import (
     BOT_USER_ID,
@@ -59,7 +58,7 @@ class DbMessage:
 class DbSchedule:
     next_run_at: datetime.datetime
     chat_id: int
-    reason: str
+    title: str
     schedule_type: str  # 'at', 'cron', 'every'
     schedule_spec: str | None = None  # cron expr or interval string
     context: str | None = None
@@ -443,7 +442,7 @@ def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
     if chat_id is None:
         curr.execute(
             """
-        SELECT next_run_at, chat_id, is_active, reason, meta, id, schedule_type, schedule_spec, context
+        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context
         FROM schedules
         WHERE is_active = true
         ORDER BY next_run_at ASC
@@ -452,7 +451,7 @@ def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
     else:
         curr.execute(
             """
-        SELECT next_run_at, chat_id, is_active, reason, meta, id, schedule_type, schedule_spec, context
+        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context
         FROM schedules
         WHERE chat_id = %s AND is_active = true
         ORDER BY next_run_at ASC
@@ -467,7 +466,7 @@ def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
                 next_run_at=row[0].astimezone(DEFAULT_TIMEZONE),
                 chat_id=row[1],
                 is_active=row[2],
-                reason=row[3],
+                title=row[3],
                 meta=row[4] or {},
                 schedule_id=row[5],
                 schedule_type=row[6],
@@ -482,7 +481,7 @@ def get_schedule_by_id(curr, schedule_id: int) -> DbSchedule | None:
     """Gets a schedule by its ID (active or not)"""
     curr.execute(
         """
-        SELECT next_run_at, chat_id, is_active, reason, meta, id, schedule_type, schedule_spec, context
+        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context
         FROM schedules
         WHERE id = %s
         """,
@@ -495,7 +494,7 @@ def get_schedule_by_id(curr, schedule_id: int) -> DbSchedule | None:
         next_run_at=row[0].astimezone(DEFAULT_TIMEZONE),
         chat_id=row[1],
         is_active=row[2],
-        reason=row[3],
+        title=row[3],
         meta=row[4] or {},
         schedule_id=row[5],
         schedule_type=row[6],
@@ -510,7 +509,7 @@ def save_schedule(curr, schedule: DbSchedule) -> int:
     assert schedule.is_active, "Only active schedules can be saved"
     curr.execute(
         """
-       INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, reason, context, schedule_type, schedule_spec, meta)
+       INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, title, context, schedule_type, schedule_spec, meta)
        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
        """,
         (
@@ -518,7 +517,7 @@ def save_schedule(curr, schedule: DbSchedule) -> int:
             schedule.next_run_at,
             schedule.chat_id,
             schedule.is_active,
-            schedule.reason,
+            schedule.title,
             schedule.context,
             schedule.schedule_type,
             schedule.schedule_spec,
@@ -690,7 +689,7 @@ def test_schedules():
                 next_run_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                 chat_id=fake_chat_id,
                 is_active=True,
-                reason="test reason",
+                title="test title",
                 schedule_type="at",
                 meta={"test_field": "test_value"},
             )
@@ -706,7 +705,7 @@ def test_schedules():
 
             assert test_schedule.chat_id == the_schedule.chat_id
             assert test_schedule.is_active == the_schedule.is_active
-            assert test_schedule.reason == the_schedule.reason
+            assert test_schedule.title == the_schedule.title
             assert test_schedule.meta == the_schedule.meta
 
             assert the_schedule.schedule_id is not None, the_schedule
@@ -764,11 +763,10 @@ def craete_all():
         curr.execute(INIT_MEMORY_QUERY)
         curr.execute(INIT_MESSAGES_QUERY)
         curr.execute(INIT_VARIABLES_QUERY)
-        curr.execute(INIT_INVOCATIONS_QUERY)
         curr.execute(INIT_SCHEDULES_QUERY)
         curr.execute(INIT_AGENTS_QUERY)
         curr.execute(MIGRATE_MESSAGES_AGENT_ID)
-        curr.execute(MIGRATE_INVOCATIONS_TO_SCHEDULES)
+        curr.execute(MIGRATE_SCHEDULES_REASON_TO_TITLE)
         logger.info("Init DB done")
 
 

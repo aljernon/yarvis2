@@ -45,7 +45,7 @@ async function loadStats() {
     const data = await resp.json();
     const el = document.getElementById("nav-stats");
     if (el) {
-      el.textContent = `${data.total_messages} msgs | ${data.visible_messages} visible | ${data.active_invocations} active inv | ${data.unique_chats} chats`;
+      el.textContent = `${data.total_messages} msgs | ${data.visible_messages} visible | ${data.active_schedules} active sched | ${data.unique_chats} chats`;
     }
   } catch (e) {
     console.error("Failed to load stats:", e);
@@ -341,31 +341,31 @@ async function fetchTokens(turnId, dbId) {
   }
 }
 
-// ── Invocations page ─────────────────────────────────────────────────────────
+// ── Schedules page ───────────────────────────────────────────────────────────
 
-async function loadInvocations() {
-  const resp = await fetch("/api/invocations");
+async function loadSchedules() {
+  const resp = await fetch("/api/schedules");
   const data = await resp.json();
-  const container = document.getElementById("invocations-container");
+  const container = document.getElementById("schedules-container");
   if (!container) return;
 
   let html = `<table class="inv-table">
     <thead><tr>
-      <th>Status</th><th>ID</th><th>Chat</th><th>Scheduled</th>
-      <th>Recurring</th><th>Reason</th><th>Meta</th>
+      <th>Status</th><th>ID</th><th>Type</th><th>Spec</th><th>Next Run</th>
+      <th>Title</th><th>Context</th>
     </tr></thead><tbody>`;
 
-  for (const inv of data.invocations) {
-    const cls = inv.is_active ? "active" : "inactive";
-    const dot = `<span class="status-dot ${cls}"></span>${inv.is_active ? "Active" : "Inactive"}`;
+  for (const s of data.schedules) {
+    const cls = s.is_active ? "active" : "inactive";
+    const dot = `<span class="status-dot ${cls}"></span>${s.is_active ? "Active" : "Inactive"}`;
     html += `<tr class="${cls}">
       <td>${dot}</td>
-      <td>${inv.id}</td>
-      <td>${inv.chat_id}</td>
-      <td>${formatTimestamp(inv.scheduled_at)}<br><span class="relative-time">${relativeTime(inv.scheduled_at)}</span></td>
-      <td>${inv.is_recurring ? "Yes" : "No"}</td>
-      <td>${escapeHtml(inv.reason)}</td>
-      <td><div class="meta-json">${escapeHtml(JSON.stringify(inv.meta, null, 2))}</div></td>
+      <td>${s.id}</td>
+      <td>${escapeHtml(s.schedule_type)}</td>
+      <td>${s.schedule_spec ? escapeHtml(s.schedule_spec) : "—"}</td>
+      <td>${formatTimestamp(s.next_run_at)}<br><span class="relative-time">${relativeTime(s.next_run_at)}</span></td>
+      <td>${escapeHtml(s.title)}</td>
+      <td>${s.context ? escapeHtml(s.context) : "—"}</td>
     </tr>`;
   }
 
@@ -674,8 +674,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("chat-filter")?.addEventListener("change", () => loadMessages(1));
   }
 
-  if (document.getElementById("invocations-container")) {
-    loadInvocations();
+  if (document.getElementById("schedules-container")) {
+    loadSchedules();
   }
 
   if (document.getElementById("agent-container")) {

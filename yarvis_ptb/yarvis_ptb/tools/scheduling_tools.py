@@ -79,7 +79,7 @@ async def get_schedule_details_fn(curr, chat_id: int, scheduled_id: int) -> Tool
         )
     details = {
         "schedule_id": schedule.schedule_id,
-        "reason": schedule.reason,
+        "title": schedule.title,
         "context": schedule.context,
         "schedule_type": schedule.schedule_type,
         "schedule_spec": schedule.schedule_spec,
@@ -92,7 +92,7 @@ async def get_schedule_details_fn(curr, chat_id: int, scheduled_id: int) -> Tool
 async def schedule_fn(
     curr,
     chat_id: int,
-    reason: str,
+    title: str,
     at: str | None = None,
     cron: str | None = None,
     every: str | None = None,
@@ -148,7 +148,7 @@ async def schedule_fn(
         curr,
         DbSchedule(
             next_run_at=next_run_at,
-            reason=reason,
+            title=title,
             chat_id=chat_id,
             schedule_type=schedule_type,
             schedule_spec=schedule_spec,
@@ -236,9 +236,9 @@ class ScheduleTool(SchedulingTool):
                     is_required=False,
                 ),
                 ArgSpec(
-                    name="reason",
+                    name="title",
                     type=str,
-                    description="Short description shown in system prompt at every turn",
+                    description="Short title shown in system prompt at every turn",
                     is_required=True,
                 ),
                 ArgSpec(
