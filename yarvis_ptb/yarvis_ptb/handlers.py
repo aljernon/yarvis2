@@ -536,13 +536,6 @@ async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackConte
         if sched is None or not sched.is_active:
             await message.reply_text(f"No active schedule with id {schedule_id}")
             return
-        now = datetime.datetime.now(DEFAULT_TIMEZONE)
-        if sched.schedule_type != "at":
-            next_run = compute_next_run(sched, now)
-            advance_schedule(curr, sched, next_run)
-        else:
-            deactivate_schedule(curr, sched)
-        context.bot_data["conn"].commit()
         await message.reply_text(f"Triggering schedule {schedule_id}: {sched.title}")
         await process_multi_message_claude_invocation(
             curr,
@@ -552,7 +545,6 @@ async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackConte
             chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
             invocation=Invocation(invocation_type="schedule", db_invocation=sched),
         )
-        context.bot_data["conn"].commit()
 
 
 @RegisteredCommandHandler.register()
