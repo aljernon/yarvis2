@@ -490,35 +490,20 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
             ),
         )
 
-        # 6. Save trigger + placeholder to main history
+        # 6. Save a system message to main history noting that reflection happened
+        # NOTE: We intentionally do NOT save a bot/assistant placeholder here.
+        # Previously we saved an assistant message with placeholder text like
+        # "[Self-reflection completed; output omitted from history]", but Claude
+        # would see that in conversation history and mimic it instead of actually
+        # reflecting, producing the placeholder text as its real output.
         save_message_and_update_index(
             curr,
             DbMessage(
-                created_at=now,
+                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                 chat_id=chat_id,
                 user_id=SYSTEM_USER_ID,
-                message=AUTO_REFLECT_PROMPT,
-            ),
-        )
-        placeholder_params: list[MessageParam] = [
-            {
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "[Self-reflection completed; output omitted from history]",
-                    }
-                ],
-            }
-        ]
-        save_message_and_update_index(
-            curr,
-            DbMessage(
-                chat_id=chat_id,
-                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-                user_id=BOT_USER_ID,
-                message="USE_CONTENT_FROM_META",
-                meta={"message_params": placeholder_params, "is_reflection": True},
+                message="Auto-reflection completed. Full output saved separately.",
+                meta={"is_reflection": True},
             ),
         )
 
