@@ -70,11 +70,13 @@ from yarvis_ptb.storage import (
     deactivate_schedule,
     get_memories,
     get_messages,
+    get_schedule_by_id,
     get_schedules,
     hide_message_history,
     mark_message_for_archive,
     save_message,
 )
+from yarvis_ptb.tools.scheduling_tools import compute_next_run
 from yarvis_ptb.util import ensure
 from yarvis_ptb.whisper_transcription import transcribe_voice_message
 
@@ -516,6 +518,43 @@ async def handler_kill(auth: AuthInfo, update: Update, context: CallbackContext)
     hard_restart()
 
 
+@RegisteredCommandHandler.register(
+    description="Trigger a schedule immediately by ID (e.g. /trigger 5)"
+)
+@auth_decorator
+async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackContext):
+    if not auth.is_root_user_complex_chat:
+        return
+    message = ensure(update.message)
+    args = message.text.split()[1:] if message.text else []
+    if len(args) != 1 or not args[0].isdigit():
+        await message.reply_text("Usage: /trigger <schedule_id>")
+        return
+    schedule_id = int(args[0])
+    with context.bot_data["conn"].cursor() as curr:
+        sched = get_schedule_by_id(curr, schedule_id)
+        if sched is None or not sched.is_active:
+            await message.reply_text(f"No active schedule with id {schedule_id}")
+            return
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        if sched.schedule_type != "at":
+            next_run = compute_next_run(sched, now)
+            advance_schedule(curr, sched, next_run)
+        else:
+            deactivate_schedule(curr, sched)
+        context.bot_data["conn"].commit()
+        await message.reply_text(f"Triggering schedule {schedule_id}: {sched.title}")
+        await process_multi_message_claude_invocation(
+            curr,
+            application=context.application,
+            bot=context.bot,
+            chat_id=sched.chat_id,
+            chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
+            invocation=Invocation(invocation_type="schedule", db_invocation=sched),
+        )
+        context.bot_data["conn"].commit()
+
+
 @RegisteredCommandHandler.register()
 @auth_decorator_complex_chat
 async def handler_restart(update: Update, context: CallbackContext):
@@ -696,8 +735,6 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                     deactivate_schedule(curr, sched)
                 else:
                     # 'cron' or 'every' — advance to next run
-                    from yarvis_ptb.tools.scheduling_tools import compute_next_run
-
                     next_run = compute_next_run(sched, now)
                     advance_schedule(curr, sched, next_run)
                 # Not implemented for other chats.
