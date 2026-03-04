@@ -731,6 +731,24 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                     advance_schedule(curr, sched, next_run)
                 # Not implemented for other chats.
                 assert sched.chat_id == ROOT_USER_ID, sched
+                # Build system message so history shows what triggered this invocation.
+                invocation_details = f"Scheduled invocation: {sched.title}"
+                if sched.schedule_type == "at":
+                    invocation_details += (
+                        f" (one-time, scheduled for {sched.next_run_at.isoformat()})"
+                    )
+                else:
+                    invocation_details += (
+                        f" ({sched.schedule_type}: {sched.schedule_spec})"
+                    )
+                if sched.context:
+                    invocation_details += f"\nContext: {sched.context}"
+                invocation_system_message = DbMessage(
+                    chat_id=sched.chat_id,
+                    created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                    user_id=SYSTEM_USER_ID,
+                    message=invocation_details,
+                )
                 await process_multi_message_claude_invocation(
                     curr,
                     application=context.application,
@@ -740,6 +758,7 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                     invocation=Invocation(
                         invocation_type="schedule", db_invocation=sched
                     ),
+                    initial_db_message=invocation_system_message,
                 )
         # Auto-reflection check (idle-triggered or daily 4am)
         try:

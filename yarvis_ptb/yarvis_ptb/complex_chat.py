@@ -379,8 +379,13 @@ async def _process_multi_message_claude_invocation_inner(
     if initial_db_message is not None:
         # Re-do timestamp so that messages that were sent during previous message generation are sill sorted properly.
         initial_db_message.created_at = now_date
-        add_debug_message_to_queue("**ANTON:**\n" + initial_db_message.message)
-        db_messages = [*db_messages, initial_db_message][-max_history_length_turns:]
+        if initial_db_message.user_id == SYSTEM_USER_ID:
+            # System messages (e.g. scheduled invocation details) are saved to DB
+            # but not appended to context — Claude already sees this via <invocation>.
+            add_debug_message_to_queue(f"**SYSTEM:**\n" + initial_db_message.message)
+        else:
+            add_debug_message_to_queue(f"**ANTON:**\n" + initial_db_message.message)
+            db_messages = [*db_messages, initial_db_message][-max_history_length_turns:]
 
     scheduled_invocations = get_schedules(curr, chat_id)
 
