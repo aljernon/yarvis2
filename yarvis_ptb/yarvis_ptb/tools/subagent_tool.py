@@ -6,6 +6,7 @@ import pathlib
 from inspect import cleandoc
 from typing import TYPE_CHECKING
 
+from yarvis_ptb.agent_config import AgentConfig
 from yarvis_ptb.on_disk_memory import load_skills_by_name
 from yarvis_ptb.prompting import (
     convert_db_messages_to_claude_messages,
@@ -167,7 +168,7 @@ class RunSubagentTool(LocalTool):
         skills: str | None = None,
         include_message_history: bool = False,
     ) -> ToolResult:
-        # 0. Resolve model
+        # 0. Build AgentConfig
         model_short = model or SUBAGENT_DEFAULT_MODEL
         model_id = SUBAGENT_MODEL_MAP.get(model_short)
         if model_id is None:
@@ -175,11 +176,25 @@ class RunSubagentTool(LocalTool):
                 f"Unknown model '{model_short}'. Use: haiku, sonnet, or opus"
             )
 
+        skill_names: list[str] = []
+        if skills:
+            skill_names = [s.strip() for s in skills.split(",") if s.strip()]
+
+        agent_config = AgentConfig(
+            description=message[:500],
+            model=model_short,
+            autoload_memories=skill_names,
+        )
+        if tools:
+            agent_config.tool_subset = [
+                t.strip() for t in tools.split(",") if t.strip()
+            ]
+
         # 1. Create agent record
         agent_id = create_agent(
             self._curr,
             self._chat_id,
-            meta={"task": message[:500], "tools": tools, "model": model_short},
+            meta=agent_config.to_meta(),
         )
         logger.info(f"Created agent {agent_id} for chat {self._chat_id}")
 
@@ -187,9 +202,8 @@ class RunSubagentTool(LocalTool):
         system = _load_subagent_system_prompt()
 
         # 2a. Inject requested skills into system prompt
-        if skills:
-            skill_names = [s.strip() for s in skills.split(",") if s.strip()]
-            skill_content, missing = load_skills_by_name(skill_names)
+        if agent_config.autoload_memories:
+            skill_content, missing = load_skills_by_name(agent_config.autoload_memories)
             if missing:
                 return ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
             if skill_content:
@@ -218,17 +232,13 @@ class RunSubagentTool(LocalTool):
 
         messages.append({"role": "user", "content": message})
 
-        # 4. Parse tool names
-        tool_names = _parse_tool_names(tools)
-
-        # 5. Run the agent query
+        # 4. Run the agent query
         try:
             message_params, claude_calls, model_id = await self._run_agent(
                 system=system,
                 messages=messages,
-                tool_names=tool_names,
+                agent_config=agent_config,
                 agent_id=agent_id,
-                model_id=model_id,
             )
         except Exception as e:
             return ToolResult.error(f"Agent failed with {type(e).__name__}: {e}")
@@ -250,25 +260,29 @@ class RunSubagentTool(LocalTool):
         tools: str | None = None,
         model: str | None = None,
     ) -> ToolResult:
-        # 1. Load agent meta
+        # 1. Load agent meta and build AgentConfig
         agent_meta = get_agent_meta(self._curr, agent_id)
         if agent_meta is None:
             return ToolResult.error(
                 f"Agent #{agent_id} not found. Use run_subagent without agent_id to create a new one."
             )
         logger.info(f"Resuming agent {agent_id} for chat {self._chat_id}")
+        agent_config = AgentConfig.from_meta(agent_meta)
 
         # 2. Resolve model — args override, else fall back to agent's original
-        model_short = model or agent_meta.get("model") or SUBAGENT_DEFAULT_MODEL
-        model_id = SUBAGENT_MODEL_MAP.get(model_short)
+        if model:
+            agent_config.model = model
+        model_id = SUBAGENT_MODEL_MAP.get(agent_config.model)
         if model_id is None:
             return ToolResult.error(
-                f"Unknown model '{model_short}'. Use: haiku, sonnet, or opus"
+                f"Unknown model '{agent_config.model}'. Use: haiku, sonnet, or opus"
             )
 
         # 3. Resolve tools — args override, else fall back to agent's original
-        effective_tools = tools if tools is not None else agent_meta.get("tools")
-        tool_names = _parse_tool_names(effective_tools)
+        if tools is not None:
+            agent_config.tool_subset = [
+                t.strip() for t in tools.split(",") if t.strip()
+            ]
 
         # 4. Check if agent is frozen (context too large from previous run)
         frozen = (agent_meta.get("last_prompt_tokens") or 0) >= MAX_AGENT_CONTEXT_TOKENS
@@ -289,9 +303,8 @@ class RunSubagentTool(LocalTool):
             message_params, claude_calls, model_id = await self._run_agent(
                 system=system,
                 messages=messages,
-                tool_names=tool_names,
+                agent_config=agent_config,
                 agent_id=agent_id,
-                model_id=model_id,
             )
         except Exception as e:
             return ToolResult.error(
@@ -313,9 +326,8 @@ class RunSubagentTool(LocalTool):
         *,
         system: str,
         messages: list[MessageParam],
-        tool_names: list[str],
+        agent_config: AgentConfig,
         agent_id: int,
-        model_id: str,
     ) -> tuple[list[MessageParam], list[ClaudeCallInfo], str]:
         """Run the agent query. Returns (message_params, claude_calls, model_id)."""
         from yarvis_ptb.interruption_scope_internal import INTERRUPTABLES
@@ -331,18 +343,18 @@ class RunSubagentTool(LocalTool):
             message_params, claude_calls = await process_subagent_query(
                 system=system,
                 messages=messages,
-                tool_names=tool_names,
+                agent_config=agent_config,
                 chat_id=self._chat_id,
                 agent_id=agent_id,
                 curr=self._curr,
                 bot=self._bot,
                 scope=parent_scope,
-                model_name=model_id,
             )
         except Exception as e:
             logger.exception(f"Agent {agent_id} failed: {e}")
             raise
 
+        model_id = SUBAGENT_MODEL_MAP[agent_config.model]
         return message_params, claude_calls, model_id
 
     def _finalize(
@@ -436,13 +448,6 @@ class RunSubagentTool(LocalTool):
                 f"Consider creating a new agent for continued work."
             )
         return ToolResult.success(result)
-
-
-def _parse_tool_names(tools: str | None) -> list[str]:
-    """Parse comma-separated tool names, or return defaults."""
-    if tools:
-        return [t.strip() for t in tools.split(",") if t.strip()]
-    return ["python_repl", "bash_run", "editor"]
 
 
 def _load_subagent_system_prompt() -> str:
@@ -589,7 +594,7 @@ if __name__ == "__main__":
             message_params, _claude_calls = await process_subagent_query(
                 system=system,
                 messages=messages,
-                tool_names=["python_repl"],
+                agent_config=AgentConfig(tool_subset=["python_repl"]),
                 chat_id=TEST_CHAT_ID,
                 agent_id=agent_id,
                 curr=curr,

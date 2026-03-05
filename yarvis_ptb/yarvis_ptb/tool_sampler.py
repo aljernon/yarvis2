@@ -28,6 +28,7 @@ from anthropic.types.beta import (
     BetaToolUseBlock,
 )
 
+from yarvis_ptb.agent_config import AgentConfig
 from yarvis_ptb.chat_config import ChatConfig
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
 from yarvis_ptb.prompt_consts import INTERRUPTION_MESSAGE, SAMPLING_FAILED_MESSAGE_TPL
@@ -39,7 +40,6 @@ from yarvis_ptb.ptb_util import (
 from yarvis_ptb.settings import FULL_LOG_CHAT_ID
 from yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
-    SUBAGENT_DEFAULT_MODEL,
     SUBAGENT_MODEL_MAP,
 )
 from yarvis_ptb.tools.bash_repl import BashRunTool
@@ -710,13 +710,12 @@ async def _process_query_with_tools(
 async def process_subagent_query(
     system: str,
     messages: list[MessageParam],
-    tool_names: list[str] | None,
+    agent_config: AgentConfig,
     chat_id: int,
     agent_id: int,
     curr,
     bot,
     scope: InterruptionScope | None = None,
-    model_name: str = SUBAGENT_MODEL_MAP[SUBAGENT_DEFAULT_MODEL],
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
     """Simplified query function for subagents.
 
@@ -729,8 +728,10 @@ async def process_subagent_query(
     if scope is None:
         scope = InterruptionScope(chat_id=chat_id, message_id=None)
 
-    # Build tool objects from names
-    all_tool_objects = _get_tools_by_names(tool_names, curr, chat_id, bot)
+    model_name = SUBAGENT_MODEL_MAP[agent_config.model]
+
+    # Build tool objects from names ("all" or explicit list)
+    all_tool_objects = _get_tools_by_names(agent_config.tool_subset, curr, chat_id, bot)
 
     claude_tools: list[ClaudeTool] = [
         tool.spec().to_claude_tool() for tool in all_tool_objects
@@ -774,11 +775,11 @@ def _build_fresh_generic_tools() -> list[LocalTool]:
 
 
 def _get_tools_by_names(
-    names: list[str] | None, curr, chat_id: int, bot
+    names: Literal["all"] | list[str], curr, chat_id: int, bot
 ) -> list[LocalTool]:
     """Pick specific tools by name from the full set of available tools.
 
-    If names is None, returns all available tools.
+    If names is "all", returns all available tools.
     Creates fresh instances of generic tools to avoid sharing state with the parent.
     """
     # Build all tool classes (excluding subagent to prevent recursion)
@@ -801,7 +802,7 @@ def _get_tools_by_names(
     for tool in _build_fresh_generic_tools():
         name_to_tool[tool.name] = tool
 
-    if names is None:
+    if names == "all":
         return list(name_to_tool.values())
 
     result = []

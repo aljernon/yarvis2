@@ -13,6 +13,9 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 - **Memory System**: Persistent memory (Core Knowledge Repository) included in system prompts
 - **Scheduling System**: Allows the bot to schedule future invocations for reminders and recurring tasks
 
+### Conventions
+- **Pydantic for structured data**: Use `pydantic.BaseModel` (not dataclasses) for config/data objects that need serialization. See `AgentConfig` in `agent_config.py` as the reference pattern. Use `model_dump()` / `model_validate()` for dict conversion.
+
 ### Key Files and Modules
 - `launch.sh`: Top-level entrypoint for the Heroku deployment
 - `yarvis_ptb/yarvis_ptb/complex_chat.py`: Contains the main conversational logic, Claude integration, and message handling
