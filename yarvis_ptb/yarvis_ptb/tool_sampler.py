@@ -791,6 +791,7 @@ def _get_tools_by_names(
         "telegram",
         "image_editing",
         "memory",
+        "tool_output",
     ]
     all_tools = _build_tools_from_classes(all_classes, curr, chat_id, bot)
     name_to_tool = {t.name: t for t in all_tools}

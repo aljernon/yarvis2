@@ -7,6 +7,10 @@ from inspect import cleandoc
 from typing import TYPE_CHECKING
 
 from yarvis_ptb.on_disk_memory import load_skills_by_name
+from yarvis_ptb.prompting import (
+    convert_db_messages_to_claude_messages,
+    render_mesage_param_exact,
+)
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -37,6 +41,24 @@ SUBAGENT_SYSTEM_PROMPT_PATH = (
     / "subagent-usage"
     / "SYSTEM_PROMPT.md"
 )
+
+
+def _render_history_for_subagent(
+    db_messages: list[DbMessage],
+) -> str:
+    """Render main conversation history as text for inclusion in a subagent prompt.
+
+    Large tool results (>=10KB) are truncated using the standard compactification
+    logic, with get_tool_output references so the subagent can retrieve them.
+    """
+    claude_messages = convert_db_messages_to_claude_messages(
+        db_messages,
+        tool_result_truncation_after_n_turns=0,
+    )
+    lines: list[str] = []
+    for msg in claude_messages:
+        lines.extend(render_mesage_param_exact(msg))
+    return "\n".join(lines)
 
 
 class RunSubagentTool(LocalTool):
@@ -95,6 +117,12 @@ class RunSubagentTool(LocalTool):
                     description="Comma-separated skill names from the Core Knowledge Repository to include in the agent's system prompt. Only allowed when creating a new agent (no agent_id).",
                     is_required=False,
                 ),
+                ArgSpec(
+                    name="include_message_history",
+                    type=bool,
+                    description="If true, the agent will see the currently visible main conversation messages as a rendered text block (a system message before the main request). Only allowed when creating a new agent (no agent_id).",
+                    is_required=False,
+                ),
             ],
         )
 
@@ -107,6 +135,7 @@ class RunSubagentTool(LocalTool):
         tools: str | None = None,
         model: str | None = None,
         skills: str | None = None,
+        include_message_history: bool = False,
         **kwargs: object,
     ) -> ToolResult:
         if agent_id is not None:
@@ -114,11 +143,19 @@ class RunSubagentTool(LocalTool):
                 return ToolResult.error(
                     "The 'skills' parameter can only be used when creating a new agent (without agent_id)."
                 )
+            if include_message_history:
+                return ToolResult.error(
+                    "The 'include_message_history' parameter can only be used when creating a new agent (without agent_id)."
+                )
             return await self._execute_resume(
                 agent_id=agent_id, message=message, tools=tools, model=model
             )
         return await self._execute_new(
-            message=message, tools=tools, model=model, skills=skills
+            message=message,
+            tools=tools,
+            model=model,
+            skills=skills,
+            include_message_history=include_message_history,
         )
 
     async def _execute_new(
@@ -128,6 +165,7 @@ class RunSubagentTool(LocalTool):
         tools: str | None = None,
         model: str | None = None,
         skills: str | None = None,
+        include_message_history: bool = False,
     ) -> ToolResult:
         # 0. Resolve model
         model_short = model or SUBAGENT_DEFAULT_MODEL
@@ -157,8 +195,28 @@ class RunSubagentTool(LocalTool):
             if skill_content:
                 system = f"{system}\n\n=== Reference Knowledge ===\nThe following skill files were provided to help you with this task.\n\n{skill_content}"
 
-        # 3. Build messages — single user message
-        messages: list[MessageParam] = [{"role": "user", "content": message}]
+        # 3. Build messages
+        messages: list[MessageParam] = []
+
+        # 3a. Include main conversation history as a system message
+        if include_message_history:
+            db_messages = get_messages(self._curr, chat_id=self._chat_id)
+            if db_messages:
+                history_text = _render_history_for_subagent(db_messages)
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
+                    }
+                )
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": "Understood, I've read the main conversation history. What would you like me to do?",
+                    }
+                )
+
+        messages.append({"role": "user", "content": message})
 
         # 4. Parse tool names
         tool_names = _parse_tool_names(tools)
@@ -215,17 +273,12 @@ class RunSubagentTool(LocalTool):
         # 4. Check if agent is frozen (context too large from previous run)
         frozen = (agent_meta.get("last_prompt_tokens") or 0) >= MAX_AGENT_CONTEXT_TOKENS
 
-        # 5. Rebuild conversation history from DB
+        # 5. Rebuild conversation history from DB (with truncation of old tool results)
         db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
-        messages: list[MessageParam] = []
-        for msg in db_msgs:
-            if msg.user_id == BOT_USER_ID:
-                # Bot message — expand message_params into the conversation
-                if msg.meta and "message_params" in msg.meta:
-                    messages.extend(msg.meta["message_params"])
-            else:
-                # User message
-                messages.append({"role": "user", "content": msg.message})
+        messages = convert_db_messages_to_claude_messages(
+            db_msgs,
+            tool_result_truncation_after_n_turns=0,
+        )
 
         # 6. Append new user message
         messages.append({"role": "user", "content": message})
