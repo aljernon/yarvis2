@@ -22,6 +22,11 @@ LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8081"))
 
 app = Flask(__name__)
 
+# Websocket connection state, updated by ws_listener thread
+ws_connected = False
+ws_last_connected_at = None
+ws_last_error = None
+
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -99,11 +104,17 @@ def cleanup_old_messages():
 
 
 def ws_listener():
+    global ws_connected, ws_last_connected_at, ws_last_error
     url = f"{SIGNAL_WS_URL}/v1/receive/{SIGNAL_PHONE}"
     while True:
         try:
             print(f"Connecting to {url}")
-            ws = websocket.create_connection(url, timeout=None)
+            ws_connected = False
+            ws = websocket.create_connection(url, timeout=30)
+            ws.settimeout(None)  # block indefinitely on recv
+            ws_connected = True
+            ws_last_connected_at = datetime.now(timezone.utc)
+            ws_last_error = None
             print("Connected, listening for messages...")
             while True:
                 raw = ws.recv()
@@ -112,6 +123,8 @@ def ws_listener():
                     envelope = data.get("envelope", {})
                     store_message(envelope)
         except Exception as e:
+            ws_connected = False
+            ws_last_error = str(e)
             print(f"Websocket error: {e}, reconnecting in 5s...")
             time.sleep(5)
 
@@ -163,7 +176,17 @@ def get_messages():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    status = "ok" if ws_connected else "degraded"
+    code = 200 if ws_connected else 503
+    resp = {
+        "status": status,
+        "websocket_connected": ws_connected,
+        "connected_since": ws_last_connected_at.isoformat()
+        if ws_last_connected_at
+        else None,
+        "last_error": ws_last_error,
+    }
+    return jsonify(resp), code
 
 
 if __name__ == "__main__":
