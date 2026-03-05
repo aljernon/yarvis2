@@ -19,9 +19,6 @@ SUBAGENT_DEFAULT_MODEL = "haiku"
 DEFAULT_TIMEZONE = pytz.timezone(DEFAULT_TIMEZONE_STR)
 
 
-MAMONT_GROUP_CHAT_ID: int = -4771154054
-FAMILY_GROUP_CHAT_ID: int = -705787714
-PRIVATE_DEBUG_CHAT_ID: int = -4656233403
 
 HISTORY_LENGTH_TURNS = 60
 HISTORY_LENGTH_LONG_TURNS = 400
@@ -35,77 +32,11 @@ BOT_USER_ID = -1
 TOOL_CALL_USER_ID = -3
 SYSTEM_USER_ID = -2
 
-KNOWN_USER_PRIVATE_CHAT_CONFIGS: dict[int, ChatConfig] = {
-    192932807: ChatConfig(  # mila
-        prompt_name="mamont_private",
-        is_complex_chat=False,
-        tool_filter="basic",
-        max_history_length_turns_override=HISTORY_LENGTH_TURNS,
-        memory_access=False,
-    ),
-}
+KNOWN_USER_PRIVATE_CHAT_CONFIGS: dict[int, ChatConfig] = {}
 
 # chat name -> config. Only works if root in the the channel and the message
 # from the root.
-CONFIGURED_CHATS: dict[str, ChatConfig] = {
-    "yarvis_simple": ChatConfig(
-        prompt_name="default",
-        is_complex_chat=True,
-        tool_filter="basic",
-        max_history_length_turns_override=20,
-        memory_access=True,
-    ),
-    "yarvis_simple_nomem": ChatConfig(
-        prompt_name="default",
-        is_complex_chat=True,
-        tool_filter="basic",
-        max_history_length_turns_override=20,
-        memory_access=False,
-    ),
-    "yarvis_simple_haiku": ChatConfig(
-        prompt_name="default",
-        is_complex_chat=True,
-        tool_filter="basic",
-        max_history_length_turns_override=20,
-        memory_access=True,
-        model_name_override="claude-3-haiku-20240307",
-    ),
-    "logseq": ChatConfig(
-        prompt_name="logseq",
-        is_complex_chat=True,
-        tool_only_messaging=True,
-        tool_filter="logseq",
-        max_history_length_turns_override=20,
-        memory_access=False,
-    ),
-    "Ф": ChatConfig(
-        prompt_name="family",
-        is_complex_chat=False,
-        tool_filter="basic",
-        trigger_condition="mention",
-        chat_id=FAMILY_GROUP_CHAT_ID,
-        max_history_length_turns_override=HISTORY_LENGTH_TURNS,
-        memory_access=False,
-    ),
-    "california dreaming": ChatConfig(
-        prompt_name="general_group_chat",
-        is_complex_chat=False,
-        tool_filter="basic",
-        trigger_condition="mention",
-        chat_id=-4867361443,
-        max_history_length_turns_override=HISTORY_LENGTH_TURNS,
-        memory_access=False,
-    ),
-    "Claude & Mamont": ChatConfig(
-        prompt_name="mamont",
-        is_complex_chat=False,
-        chat_id=MAMONT_GROUP_CHAT_ID,
-        trigger_condition="all",
-        tool_filter="basic",
-        max_history_length_turns_override=HISTORY_LENGTH_TURNS,
-        memory_access=False,
-    ),
-}
+CONFIGURED_CHATS: dict[str, ChatConfig] = {}
 
 
 def load_env():

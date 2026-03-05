@@ -216,7 +216,7 @@ def main():
 
         # Start the webhook
         webhook_url = (
-            f"https://claude-telegram-c4fccbf117d9.herokuapp.com/{TELEGRAM_BOT_TOKEN}"
+            f"https://claude-telegram-v2-b2825ba2ed68.herokuapp.com/{TELEGRAM_BOT_TOKEN}"
         )
         logger.info(f"Setting webhook to: {webhook_url}")
         application.run_webhook(

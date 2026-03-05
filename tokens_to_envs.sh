@@ -28,7 +28,7 @@ for file in "${files[@]}"; do
 
     if [[ "$1" = "to_env" ]]; then
         if [ -f "${file}" ]; then
-            heroku config:set -a claude-telegram  ${env_var}="$(cat $file | gzip | base64)"
+            heroku config:set -a claude-telegram-v2  ${env_var}="$(cat $file | gzip | base64)"
         else
             echo "Error: File $file does not exist"
         fi
