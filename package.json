@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "google-calendar-mcp": "github:akhti/google-calendar-mcp",
+    "typescript": "^5.7.2"
+  }
+}

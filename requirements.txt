@@ -1,0 +1,60 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+python-telegram-bot[webhooks,job-queue]==20.8
+telegramify-markdown==0.3.1
+mcp==0.9.1
+gspread==6.1.4
+python-dotenv==1.0.1
+pre_commit==4.0.1
+gcsa==2.5.1
+anthropic==0.49.0
+python-dateutil==2.9.0.post0
+ensure==1.0.4
+psycopg2==2.9.10
+pytz==2024.2
+gkeepapi==0.16.0
+simplegmail==4.1.1
+typer==0.15.1
+tqdm==4.67.1
+termcolor==2.5.0
+pytest==8.3.4
+tenacity==9.0.0
+selenium==4.30.0
+
+# PG-based similarity vectors; not used right now
+# pgvector
+# For semantic search; not used
+#torch==2.5.1
+#sentence-transformers
+
+# Telegram client. Used only for voice transription.
+telethon==1.38.1
+
+# OpenAI API for Whisper transcription
+openai==1.57.0
+
+# For location logger and camera app
+flask==3.1.0
+
+# For camera app API key encryption
+cryptography==45.0.3
+fernet==1.0.1
+
+-e ./clam_ptb
+
+# For the image processing
+pillow==11.0.0
+matplotlib==3.10.3
+networkx==3.4.2
+pycairo==1.28.0
+# for some data science
+pandas==2.2.3
+
+# To speed up requirements resolution.
+idna>=3.10
+google-api-core>=2.24.0
+google-api-python-client>=2.156.0
+google-auth>=2.37.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.1
+googleapis-common-protos>=1.66.0
+urllib3==1.26.20

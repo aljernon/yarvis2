@@ -1,0 +1,18 @@
+.env
+node_modules
+Debug.ipynb
+memory/
+core_knowledge
+__pycache__
+.ipynb_checkpoints/
+clam_ptb/clam_ptb.egg-info
+memory
+.vscode
+
+
+# tokens
+service_account.json
+session_name*.session
+token.pickle
+gmail_token.json
+credentials.json

@@ -1,0 +1,29 @@
+ci:
+  autoupdate_branch: ''
+  autofix_commit_msg: 'ci: auto fixes from pre-commit hooks'
+  autoupdate_commit_msg: 'ci: pre-commit autoupdate'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.8.4
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [--select, I, --fix, --select=F401]
+      # Run the formatter.
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: good_imports
+        name: good_imports
+        entry: find clam_ptb/ -name "*.py" -exec sed -i '' "s/clam_ptb\.clam_ptb/clam_ptb/g" {} \;
+        language: system
+        types: [python]
+        pass_filenames: false
