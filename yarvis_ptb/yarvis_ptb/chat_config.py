@@ -10,9 +10,9 @@ class ChatConfig:
     "Essentially meants access to settings.json and showing truncating constants in the context."
 
     memory_access: bool
-    "Include memory files in the system prompt"
+    "Include memory files in the system prompt, tell how to use + track changes and auto-commit"
 
-    tool_filter: Literal["none", "all", "basic"]
+    tool_filter: Literal["none", "all", "basic", "logseq"]
 
     chat_id: int | None = None
     "Additional filtering for the bot. If set, then the bot will only reply to this chat id."

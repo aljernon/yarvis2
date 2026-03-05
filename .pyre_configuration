@@ -13,7 +13,6 @@
 		"yarvis_ptb/yarvis_ptb/message_search.py",
 		"yarvis_ptb/yarvis_ptb/prompting.py",
 		"yarvis_ptb/yarvis_ptb/ptb_util.py",
-		"yarvis_ptb/yarvis_ptb/settings/main.py",
 		"yarvis_ptb/yarvis_ptb/tools/bash_repl.py",
 		"yarvis_ptb/yarvis_ptb/tools/file_tools.py",
 		"yarvis_ptb/yarvis_ptb/tools/gcal_tools.py",
