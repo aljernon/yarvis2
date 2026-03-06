@@ -10,6 +10,7 @@ At 2am local time:
 """
 
 import datetime
+import json
 import logging
 
 from yarvis_ptb.agent_config import AgentConfig, AgentMeta
@@ -150,21 +151,23 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
 
         # 5. Build list of available frozen predecessors
         sessions = get_dau_sessions(curr, chat_id)
-        predecessor_lines = []
+        session_entries = []
         for s in sessions[:10]:  # Show last 10
             s_summary = s["meta"].get("summary", "no summary")
-            predecessor_lines.append(f"  - {s['slug']}: {s_summary[:150]}")
-        predecessors_text = (
-            "\n".join(predecessor_lines) if predecessor_lines else "  (none)"
-        )
+            session_entries.append(
+                json.dumps({"agent": s["slug"], "description": s_summary})
+            )
+        sessions_text = "\n".join(session_entries) if session_entries else "(none)"
 
         # 6. Insert system message in main chat about the new session
         new_session_msg = (
-            f"=== New DAU Session ===\n"
-            f"Yesterday's conversation ({yesterday}) has been archived as '{slug}'.\n"
-            f'You can query it with: run_subagent(agent="{slug}", message="...")\n\n'
-            f"Available archived sessions:\n{predecessors_text}\n\n"
-            f"Review what happened yesterday and decide if there's anything you should "
+            f"=== New Session ===\n"
+            f"Your conversation history up to {yesterday} has been moved to archive "
+            f"agent '{slug}'. Your current context is now empty — use "
+            f'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
+            f"Archived sessions (descriptions are LLM-generated summaries):\n"
+            f"{sessions_text}\n\n"
+            f"Review yesterday's session and decide if there's anything you should "
             f"proactively do: follow up on tasks, update CKR with important info, "
             f"check on commitments, etc."
         )
