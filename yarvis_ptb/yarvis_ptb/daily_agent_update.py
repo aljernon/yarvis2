@@ -213,10 +213,21 @@ def _summarize_messages(
     max_input_tokens = max_summary_tokens
 
     prompt_template = (
-        "Summarize the following conversation in one paragraph. "
-        "Include: main topics discussed, people mentioned, "
-        "events or commitments made, and any action items. "
-        "Be concise but comprehensive.\n\n"
+        "You are creating an index summary of a conversation archive. "
+        "This summary will be used by other AI agents to decide whether to query "
+        "this archive for information. Maximize keyword/topic coverage so relevant "
+        "queries can find this archive. Be token-efficient: use comma-separated "
+        "lists, not bullet points.\n\n"
+        "Format:\n"
+        "# Session Summary\n"
+        "One sentence overview.\n\n"
+        "**Topics:** comma-separated list of all topics/subjects/themes "
+        "(be comprehensive, include minor topics)\n\n"
+        "**People:** Name (context), Name (context), ...\n\n"
+        "**Events:** comma-separated list of events/appointments/activities\n\n"
+        "**Instructions/Preferences:** any user corrections, preferences, or rules established\n\n"
+        "**Learnings:** new information learned, insights, discoveries\n\n"
+        "Do NOT include action items or forward-looking tasks.\n\n"
         "<conversation>\n{conversation}\n</conversation>"
     )
 
@@ -233,14 +244,24 @@ def _summarize_messages(
         full_prompt = prompt_template.format(conversation=conversation_text)
         messages = [{"role": "user", "content": full_prompt}]
 
+    max_output_tokens = 1000
+    summary = ""
     try:
-        response = client.messages.create(
-            model=haiku_model,
-            max_tokens=500,
-            messages=messages,
-        )
-        text_blocks = [b.text for b in response.content if b.type == "text"]
-        return " ".join(text_blocks).strip() or None
+        for attempt in range(3):
+            response = client.messages.create(
+                model=haiku_model,
+                max_tokens=max_output_tokens,
+                messages=messages,
+            )
+            text_blocks = [b.text for b in response.content if b.type == "text"]
+            summary = " ".join(text_blocks).strip()
+            if response.stop_reason == "end_turn":
+                return summary or None
+            logger.info(
+                f"DAU: summary hit max_tokens on attempt {attempt + 1}, retrying"
+            )
+        # Last attempt hit the limit too — return what we got
+        return summary or None
     except Exception:
         logger.exception("DAU: haiku summarization failed")
         return None
