@@ -18,7 +18,7 @@ from yarvis_ptb.prompting import (
 from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.sampling import NoOpHooks, SamplingConfig, SamplingResult
-from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
+from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, ROOT_AGENT_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
@@ -228,7 +228,7 @@ class RunSubagentTool(LocalTool):
                     DbMessage(
                         created_at=now,
                         chat_id=self._chat_id,
-                        user_id=1,
+                        user_id=ROOT_AGENT_USER_ID,
                         message=f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
                         agent_id=agent_id,
                     ),
@@ -428,7 +428,7 @@ class RunSubagentTool(LocalTool):
                 DbMessage(
                     created_at=now,
                     chat_id=self._chat_id,
-                    user_id=1,  # User message
+                    user_id=ROOT_AGENT_USER_ID,  # User message
                     message=message,
                     agent_id=agent_id,
                 ),
@@ -628,7 +628,7 @@ if __name__ == "__main__":
                 DbMessage(
                     created_at=now,
                     chat_id=TEST_CHAT_ID,
-                    user_id=1,
+                    user_id=ROOT_AGENT_USER_ID,
                     message="What is 2+2? Use python_repl to compute it.",
                     agent_id=agent_id,
                 ),
