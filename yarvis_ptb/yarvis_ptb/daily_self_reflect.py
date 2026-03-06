@@ -245,6 +245,7 @@ async def run_force_reflect(
         curr,
         chat_id,
         meta=AgentMeta(agent_config=reflect_config, type="force_reflect").model_dump(),
+        slug=None,
     )
 
     # Save the prompt we sent to the agent
@@ -476,7 +477,10 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
 
         # 5. Save trigger + bot response under agent
         agent_id = create_agent(
-            curr, chat_id, meta=AgentMeta(type="auto_reflect").model_dump()
+            curr,
+            chat_id,
+            meta=AgentMeta(type="auto_reflect").model_dump(),
+            slug=None,
         )
 
         save_message(

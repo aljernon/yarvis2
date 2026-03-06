@@ -803,7 +803,7 @@ def get_agent_by_slug(curr, chat_id: int, slug: str) -> tuple[int, dict] | None:
 
 
 def create_agent(
-    curr, chat_id: int, meta: dict | None = None, slug: str | None = None
+    curr, chat_id: int, *, meta: dict | None = None, slug: str | None
 ) -> int:
     """Creates an agent record in the DB. Returns the agent id."""
     curr.execute(

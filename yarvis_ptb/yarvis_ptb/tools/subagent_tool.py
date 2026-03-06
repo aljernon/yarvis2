@@ -582,7 +582,9 @@ if __name__ == "__main__":
 
         with connect() as conn, conn.cursor() as curr:
             # 1. Create agent
-            agent_id = create_agent(curr, TEST_CHAT_ID, meta={"test": True})
+            agent_id = create_agent(
+                curr, TEST_CHAT_ID, meta={"test": True}, slug=generate_agent_slug()
+            )
             print(f"Created agent_id={agent_id}")
 
             # 2. Run subagent query
