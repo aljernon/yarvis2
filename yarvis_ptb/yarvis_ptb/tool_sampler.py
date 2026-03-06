@@ -625,9 +625,19 @@ async def _process_query_with_tools(
                 id=result_content.id,
             )
 
+    def _check_extra_messages(msgs: list, label: str) -> None:
+        for i, m in enumerate(msgs):
+            c = m.get("content")
+            if c is not None and not isinstance(c, list):
+                logger.error(
+                    f"CONTENT_TYPE_BUG [{label}] msg[{i}].content is "
+                    f"{type(c).__name__} (expected list)"
+                )
+
     claude_calls: list[ClaudeCallInfo] = []
 
     while True:
+        _check_extra_messages(extra_messages, "loop start")
         logger.info(f"{len(messages)=}")
 
         try:
@@ -654,6 +664,7 @@ async def _process_query_with_tools(
             # Return nothing - no need to waste content.
             return [], claude_calls
 
+        _check_extra_messages(extra_messages, "after SDK call")
         logger.info(
             f"Response content types: {[c.type for c in partial_sample.content]}"
         )
@@ -662,6 +673,7 @@ async def _process_query_with_tools(
             for content in partial_sample.content
         ]
         extra_messages.append({"role": "assistant", "content": converted_content})
+        _check_extra_messages(extra_messages, "after assistant append")
         # No need to call on_update here, as we are already doing it in the stream.
         tool_execution_results: list[ToolResultBlockParam] = []
         should_stop_after = False
@@ -707,7 +719,9 @@ async def _process_query_with_tools(
         if tool_execution_results:
             tool_execution_time = time.monotonic() - tool_execution_start_time
             extra_messages.append({"role": "user", "content": tool_execution_results})
+            _check_extra_messages(extra_messages, "after user append")
             await on_update(extra_messages)
+            _check_extra_messages(extra_messages, "after on_update")
         else:
             tool_execution_time = None
         claude_calls.append(
