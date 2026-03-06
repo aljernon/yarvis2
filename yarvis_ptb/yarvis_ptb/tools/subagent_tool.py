@@ -102,7 +102,7 @@ class RunSubagentTool(LocalTool):
                 ArgSpec(
                     name="tools",
                     type=str,
-                    description="Comma-separated tool names the agent should have access to. Default: python_repl,bash_run,editor",
+                    description="Comma-separated tool names the agent should have access to. Default: python_repl,bash_run,editor. Only allowed when creating a new agent (without agent).",
                     is_required=False,
                 ),
                 ArgSpec(
@@ -143,6 +143,10 @@ class RunSubagentTool(LocalTool):
                 return ToolResult.error(
                     "The 'skills' parameter can only be used when creating a new agent (without agent)."
                 )
+            if tools is not None:
+                return ToolResult.error(
+                    "The 'tools' parameter can only be used when creating a new agent (without agent)."
+                )
             if include_message_history:
                 return ToolResult.error(
                     "The 'include_message_history' parameter can only be used when creating a new agent (without agent)."
@@ -160,7 +164,7 @@ class RunSubagentTool(LocalTool):
                 return error
 
         return await self._run_agent_request(
-            agent_slug=agent, message=message, tools=tools, model=model
+            agent_slug=agent, message=message, model=model
         )
 
     def _create_agent(
@@ -251,7 +255,6 @@ class RunSubagentTool(LocalTool):
         *,
         agent_slug: str,
         message: str,
-        tools: str | None = None,
         model: str | None = None,
     ) -> ToolResult:
         """Load agent, build prompt, run query, save results."""
@@ -277,13 +280,7 @@ class RunSubagentTool(LocalTool):
                 f"Unknown model '{agent_config.sampling.model}'. Use: haiku, sonnet, or opus"
             )
 
-        # 3. Resolve tools — args override, else fall back to agent's original
-        if tools is not None:
-            agent_config.sampling.tool_subset = [
-                t.strip() for t in tools.split(",") if t.strip()
-            ]
-
-        # 4. Check if agent is frozen
+        # 3. Check if agent is frozen
         frozen = (
             agent_meta.is_frozen
             or (agent_meta.last_prompt_tokens or 0) >= MAX_AGENT_CONTEXT_TOKENS
