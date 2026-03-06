@@ -58,7 +58,6 @@ from yarvis_ptb.storage import (
     Invocation,
     VariablesForChat,
     archive_marked_messages,
-    deactivate_schedule,
     get_messages,
     get_schedules,
 )
@@ -207,14 +206,6 @@ async def handle_message_root_user_assistant(
     if chat_vars.get(chat_vars.KILL_SWITCH):
         await update.message.reply_text("Kill switch on")
         return
-
-    # Check for any active reply_timeout schedules and deactivate them
-    # since the user has replied
-    scheduled_invocations = get_schedules(curr, chat_id)
-    for sched in scheduled_invocations:
-        if sched.meta.get("invocation_type") == "reply_timeout":
-            logger.info(f"Deactivating reply timeout schedule: {sched.schedule_id}")
-            deactivate_schedule(curr, sched)
 
     # Debug logging for message type detection
     logger.info(
