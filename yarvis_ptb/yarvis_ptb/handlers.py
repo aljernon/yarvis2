@@ -685,7 +685,9 @@ async def _handle_message(
 async def app_start_callback(context: ContextTypes.DEFAULT_TYPE):
     # Add a system message to the complex chat that the bot has restated.
     with context.bot_data["conn"].cursor() as curr:
-        git_commit = os.environ.get("HEROKU_SLUG_COMMIT", "UNK")[:6]
+        git_commit = os.environ.get(
+            "HEROKU_BUILD_COMMIT", os.environ.get("HEROKU_SLUG_COMMIT", "UNK")
+        )[:6]
         db_message = DbMessage(
             chat_id=ROOT_USER_ID,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
