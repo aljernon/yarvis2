@@ -2,35 +2,38 @@ from __future__ import annotations
 
 import datetime
 import logging
-import pathlib
 from inspect import cleandoc
 from typing import TYPE_CHECKING
 
-from yarvis_ptb.agent_config import DEFAULT_SUBAGENT_TOOL_SUBSET, AgentConfig
+from yarvis_ptb.agent_config import DEFAULT_SUBAGENT_TOOL_SUBSET, AgentConfig, AgentMeta
+from yarvis_ptb.agent_slugs import generate_agent_slug
+from yarvis_ptb.debug_chat import add_debug_message_to_queue
+from yarvis_ptb.interruption_scope_internal import INTERRUPTABLES
 from yarvis_ptb.on_disk_memory import load_skills_by_name
 from yarvis_ptb.prompting import (
+    build_claude_input,
     convert_db_messages_to_claude_messages,
     render_mesage_param_exact,
 )
 from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.rendering_config import RenderingConfig
-from yarvis_ptb.sampling import NoOpHooks, SamplingConfig
+from yarvis_ptb.sampling import NoOpHooks, SamplingConfig, SamplingResult
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
     create_agent,
-    get_agent_meta,
+    get_agent_by_slug,
     get_messages,
     save_message,
     update_agent_meta,
 )
+from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
 if TYPE_CHECKING:
     from anthropic.types import MessageParam
 
-    from yarvis_ptb.tool_sampler import ClaudeCallInfo
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +41,6 @@ logger = logging.getLogger(__name__)
 # When an agent's history exceeds this, it becomes "frozen" — new messages
 # are saved but marked hidden and won't appear in future agent calls.
 MAX_AGENT_CONTEXT_TOKENS = 50_000
-
-SUBAGENT_SYSTEM_PROMPT_PATH = (
-    pathlib.Path(__file__).parent.parent.parent.parent
-    / "core_knowledge"
-    / "subagent-usage"
-    / "SYSTEM_PROMPT.md"
-)
 
 
 def _render_history_for_subagent(
@@ -80,8 +76,8 @@ class RunSubagentTool(LocalTool):
                 with their own tool access and history, stored separately from the main
                 conversation.
 
-                - Omit agent_id to create a new agent (returns its ID in the result)
-                - Pass agent_id to continue an existing agent's conversation
+                - Omit agent to create a new agent (returns its slug in the result)
+                - Pass agent slug to continue an existing agent's conversation
 
                 Agents have a context limit of {MAX_AGENT_CONTEXT_TOKENS} tokens. Once
                 exceeded, the agent becomes "frozen": it still responds, but the exchange
@@ -98,9 +94,9 @@ class RunSubagentTool(LocalTool):
                     is_required=True,
                 ),
                 ArgSpec(
-                    name="agent_id",
-                    type=int,
-                    description="Continue a previous agent's conversation. The agent retains its full history.",
+                    name="agent",
+                    type=str,
+                    description="Agent slug to resume (e.g. 'swift-pine' or 'archive-2026-03-04'). Omit to create a new agent.",
                     is_required=False,
                 ),
                 ArgSpec(
@@ -118,13 +114,13 @@ class RunSubagentTool(LocalTool):
                 ArgSpec(
                     name="skills",
                     type=str,
-                    description="Comma-separated skill names from the Core Knowledge Repository to include in the agent's system prompt. Only allowed when creating a new agent (no agent_id).",
+                    description="Comma-separated skill names from the Core Knowledge Repository to include in the agent's system prompt. Only allowed when creating a new agent (without agent).",
                     is_required=False,
                 ),
                 ArgSpec(
                     name="include_message_history",
                     type=bool,
-                    description="If true, the agent will see the currently visible main conversation messages as a rendered text block (a system message before the main request). Only allowed when creating a new agent (no agent_id).",
+                    description="If true, the agent will see the currently visible main conversation messages as a rendered text block (a system message before the main request). Only allowed when creating a new agent (without agent).",
                     is_required=False,
                 ),
             ],
@@ -135,53 +131,63 @@ class RunSubagentTool(LocalTool):
         self,
         *,
         message: str,
-        agent_id: int | None = None,
+        agent: str | None = None,
         tools: str | None = None,
         model: str | None = None,
         skills: str | None = None,
         include_message_history: bool = False,
         **kwargs: object,
     ) -> ToolResult:
-        if agent_id is not None:
+        if agent is not None:
             if skills is not None:
                 return ToolResult.error(
-                    "The 'skills' parameter can only be used when creating a new agent (without agent_id)."
+                    "The 'skills' parameter can only be used when creating a new agent (without agent)."
                 )
             if include_message_history:
                 return ToolResult.error(
-                    "The 'include_message_history' parameter can only be used when creating a new agent (without agent_id)."
+                    "The 'include_message_history' parameter can only be used when creating a new agent (without agent)."
                 )
-            return await self._execute_resume(
-                agent_id=agent_id, message=message, tools=tools, model=model
+        else:
+            # Create new agent
+            agent, error = self._create_agent(
+                message=message,
+                tools=tools,
+                model=model,
+                skills=skills,
+                include_message_history=include_message_history,
             )
-        return await self._execute_new(
-            message=message,
-            tools=tools,
-            model=model,
-            skills=skills,
-            include_message_history=include_message_history,
+            if error is not None:
+                return error
+
+        return await self._run_agent_request(
+            agent_slug=agent, message=message, tools=tools, model=model
         )
 
-    async def _execute_new(
+    def _create_agent(
         self,
         *,
         message: str,
-        tools: str | None = None,
-        model: str | None = None,
-        skills: str | None = None,
-        include_message_history: bool = False,
-    ) -> ToolResult:
-        # 0. Build AgentConfig
+        tools: str | None,
+        model: str | None,
+        skills: str | None,
+        include_message_history: bool,
+    ) -> tuple[str, ToolResult | None]:
+        """Create a new agent record. Returns (slug, error_or_None)."""
         model_short = model or SUBAGENT_DEFAULT_MODEL
-        model_id = SUBAGENT_MODEL_MAP.get(model_short)
-        if model_id is None:
-            return ToolResult.error(
+        if model_short not in SUBAGENT_MODEL_MAP:
+            return "", ToolResult.error(
                 f"Unknown model '{model_short}'. Use: haiku, sonnet, or opus"
             )
 
         skill_names: list[str] = []
         if skills:
             skill_names = [s.strip() for s in skills.split(",") if s.strip()]
+
+        # Validate skills exist
+        if skill_names:
+            _, missing = load_skills_by_name(skill_names)
+            if missing:
+                return "", ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
 
         tool_subset: list[str] = list(DEFAULT_SUBAGENT_TOOL_SUBSET)
         if tools:
@@ -190,95 +196,77 @@ class RunSubagentTool(LocalTool):
         agent_config = AgentConfig(
             description=message[:500],
             rendering=RenderingConfig(
-                include_memories=False,
-                autoload_memories=skill_names,
+                prompt_name="subagent",
+                autoload_memory_logic=skill_names,
+                list_all_memories=False,
+                tool_result_truncation_after_n_turns=0,
             ),
             sampling=SamplingConfig(
                 model=model_short,
                 tool_subset=tool_subset,
             ),
         )
+        agent_meta = AgentMeta(agent_config=agent_config)
 
-        # 1. Create agent record
+        slug = generate_agent_slug()
         agent_id = create_agent(
             self._curr,
             self._chat_id,
-            meta=agent_config.to_meta(),
+            meta=agent_meta.model_dump(),
+            slug=slug,
         )
-        logger.info(f"Created agent {agent_id} for chat {self._chat_id}")
+        logger.info(f"Created agent {slug} (id={agent_id}) for chat {self._chat_id}")
 
-        # 2. Build system prompt
-        system = _load_subagent_system_prompt()
-
-        # 2a. Inject requested skills into system prompt
-        if agent_config.rendering.autoload_memories:
-            skill_content, missing = load_skills_by_name(
-                agent_config.rendering.autoload_memories
-            )
-            if missing:
-                return ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
-            if skill_content:
-                system = f"{system}\n\n=== Reference Knowledge ===\nThe following skill files were provided to help you with this task.\n\n{skill_content}"
-
-        # 3. Build messages
-        messages: list[MessageParam] = []
-
-        # 3a. Include main conversation history as a system message
+        # Save main conversation history as initial messages under the agent
         if include_message_history:
             db_messages = get_messages(self._curr, chat_id=self._chat_id)
             if db_messages:
                 history_text = _render_history_for_subagent(db_messages)
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
-                    }
+                now = datetime.datetime.now(DEFAULT_TIMEZONE)
+                save_message(
+                    self._curr,
+                    DbMessage(
+                        created_at=now,
+                        chat_id=self._chat_id,
+                        user_id=1,
+                        message=f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
+                        agent_id=agent_id,
+                    ),
                 )
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": "Understood, I've read the main conversation history. What would you like me to do?",
-                    }
+                save_message(
+                    self._curr,
+                    DbMessage(
+                        created_at=now,
+                        chat_id=self._chat_id,
+                        user_id=BOT_USER_ID,
+                        message="Understood, I've read the main conversation history. What would you like me to do?",
+                        agent_id=agent_id,
+                    ),
                 )
 
-        messages.append({"role": "user", "content": message})
+        return slug, None
 
-        # 4. Run the agent query
-        try:
-            message_params, claude_calls, model_id = await self._run_agent(
-                system=system,
-                messages=messages,
-                agent_config=agent_config,
-                agent_id=agent_id,
-            )
-        except Exception as e:
-            return ToolResult.error(f"Agent failed with {type(e).__name__}: {e}")
-
-        # 6. Save messages and return
-        return self._finalize(
-            agent_id=agent_id,
-            message=message,
-            message_params=message_params,
-            claude_calls=claude_calls,
-            model_id=model_id,
-        )
-
-    async def _execute_resume(
+    async def _run_agent_request(
         self,
         *,
-        agent_id: int,
+        agent_slug: str,
         message: str,
         tools: str | None = None,
         model: str | None = None,
     ) -> ToolResult:
-        # 1. Load agent meta and build AgentConfig
-        agent_meta = get_agent_meta(self._curr, agent_id)
-        if agent_meta is None:
+        """Load agent, build prompt, run query, save results."""
+        # 1. Load agent by slug
+        result = get_agent_by_slug(self._curr, self._chat_id, agent_slug)
+        if result is None:
             return ToolResult.error(
-                f"Agent #{agent_id} not found. Use run_subagent without agent_id to create a new one."
+                f"Agent '{agent_slug}' not found. Use run_subagent without agent to create a new one."
             )
-        logger.info(f"Resuming agent {agent_id} for chat {self._chat_id}")
-        agent_config = AgentConfig.from_meta(agent_meta)
+        agent_id, raw_meta = result
+        logger.info(
+            f"Running agent {agent_slug} (id={agent_id}) for chat {self._chat_id}"
+        )
+        agent_meta = AgentMeta.model_validate(raw_meta)
+        agent_config = agent_meta.agent_config
 
         # 2. Resolve model — args override, else fall back to agent's original
         if model:
@@ -295,39 +283,44 @@ class RunSubagentTool(LocalTool):
                 t.strip() for t in tools.split(",") if t.strip()
             ]
 
-        # 4. Check if agent is frozen (context too large from previous run)
-        frozen = (agent_meta.get("last_prompt_tokens") or 0) >= MAX_AGENT_CONTEXT_TOKENS
-
-        # 5. Rebuild conversation history from DB (with truncation of old tool results)
-        db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
-        messages = convert_db_messages_to_claude_messages(
-            db_msgs,
-            tool_result_truncation_after_n_turns=0,
+        # 4. Check if agent is frozen
+        frozen = (
+            agent_meta.is_frozen
+            or (agent_meta.last_prompt_tokens or 0) >= MAX_AGENT_CONTEXT_TOKENS
         )
+
+        # 5. Build system prompt + conversation history
+        db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
+        system, messages = build_claude_input(db_msgs, agent_config.rendering)
 
         # 6. Append new user message
         messages.append({"role": "user", "content": message})
 
-        # 7. Build system prompt and run
-        system = _load_subagent_system_prompt()
+        # 7. Build extra tools for frozen agents
+        extra_tools: list[LocalTool] = []
+        if agent_meta.is_frozen:
+            extra_tools.append(CollectMessageTool())
+
+        # 8. Run
         try:
-            message_params, claude_calls, model_id = await self._run_agent(
+            result, model_id = await self._run_agent(
                 system=system,
                 messages=messages,
                 agent_config=agent_config,
                 agent_id=agent_id,
+                extra_tools=extra_tools,
             )
         except Exception as e:
             return ToolResult.error(
-                f"Agent #{agent_id} failed with {type(e).__name__}: {e}"
+                f"Agent {agent_slug} failed with {type(e).__name__}: {e}"
             )
 
-        # 8. Save and return (hidden if frozen)
+        # 9. Save and return
         return self._finalize(
             agent_id=agent_id,
+            slug=agent_slug,
             message=message,
-            message_params=message_params,
-            claude_calls=claude_calls,
+            result=result,
             model_id=model_id,
             frozen=frozen,
         )
@@ -339,9 +332,10 @@ class RunSubagentTool(LocalTool):
         messages: list[MessageParam],
         agent_config: AgentConfig,
         agent_id: int,
-    ) -> tuple[list[MessageParam], list[ClaudeCallInfo], str]:
-        """Run the agent query. Returns (message_params, claude_calls, model_id)."""
-        from yarvis_ptb.interruption_scope_internal import INTERRUPTABLES
+        extra_tools: list[LocalTool] | None = None,
+    ) -> tuple[SamplingResult, str]:
+        """Run the agent query. Returns (SamplingResult, model_id)."""
+        # Deferred import: circular dependency (tool_sampler imports subagent_tool)
         from yarvis_ptb.tool_sampler import (
             _DummyJobQueue,
             get_tools_for_agent_config,
@@ -359,6 +353,10 @@ class RunSubagentTool(LocalTool):
         tools = get_tools_for_agent_config(
             agent_config, self._curr, self._chat_id, self._bot
         )
+        if extra_tools:
+            # Extra tools override by name (e.g. CollectMessageTool replaces SendMessageTool)
+            extra_names = {t.name for t in extra_tools}
+            tools = [t for t in tools if t.name not in extra_names] + extra_tools
 
         try:
             result = await process_query(
@@ -375,25 +373,28 @@ class RunSubagentTool(LocalTool):
             raise
 
         model_id = agent_config.sampling.resolve_model_name()
-        return result.message_params, result.claude_calls, model_id
+        return result, model_id
 
     def _finalize(
         self,
         *,
         agent_id: int,
+        slug: str,
         message: str,
-        message_params: list[MessageParam],
-        claude_calls: list[ClaudeCallInfo],
+        result: SamplingResult,
         model_id: str,
         frozen: bool = False,
     ) -> ToolResult:
         """Build cost info, save to DB, extract final text, return result."""
-        from yarvis_ptb.debug_chat import add_debug_message_to_queue
+        # Deferred import: circular dependency (tool_sampler imports subagent_tool)
         from yarvis_ptb.tool_sampler import (
             MODEL_PRICING,
             cost_breakdown,
             estimate_cost,
         )
+
+        message_params = result.message_params
+        claude_calls = result.claude_calls
 
         subagent_usage = None
         if claude_calls:
@@ -413,76 +414,61 @@ class RunSubagentTool(LocalTool):
             )
 
         # Debug chat
-        add_debug_message_to_queue(f"**AGENT #{agent_id}** (msg: {message[:100]})")
+        add_debug_message_to_queue(f"**AGENT {slug}** (msg: {message[:100]})")
         if message_params:
             add_debug_message_to_queue(message_params)
 
         # Save new user message + bot response to DB
-        # If frozen, save as hidden (is_visible=False) so they won't be loaded on
-        # future resumes — the agent's persistent context stays fixed.
-        is_visible = not frozen
-        now = datetime.datetime.now(DEFAULT_TIMEZONE)
-        save_message(
-            self._curr,
-            DbMessage(
-                created_at=now,
-                chat_id=self._chat_id,
-                user_id=1,  # User message
-                message=message,
-                agent_id=agent_id,
-            ),
-            is_visible=is_visible,
-        )
-        if message_params:
-            bot_meta: dict = {"message_params": message_params}
-            if subagent_usage:
-                bot_meta["usage"] = subagent_usage
+        # Frozen agents: skip saving entirely — ephemeral queries only exist
+        # in the caller's message_params.
+        if not frozen:
+            now = datetime.datetime.now(DEFAULT_TIMEZONE)
             save_message(
                 self._curr,
                 DbMessage(
                     created_at=now,
                     chat_id=self._chat_id,
-                    user_id=BOT_USER_ID,
-                    message="USE_CONTENT_FROM_META",
-                    meta=bot_meta,
+                    user_id=1,  # User message
+                    message=message,
                     agent_id=agent_id,
                 ),
-                is_visible=is_visible,
             )
+            if message_params:
+                bot_meta: dict = {"message_params": message_params}
+                if subagent_usage:
+                    bot_meta["usage"] = subagent_usage
+                save_message(
+                    self._curr,
+                    DbMessage(
+                        created_at=now,
+                        chat_id=self._chat_id,
+                        user_id=BOT_USER_ID,
+                        message="USE_CONTENT_FROM_META",
+                        meta=bot_meta,
+                        agent_id=agent_id,
+                    ),
+                )
 
-        # Extract final text response
-        final_text = _extract_final_text(message_params)
+        # Extract final text — prefer agent_messages (from send_message calls),
+        # fall back to final assistant text
+        if result.agent_messages:
+            final_text = "\n\n".join(result.agent_messages)
+        else:
+            final_text = _extract_final_text(message_params)
         if not final_text:
             return ToolResult.error("Agent produced no text response")
 
         if subagent_usage:
             self.subagent_usages.append(subagent_usage)
 
-        result = f"[Agent #{agent_id} result]\n{final_text}"
+        result_text = f"[Agent {slug} result]\n{final_text}"
         if frozen:
-            result += (
-                f"\n\n⚠️ Agent #{agent_id} is FROZEN: its context exceeded "
-                f"{MAX_AGENT_CONTEXT_TOKENS} tokens. This response was still generated "
+            result_text += (
+                f"\n\n⚠️ Agent {slug} is FROZEN. This response was still generated "
                 f"but the exchange was not added to the agent's persistent history. "
-                f"Future calls will see the same context as before this call. "
-                f"Consider creating a new agent for continued work."
+                f"Future calls will see the same context as before this call."
             )
-        return ToolResult.success(result)
-
-
-def _load_subagent_system_prompt() -> str:
-    """Load the subagent system prompt from the core_knowledge file."""
-    try:
-        prompt = SUBAGENT_SYSTEM_PROMPT_PATH.read_text()
-    except FileNotFoundError:
-        logger.warning(
-            f"Subagent system prompt not found at {SUBAGENT_SYSTEM_PROMPT_PATH}, using default"
-        )
-        prompt = "You are a subagent. Complete the given task and return your findings concisely."
-
-    now = datetime.datetime.now(DEFAULT_TIMEZONE)
-    prompt += f"\n\nCurrent date and time: {now.strftime('%Y-%m-%d %H:%M %Z')}"
-    return prompt
+        return ToolResult.success(result_text)
 
 
 def _extract_final_text(message_params: list[MessageParam]) -> str | None:
@@ -519,7 +505,7 @@ if __name__ == "__main__":
 
     from yarvis_ptb.storage import (
         connect,
-        craete_all,
+        create_all,
         get_messages,
     )
 
@@ -591,18 +577,11 @@ if __name__ == "__main__":
 
     async def test_subagent_integration():
         print("\n=== Integration test: subagent flow ===")
-        from yarvis_ptb.tool_sampler import (
-            _DummyJobQueue,
-            get_tools_for_agent_config,
-            process_query,
-        )
 
-        craete_all()
+        create_all()
 
         with connect() as conn, conn.cursor() as curr:
             # 1. Create agent
-            from yarvis_ptb.storage import create_agent
-
             agent_id = create_agent(curr, TEST_CHAT_ID, meta={"test": True})
             print(f"Created agent_id={agent_id}")
 

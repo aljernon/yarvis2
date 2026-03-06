@@ -15,6 +15,7 @@ from yarvis_ptb.queries import (
     INIT_SCHEDULES_QUERY,
     INIT_VARIABLES_QUERY,
     INIT_VECTOR,
+    MIGRATE_AGENTS_SLUG,
     MIGRATE_MESSAGES_AGENT_ID,
     MIGRATE_SCHEDULES_REASON_TO_TITLE,
 )
@@ -221,7 +222,7 @@ def get_messages(
         WHERE chat_id = %s
         AND is_visible = true
         {agent_filter}
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT %s
         """,
         params,
@@ -720,6 +721,56 @@ def test_schedules():
             curr.execute(f"DELETE FROM schedules WHERE chat_id={fake_chat_id}")
 
 
+def reassign_messages_to_agent(
+    curr,
+    chat_id: int,
+    agent_id: int,
+    *,
+    date_start: datetime.datetime,
+    date_end: datetime.datetime,
+) -> int:
+    """Move main-chat messages in a date range under an agent.
+
+    Only affects visible messages with agent_id IS NULL.
+    Returns the number of messages reassigned.
+    """
+    curr.execute(
+        """
+        UPDATE messages
+        SET agent_id = %s
+        WHERE chat_id = %s AND agent_id IS NULL AND is_visible = true
+          AND created_at >= %s AND created_at < %s
+        """,
+        (agent_id, chat_id, date_start, date_end),
+    )
+    return curr.rowcount
+
+
+def get_dau_sessions(curr, chat_id: int) -> list[dict]:
+    """List DAU frozen session agents for a chat, ordered by creation time DESC.
+
+    Returns list of dicts with id, slug, created_at, and meta fields.
+    """
+    curr.execute(
+        """
+        SELECT id, slug, created_at, meta
+        FROM agents
+        WHERE chat_id = %s AND meta @> '{"type": "dau_session"}'
+        ORDER BY created_at DESC
+        """,
+        (chat_id,),
+    )
+    return [
+        {
+            "id": row[0],
+            "slug": row[1],
+            "created_at": row[2].astimezone(DEFAULT_TIMEZONE),
+            "meta": row[3] or {},
+        }
+        for row in curr.fetchall()
+    ]
+
+
 def update_agent_meta(curr, agent_id: int, meta: dict) -> None:
     """Merges keys into the agent's existing meta JSON."""
     curr.execute(
@@ -739,24 +790,39 @@ def get_agent_meta(curr, agent_id: int) -> dict | None:
     return row[0] if row else None
 
 
-def create_agent(curr, chat_id: int, meta: dict | None = None) -> int:
+def get_agent_by_slug(curr, chat_id: int, slug: str) -> tuple[int, dict] | None:
+    """Look up an agent by slug. Returns (id, meta) or None."""
+    curr.execute(
+        "SELECT id, meta FROM agents WHERE chat_id = %s AND slug = %s",
+        (chat_id, slug),
+    )
+    row = curr.fetchone()
+    if row is None:
+        return None
+    return row[0], row[1] or {}
+
+
+def create_agent(
+    curr, chat_id: int, meta: dict | None = None, slug: str | None = None
+) -> int:
     """Creates an agent record in the DB. Returns the agent id."""
     curr.execute(
         """
-        INSERT INTO agents (chat_id, created_at, meta)
-        VALUES (%s, %s, %s)
+        INSERT INTO agents (chat_id, created_at, meta, slug)
+        VALUES (%s, %s, %s, %s)
         RETURNING id
         """,
         (
             chat_id,
             datetime.datetime.now(DEFAULT_TIMEZONE),
             json.dumps(meta) if meta else None,
+            slug,
         ),
     )
     return curr.fetchone()[0]
 
 
-def craete_all():
+def create_all():
     with connect() as conn, conn.cursor() as curr:
         logger.info("Init DB")
         curr.execute(INIT_VECTOR)
@@ -767,6 +833,7 @@ def craete_all():
         curr.execute(INIT_AGENTS_QUERY)
         curr.execute(MIGRATE_MESSAGES_AGENT_ID)
         curr.execute(MIGRATE_SCHEDULES_REASON_TO_TITLE)
+        curr.execute(MIGRATE_AGENTS_SLUG)
         logger.info("Init DB done")
 
 
@@ -775,7 +842,7 @@ if __name__ == "__main__":
         level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    craete_all()
+    create_all()
     test_schedules()
     test_variables()
     test_messages()

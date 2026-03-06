@@ -6,7 +6,7 @@ import httpx
 import tenacity
 from anthropic.types import MessageParam
 
-from yarvis_ptb.agent_config import AgentConfig
+from yarvis_ptb.agent_config import AgentConfig, AgentMeta
 from yarvis_ptb.complex_chat import (
     COMPLEX_CHAT_LOCK,
     DEFAULT_AGENT_CONFIG,
@@ -241,7 +241,11 @@ async def run_force_reflect(
         description="force-reflect",
         sampling=SamplingConfig(model="opus", tool_subset="all"),
     )
-    agent_id = create_agent(curr, chat_id, meta=reflect_config.to_meta())
+    agent_id = create_agent(
+        curr,
+        chat_id,
+        meta=AgentMeta(agent_config=reflect_config, type="force_reflect").model_dump(),
+    )
 
     # Save the prompt we sent to the agent
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
@@ -471,7 +475,9 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
         result_params = result.message_params
 
         # 5. Save trigger + bot response under agent
-        agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})
+        agent_id = create_agent(
+            curr, chat_id, meta=AgentMeta(type="auto_reflect").model_dump()
+        )
 
         save_message(
             curr,

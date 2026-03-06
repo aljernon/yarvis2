@@ -20,6 +20,7 @@ from yarvis_ptb.complex_chat import (
     handle_message_root_user_assistant,
     process_multi_message_claude_invocation,
 )
+from yarvis_ptb.daily_agent_update import run_daily_agent_update, should_run_dau
 from yarvis_ptb.daily_self_reflect import (
     run_auto_reflect,
     run_force_reflect,
@@ -753,6 +754,20 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                     ),
                     initial_db_message=invocation_system_message,
                 )
+        # DAU: daily session rotation (2am)
+        try:
+            if should_run_dau(curr, ROOT_USER_ID):
+                await run_daily_agent_update(
+                    curr, ROOT_USER_ID, context.application, context.bot
+                )
+                context.bot_data["conn"].commit()
+        except Exception:
+            logger.exception("DAU failed")
+            add_debug_message_to_queue(
+                f"**DAU FAILED**\n```\n{traceback.format_exc()}\n```"
+            )
+            await maybe_send_messages_to_debug_chat(context.application)
+
         # Auto-reflection check (idle-triggered or daily 4am)
         try:
             should_reflect = await should_auto_reflect(

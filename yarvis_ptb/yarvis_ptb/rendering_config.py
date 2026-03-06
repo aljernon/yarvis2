@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel
 
 from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS
 
@@ -12,11 +14,16 @@ class RenderingConfig(BaseModel):
     prompt_name: str = "anton_private"
     """Which system prompt to use (key into SYSTEM_PROMPTS)."""
 
-    include_memories: bool = True
-    """Include Core Knowledge Repository files in the system prompt."""
+    autoload_memory_logic: list[str] | Literal["auto"] = "auto"
+    """Which CKR skill files to preload into the system prompt.
 
-    autoload_memories: list[str] = Field(default_factory=list)
-    """Specific skill files to inject into the system prompt."""
+    - ``"auto"`` — all files with ``autoload: true`` in frontmatter (default)
+    - ``["logseq", "whoop"]`` — specific skills by folder name
+    - ``[]`` — none
+    """
+
+    list_all_memories: bool = True
+    """Show catalogue of all available CKR skills and enable read_memory tool."""
 
     max_history_length_turns: int = HISTORY_LENGTH_LONG_TURNS
     """How many DB message turns to fetch for context."""

@@ -100,34 +100,65 @@ def load_skills_by_name(names: list[str]) -> tuple[str, list[str]]:
     return "\n".join(lines), missing
 
 
-def render_memory_content() -> str:
-    """Render memory content for system prompt.
+def resolve_memory_preload(spec: "list[str] | str") -> str:
+    """Resolve memory spec into rendered content for the system prompt.
 
-    Autoload files: Show full content
-    Non-autoload files: Show name and description only
+    - ``"auto"`` — all files with ``autoload: true`` in frontmatter
+    - ``["logseq", "whoop"]`` — specific skills by folder name
+    - ``[]`` — empty string
     """
-    lines = []
+    if spec == "auto":
+        lines: list[str] = []
+        autoload_memories = read_autoload_memory()
+        if autoload_memories:
+            lines.append("=== Preloaded Skills ===\n")
+            for path, content in sorted(
+                autoload_memories.items(),
+                key=lambda x: (SYSTEM_CORE not in x[0], x[0]),
+            ):
+                lines.extend(_render_skill(path, content))
+        return "\n".join(lines)
 
-    # Show full content of autoload files
-    autoload_memories = read_autoload_memory()
-    if autoload_memories:
-        lines.append("=== Core Knowledge Repository (Autoloaded) ===\n")
-        for path, content in sorted(
-            autoload_memories.items(), key=lambda x: (SYSTEM_CORE not in x[0], x[0])
-        ):
-            lines.extend(_render_skill(path, content))
+    if not spec:
+        return ""
+    skill_content, _missing = load_skills_by_name(spec)
+    if not skill_content:
+        return ""
+    return (
+        "=== Reference Knowledge ===\n"
+        "The following skill files were provided to help you with this task.\n\n"
+        + skill_content
+    )
 
-    # Show descriptions of non-autoload files
+
+def render_memory_catalogue() -> str:
+    """Render the full CKR skill catalogue with paths and descriptions."""
     all_memories = list_memory_with_descriptions()
-    non_autoload = [m for m in all_memories if not m["autoload"]]
-
-    if non_autoload:
-        lines.append("\n=== Available Knowledge Files (On-Demand) ===")
-        lines.append("Use the read_memory tool to load these when needed:\n")
-        for memory in non_autoload:
-            lines.append(f"- **{memory['name']}**: {memory['description']}")
-
+    if not all_memories:
+        return ""
+    lines = [
+        "=== Core Knowledge Repository ===",
+        "All skill files are on disk and can be read or modified using tools.",
+        f"Each skill is located at {MEMORY_PATH}/<name>/SKILL.md\n",
+    ]
+    for memory in all_memories:
+        autoload_marker = " [preloaded]" if memory["autoload"] else ""
+        lines.append(
+            f"- **{memory['name']}**: {memory['description']}{autoload_marker}"
+        )
     return "\n".join(lines)
+
+
+def render_memory_content() -> str:
+    """Render full CKR content for system prompt (catalogue + preloaded)."""
+    parts = []
+    catalogue = render_memory_catalogue()
+    if catalogue:
+        parts.append(catalogue)
+    preloaded = resolve_memory_preload("auto")
+    if preloaded:
+        parts.append(preloaded)
+    return "\n\n".join(parts)
 
 
 def commit_memory() -> None:

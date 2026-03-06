@@ -1,0 +1,245 @@
+"""DAU (Disjoint Agent Union) — daily session rotation.
+
+At 2am local time:
+1. Create a frozen archive agent (archive-YYYY-MM-DD) for yesterday's messages
+2. Reassign yesterday's main-chat messages to the archive agent
+3. Run haiku to generate a one-paragraph summary (topics, people, events)
+4. Insert a system message into the archive agent marking it frozen
+5. Insert a system message in main chat about the new session
+6. Trigger a Claude invocation so the new session proactively figures out what to do
+"""
+
+import datetime
+import logging
+
+from yarvis_ptb.agent_config import AgentConfig, AgentMeta
+from yarvis_ptb.agent_slugs import archive_slug
+from yarvis_ptb.complex_chat import (
+    COMPLEX_CHAT_LOCK,
+    DEFAULT_AGENT_CONFIG,
+)
+from yarvis_ptb.debug_chat import add_debug_message_to_queue
+from yarvis_ptb.prompting import render_mesage_param_exact
+from yarvis_ptb.ptb_util import get_anthropic_client
+from yarvis_ptb.rendering_config import RenderingConfig
+from yarvis_ptb.sampling import SamplingConfig
+from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
+from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
+from yarvis_ptb.storage import (
+    DbMessage,
+    Invocation,
+    create_agent,
+    get_agent_by_slug,
+    get_dau_sessions,
+    get_messages,
+    reassign_messages_to_agent,
+    save_message,
+    update_agent_meta,
+)
+from yarvis_ptb.timezones import get_timezone
+
+logger = logging.getLogger(__name__)
+
+DAU_HOUR = 2  # 2am local time
+
+
+def should_run_dau(curr, chat_id: int) -> bool:
+    """Check if the daily agent update should run now.
+
+    Triggers once per day at DAU_HOUR local time if there are main-chat
+    messages from yesterday and no archive agent for yesterday exists yet.
+    """
+    local_tz = get_timezone(complex_chat=True)
+    now_local = datetime.datetime.now(local_tz)
+
+    if now_local.hour != DAU_HOUR:
+        return False
+
+    yesterday = (now_local - datetime.timedelta(days=1)).date()
+    slug = archive_slug(yesterday)
+
+    # Already archived?
+    if get_agent_by_slug(curr, chat_id, slug) is not None:
+        return False
+
+    # Any main-chat messages in the last 2 days?
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    day_start = now - datetime.timedelta(days=2)
+    msgs = get_messages(curr, chat_id)
+    day_msgs = [m for m in msgs if m.created_at >= day_start]
+    if not day_msgs:
+        return False
+
+    return True
+
+
+async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
+    """Execute the DAU: freeze yesterday's session and start a new one."""
+    from yarvis_ptb.complex_chat import process_multi_message_claude_invocation
+
+    if COMPLEX_CHAT_LOCK.locked():
+        logger.info("DAU: skipping, complex chat lock is held")
+        return
+
+    async with COMPLEX_CHAT_LOCK:
+        local_tz = get_timezone(complex_chat=True)
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        now_local = datetime.datetime.now(local_tz)
+        yesterday = (now_local - datetime.timedelta(days=1)).date()
+        slug = archive_slug(yesterday)
+
+        logger.info(f"DAU: archiving {yesterday} as {slug}")
+        add_debug_message_to_queue(f"**DAU: archiving {yesterday} as {slug}**")
+
+        # 1. Create the archive agent
+        agent_meta = AgentMeta(
+            agent_config=AgentConfig(
+                rendering=RenderingConfig(
+                    prompt_name="anton_private",
+                ),
+                sampling=SamplingConfig(
+                    output_mode="tool_message",
+                ),
+            ),
+            type="dau_session",
+            status="frozen",
+            date=str(yesterday),
+        )
+        agent_id = create_agent(
+            curr,
+            chat_id,
+            meta=agent_meta.model_dump(),
+            slug=slug,
+        )
+        logger.info(f"DAU: created agent {slug} (id={agent_id})")
+
+        # 2. Reassign messages from the last 2 days up to now.
+        # is_visible + agent_id IS NULL prevents double-reassignment.
+        day_start = now - datetime.timedelta(days=2)
+        day_end = now
+        n_reassigned = reassign_messages_to_agent(
+            curr, chat_id, agent_id, date_start=day_start, date_end=day_end
+        )
+        logger.info(f"DAU: reassigned {n_reassigned} messages to {slug}")
+
+        # 3. Summarize the archived messages with haiku
+        archived_msgs = get_messages(curr, chat_id, agent_id=agent_id)
+        summary = _summarize_messages(archived_msgs)
+        if summary:
+            update_agent_meta(curr, agent_id, {"summary": summary})
+            logger.info(f"DAU: summary for {slug}: {summary[:200]}")
+
+        # 4. Insert freeze system message into the archive agent
+        freeze_msg = (
+            f"This agent session ({slug}) is now FROZEN. "
+            f"Your conversation history up to this point is preserved and immutable. "
+            f"Any future queries to you come from a newer version of yourself — "
+            f"respond helpfully but know that these exchanges are ephemeral and "
+            f"will not be added to your history."
+        )
+        save_message(
+            curr,
+            DbMessage(
+                created_at=now,
+                chat_id=chat_id,
+                user_id=SYSTEM_USER_ID,
+                message=freeze_msg,
+                agent_id=agent_id,
+            ),
+        )
+
+        # 5. Build list of available frozen predecessors
+        sessions = get_dau_sessions(curr, chat_id)
+        predecessor_lines = []
+        for s in sessions[:10]:  # Show last 10
+            s_summary = s["meta"].get("summary", "no summary")
+            predecessor_lines.append(f"  - {s['slug']}: {s_summary[:150]}")
+        predecessors_text = (
+            "\n".join(predecessor_lines) if predecessor_lines else "  (none)"
+        )
+
+        # 6. Insert system message in main chat about the new session
+        new_session_msg = (
+            f"=== New DAU Session ===\n"
+            f"Yesterday's conversation ({yesterday}) has been archived as '{slug}'.\n"
+            f'You can query it with: run_subagent(agent="{slug}", message="...")\n\n'
+            f"Available archived sessions:\n{predecessors_text}\n\n"
+            f"Review what happened yesterday and decide if there's anything you should "
+            f"proactively do: follow up on tasks, update CKR with important info, "
+            f"check on commitments, etc."
+        )
+        initial_db_message = DbMessage(
+            chat_id=chat_id,
+            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            user_id=SYSTEM_USER_ID,
+            message=new_session_msg,
+        )
+
+    # 7. Trigger Claude invocation (outside the lock — process_multi_message takes its own)
+    await process_multi_message_claude_invocation(
+        curr,
+        application=application,
+        bot=bot,
+        chat_id=chat_id,
+        agent_config=DEFAULT_AGENT_CONFIG,
+        invocation=Invocation(invocation_type="schedule"),
+        initial_db_message=initial_db_message,
+    )
+    logger.info(f"DAU: new session invocation complete for {slug}")
+
+
+def _summarize_messages(
+    db_messages: list[DbMessage], max_summary_tokens: int = 160_000
+) -> str | None:
+    """Run haiku to produce a one-paragraph summary of the messages."""
+    if not db_messages:
+        return None
+
+    # Render messages as text
+    lines: list[str] = []
+    for msg in db_messages:
+        if msg.user_id == BOT_USER_ID and msg.meta and "message_params" in msg.meta:
+            for param in msg.meta["message_params"]:
+                lines.extend(render_mesage_param_exact(param))
+        elif msg.user_id == SYSTEM_USER_ID:
+            lines.append(f"[SYSTEM] {msg.message}")
+        else:
+            lines.append(f"[USER] {msg.message}")
+    conversation_text = "\n".join(lines)
+
+    client = get_anthropic_client()
+    haiku_model = SUBAGENT_MODEL_MAP["haiku"]
+    max_input_tokens = max_summary_tokens
+
+    prompt_template = (
+        "Summarize the following conversation in one paragraph. "
+        "Include: main topics discussed, people mentioned, "
+        "events or commitments made, and any action items. "
+        "Be concise but comprehensive.\n\n"
+        "<conversation>\n{conversation}\n</conversation>"
+    )
+
+    # Truncate from the left until we fit within the token budget
+    full_prompt = prompt_template.format(conversation=conversation_text)
+    messages: list[dict] = [{"role": "user", "content": full_prompt}]
+    while (
+        client.messages.count_tokens(model=haiku_model, messages=messages).input_tokens
+        > max_input_tokens
+    ):
+        conversation_text = (
+            "(truncated) ...\n" + conversation_text[len(conversation_text) // 2 :]
+        )
+        full_prompt = prompt_template.format(conversation=conversation_text)
+        messages = [{"role": "user", "content": full_prompt}]
+
+    try:
+        response = client.messages.create(
+            model=haiku_model,
+            max_tokens=500,
+            messages=messages,
+        )
+        text_blocks = [b.text for b in response.content if b.type == "text"]
+        return " ".join(text_blocks).strip() or None
+    except Exception:
+        logger.exception("DAU: haiku summarization failed")
+        return None

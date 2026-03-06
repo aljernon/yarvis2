@@ -69,7 +69,6 @@ COMPLEX_CHAT_LOCK = asyncio.Lock()
 DEFAULT_AGENT_CONFIG = AgentConfig(
     rendering=RenderingConfig(
         prompt_name=COMPLEX_ANTON_PROMPT,
-        include_memories=True,
         max_history_length_turns=HISTORY_LENGTH_LONG_TURNS,
         tool_result_truncation_after_n_turns=5,
     ),
@@ -573,7 +572,7 @@ async def _process_multi_message_claude_invocation_inner(
                 reaction=constants.ReactionEmoji.SHRUG,
             )  # type: ignore
 
-    if rendering_config.include_memories and any(
+    if rendering_config.list_all_memories and any(
         x["type"] == "tool_use"
         for mp in message_params
         if isinstance(mp["content"], list)

@@ -19,7 +19,7 @@ from anthropic.types import (
 )
 from typing_extensions import Required
 
-from yarvis_ptb.on_disk_memory import render_memory_content
+from yarvis_ptb.on_disk_memory import render_memory_catalogue, resolve_memory_preload
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
 from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.settings import (
@@ -312,6 +312,23 @@ def apply_tool_call_compactification(
             tool_result_idx += 1
 
 
+def build_system_prompt(rendering_config: RenderingConfig) -> str:
+    """Build the system prompt string from rendering config.
+
+    Order: base prompt → skill catalogue → preloaded skill content.
+    """
+    system = SYSTEM_PROMPTS[rendering_config.prompt_name]
+    if rendering_config.list_all_memories:
+        catalogue = render_memory_catalogue()
+        if catalogue:
+            system = f"{system}\n\n{catalogue}"
+    if rendering_config.autoload_memory_logic:
+        memory_content = resolve_memory_preload(rendering_config.autoload_memory_logic)
+        if memory_content:
+            system = f"{system}\n\n{memory_content}"
+    return system
+
+
 def build_claude_input(
     messages: list[DbMessage],
     rendering_config: RenderingConfig,
@@ -324,7 +341,7 @@ def build_claude_input(
 
     Context is always appended at the end of messages.
     """
-    system = SYSTEM_PROMPTS[rendering_config.prompt_name]
+    system = build_system_prompt(rendering_config)
     context_info = build_context_info(
         invocation=invocation,
         scheduled_invocations=scheduled_invocations,
@@ -342,8 +359,6 @@ def build_claude_input(
     )
     messages = messages + [context_message]
 
-    if rendering_config.include_memories:
-        system = f"{system}\n=== Core Knowledge Repository content:\n\nThe following is the current content of the Core Knowledge Repository. All repository files are on disk and can be modified using str_replace tool or directly via bash.\n\n{render_memory_content()}"
     history = convert_db_messages_to_claude_messages(
         messages,
         tool_result_truncation_after_n_turns=rendering_config.tool_result_truncation_after_n_turns,
