@@ -25,9 +25,7 @@ from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.settings import (
     BOT_USER_ID,
     DEFAULT_TIMEZONE,
-    HISTORY_LENGTH_LONG_SHRINKING_FACTOR,
     HISTORY_LENGTH_LONG_TOKENS,
-    LARGE_MESSAGE_SIZE_THRESHOLD,
     SYSTEM_USER_ID,
     TOOL_CALL_USER_ID,
     USER_ID_MAP,
@@ -115,8 +113,6 @@ def build_context_info(
     constants = {
         "max_history_length_turns": rendering_config.max_history_length_turns,
         "HISTORY_LENGTH_LONG_TOKENS": HISTORY_LENGTH_LONG_TOKENS,
-        "HISTORY_LENGTH_LONG_SHRINKING_FACTOR": HISTORY_LENGTH_LONG_SHRINKING_FACTOR,
-        "LARGE_MESSAGE_SIZE_THRESHOLD": LARGE_MESSAGE_SIZE_THRESHOLD,
     }
     if rendering_config.tool_result_truncation_after_n_turns is not None:
         constants["tool_result_truncation_after_n_turns"] = (

@@ -48,10 +48,7 @@ from yarvis_ptb.sampling import SamplingConfig
 from yarvis_ptb.settings import (
     BOT_USER_ID,
     DEFAULT_TIMEZONE,
-    HISTORY_LENGTH_LONG_SHRINKING_FACTOR,
-    HISTORY_LENGTH_LONG_TOKENS,
     HISTORY_LENGTH_LONG_TURNS,
-    LARGE_MESSAGE_SIZE_THRESHOLD,
     SYSTEM_USER_ID,
     USER_ID_MAP,
 )
@@ -64,7 +61,6 @@ from yarvis_ptb.storage import (
     deactivate_schedule,
     get_messages,
     get_schedules,
-    mark_message_for_archive,
 )
 from yarvis_ptb.util import RateController, ensure
 
@@ -619,70 +615,6 @@ async def _process_multi_message_claude_invocation_inner(
         message_params, skip_first_n=hooks.num_messages_sent_to_debug_chat
     )
     ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=1)
-
-    if (
-        prompt_size is not None
-        and prompt_size > HISTORY_LENGTH_LONG_TOKENS
-        and invocation.invocation_type != "context_overflow"
-    ):
-        message_sizes = [
-            (msg, len(json.dumps(msg.meta or {}) + msg.message)) for msg in db_messages
-        ]
-        total_size = sum(size for _, size in message_sizes)
-        large_message_threshold = total_size * LARGE_MESSAGE_SIZE_THRESHOLD
-
-        large_messages = [
-            (msg, size) for msg, size in message_sizes if size > large_message_threshold
-        ]
-
-        if large_messages:
-            ids_to_archive = [msg.message_id for msg, _ in large_messages]
-            large_msg_info = [
-                f"{size/1024:.1f}KB ({size/total_size*100:.1f}%)"
-                for _, size in large_messages
-            ]
-            archiving_string = f"Large messages found: {', '.join(large_msg_info)}"
-        else:
-            num_messages_to_kill = int(
-                len(db_messages) * HISTORY_LENGTH_LONG_SHRINKING_FACTOR
-            )
-            ids_to_archive = [
-                db_message.message_id
-                for db_message in db_messages[:num_messages_to_kill]
-            ]
-            archiving_string = (
-                f"Proportional truncation: {num_messages_to_kill}/{len(db_messages)}"
-            )
-
-        for message_id in ids_to_archive:
-            assert message_id is not None, ids_to_archive
-            mark_message_for_archive(curr, chat_id, message_id)
-        compression_text = (
-            f"Context compression: {prompt_size} tokens exceeded {HISTORY_LENGTH_LONG_TOKENS} limit. "
-            f"Strategy: {archiving_string}"
-        )
-        await reply_maybe_markdown(
-            bot,
-            chat_id,
-            f"**SYSTEM** {compression_text}",
-        )
-        save_message_and_update_index(
-            curr,
-            DbMessage(
-                chat_id=chat_id,
-                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-                user_id=SYSTEM_USER_ID,
-                message=compression_text,
-            ),
-        )
-        await _process_multi_message_claude_invocation_no_lock(
-            curr=curr,
-            application=application,
-            bot=bot,
-            chat_id=chat_id,
-            agent_config=agent_config,
-            invocation=Invocation(invocation_type="context_overflow"),
-        )
 
 
 def compute_token_counts(
