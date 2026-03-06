@@ -69,6 +69,8 @@ def normalize_message_param(message: MessageParam) -> NormalizedMessageParam:
     content = message["content"]
     if isinstance(content, str):
         content = [TextBlockParam(type="text", text=content)]
+    else:
+        content = list(content)  # defensive copy: break shared references
     return {"role": message["role"], "content": content}
 
 

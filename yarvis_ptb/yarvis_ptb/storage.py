@@ -11,22 +11,15 @@ import psycopg2
 logger = logging.getLogger(__name__)
 
 
-def _debug_find_unserializable(obj: Any, path: str = "") -> None:
-    """Walk a nested structure and log any non-JSON-serializable leaves."""
+def _ensure_json_serializable(obj: Any) -> Any:
+    """Recursively convert non-list iterables (e.g. ValidatorIterator) to lists."""
     if isinstance(obj, dict):
-        for k, v in obj.items():
-            _debug_find_unserializable(v, f"{path}.{k}")
-    elif isinstance(obj, (list, tuple)):
-        for i, v in enumerate(obj):
-            _debug_find_unserializable(v, f"{path}[{i}]")
-    else:
-        try:
-            json.dumps(obj)
-        except TypeError:
-            logger.error(
-                f"  Unserializable at {path}: type={type(obj).__name__} "
-                f"module={type(obj).__module__} repr={repr(obj)[:200]}"
-            )
+        return {k: _ensure_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_ensure_json_serializable(v) for v in obj]
+    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
+        return [_ensure_json_serializable(v) for v in obj]
+    return obj
 
 
 from yarvis_ptb.queries import (
@@ -269,12 +262,7 @@ def get_messages(
 def save_message(curr, message: DbMessage, *, is_visible: bool = True):
     """Save message to the dbwith connect() as curr"""
     assert message.message_id is None, "Will be auto-generated"
-    try:
-        meta_json = json.dumps(message.meta)
-    except TypeError as e:
-        logger.error(f"Failed to serialize message.meta: {e}")
-        _debug_find_unserializable(message.meta, path="meta")
-        raise
+    meta_json = json.dumps(_ensure_json_serializable(message.meta))
     curr.execute(
         """
             INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id, is_visible)
