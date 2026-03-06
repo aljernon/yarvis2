@@ -762,6 +762,55 @@ async function loadSubagentView(agentId) {
   }
 }
 
+// ── Agents list page ─────────────────────────────────────────────────────────
+
+async function loadAgents() {
+  const container = document.getElementById("agents-container");
+  if (!container) return;
+
+  container.innerHTML = `<div class="loading">Loading agents...</div>`;
+
+  try {
+    const resp = await fetch("/api/agents");
+    const data = await resp.json();
+
+    let html = `<table class="inv-table">
+      <thead><tr>
+        <th>ID</th><th>Slug</th><th>Type</th><th>Chat</th><th>Created</th>
+        <th>Messages</th><th>Meta</th>
+      </tr></thead><tbody>`;
+
+    for (const a of data.agents) {
+      const metaExtra = Object.fromEntries(
+        Object.entries(a.meta).filter(([k]) => k !== "agent_config" && k !== "type")
+      );
+      const metaStr = Object.keys(metaExtra).length > 0
+        ? escapeHtml(JSON.stringify(metaExtra, null, 2))
+        : "";
+      const typeLabel = a.type || "—";
+      const slugLink = a.slug
+        ? `<a href="/agent?agent_id=${a.id}" class="badge agent">${escapeHtml(a.slug)}</a>`
+        : "—";
+
+      html += `<tr>
+        <td>${a.id}</td>
+        <td>${slugLink}</td>
+        <td>${escapeHtml(typeLabel)}</td>
+        <td>${a.chat_id}</td>
+        <td>${formatTimestamp(a.created_at)}<br><span class="relative-time">${relativeTime(a.created_at)}</span></td>
+        <td>${a.msg_count}</td>
+        <td><div class="meta-json">${metaStr}</div></td>
+      </tr>`;
+    }
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<div class="loading">Error: ${e.message}</div>`;
+    console.error("Failed to load agents:", e);
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -783,6 +832,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (document.getElementById("schedules-container")) {
     loadSchedules();
+  }
+
+  if (document.getElementById("agents-container")) {
+    loadAgents();
   }
 
   if (document.getElementById("agent-container")) {

@@ -20,7 +20,8 @@ SETTINGS_NAME=anton conda run -n clam python dashboard/app.py
 | Route | Template | Description |
 |-------|----------|-------------|
 | `/` / `/messages` | `messages.html` | Browse conversation history, paginated, with search and byte-size filters |
-| `/agent` | `agent.html` | Full agent context window: system prompt + message history as Claude sees it |
+| `/agent` | `agent.html` | POV: Full agent context window: system prompt + message history as Claude sees it |
+| `/agents` | `agents.html` | List all agents with their fields, type, and message counts |
 
 ## API Endpoints
 
@@ -29,6 +30,7 @@ SETTINGS_NAME=anton conda run -n clam python dashboard/app.py
 | `GET /api/chats` | List chats with message counts |
 | `GET /api/messages?page=&chat_id=&search=&min_bytes=` | Paginated messages for a chat |
 | `GET /api/turn/<id>/tokens` | Token count breakdown for a single DB turn |
+| `GET /api/agents` | List all agents with metadata and message counts |
 | `GET /api/agent-view` | Full agent context (system prompt + history) |
 | `GET /api/agent-view/tokens` | Token counts for the full agent context |
 | `GET /api/stats` | Summary stats shown in nav bar |

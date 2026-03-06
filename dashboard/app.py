@@ -191,6 +191,11 @@ def agent_page():
     return render_template("agent.html")
 
 
+@app.route("/agents")
+def agents_page():
+    return render_template("agents.html")
+
+
 # ── API Routes ───────────────────────────────────────────────────────────────
 
 
@@ -480,6 +485,45 @@ def api_schedules():
             )
 
         return jsonify({"schedules": schedules})
+    finally:
+        conn.close()
+
+
+@app.route("/api/agents")
+def api_agents():
+    """Return all agents with their fields and message counts."""
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT a.id, a.chat_id, a.created_at, a.meta, a.slug,
+                       COUNT(m.id) as msg_count
+                FROM agents a
+                LEFT JOIN messages m ON m.agent_id = a.id
+                GROUP BY a.id
+                ORDER BY a.created_at DESC
+            """)
+            rows = cur.fetchall()
+
+        agents = []
+        for row in rows:
+            meta = row["meta"] or {}
+            agents.append(
+                {
+                    "id": row["id"],
+                    "slug": row["slug"],
+                    "chat_id": row["chat_id"],
+                    "created_at": row["created_at"].isoformat()
+                    if row["created_at"]
+                    else None,
+                    "meta": meta,
+                    "msg_count": row["msg_count"],
+                    "type": meta.get("type", ""),
+                    "agent_config": meta.get("agent_config", {}),
+                }
+            )
+
+        return jsonify({"agents": agents})
     finally:
         conn.close()
 
