@@ -482,6 +482,60 @@ def api_schedules():
         conn.close()
 
 
+@app.route("/api/subagent/<int:agent_id>")
+def api_subagent(agent_id: int):
+    """Return a subagent's config and message history."""
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as dict_cur:
+            # Get agent record
+            dict_cur.execute(
+                "SELECT id, chat_id, created_at, meta FROM agents WHERE id = %s",
+                (agent_id,),
+            )
+            agent_row = dict_cur.fetchone()
+            if not agent_row:
+                return jsonify({"error": "Agent not found"}), 404
+
+            agent_meta = agent_row["meta"] or {}
+
+        # get_messages uses positional indexing, needs a regular cursor
+        with conn.cursor() as cur:
+            db_messages = get_messages(cur, agent_row["chat_id"], agent_id=agent_id)
+
+        api_messages = convert_db_messages_to_claude_messages(db_messages)
+
+        # Truncate base64 image data for display
+        for msg in api_messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "image":
+                        source = block.get("source", {})
+                        if source.get("type") == "base64":
+                            source["data"] = "[truncated]"
+
+        # Extract agent config if present
+        agent_config_dict = agent_meta.get("agent_config", {})
+
+        return jsonify(
+            {
+                "agent_id": agent_id,
+                "chat_id": agent_row["chat_id"],
+                "created_at": agent_row["created_at"].isoformat()
+                if agent_row["created_at"]
+                else None,
+                "agent_config": agent_config_dict,
+                "agent_meta": agent_meta,
+                "history": api_messages,
+                "num_messages": len(api_messages),
+                "num_db_turns": len(db_messages),
+            }
+        )
+    finally:
+        conn.close()
+
+
 @app.route("/api/agent-view")
 def api_agent_view():
     """Return the full agent view: system prompt + message history as Claude sees it."""

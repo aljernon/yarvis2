@@ -238,7 +238,7 @@ async function loadMessages(page) {
     card.className = msg.agent_id ? "turn-card subagent" : "turn-card";
 
     let badges = "";
-    if (msg.agent_id) badges += `<span class="badge agent">Agent #${msg.agent_id}</span>`;
+    if (msg.agent_id) badges += `<a href="/agent?agent_id=${msg.agent_id}" class="badge agent" title="View agent config & history">Agent #${msg.agent_id}</a>`;
     if (msg.has_image) badges += `<span class="badge image">Image</span>`;
     if (msg.marked_for_archive) badges += `<span class="badge archived">Archived</span>`;
     badges += renderUsageBadge(msg.meta);
@@ -659,6 +659,107 @@ async function loadAgentView() {
   }
 }
 
+// ── Subagent view ────────────────────────────────────────────────────────────
+
+async function loadSubagentView(agentId) {
+  const container = document.getElementById("agent-container");
+  const loading = document.getElementById("agent-loading");
+  const subtitle = document.getElementById("agent-subtitle");
+  const tokenBtn = document.getElementById("agent-token-btn");
+  if (!container) return;
+
+  if (subtitle) subtitle.textContent = `Subagent #${agentId}`;
+  if (tokenBtn) tokenBtn.style.display = "none";
+  if (loading) loading.style.display = "";
+
+  try {
+    const resp = await fetch(`/api/subagent/${agentId}`);
+    if (!resp.ok) {
+      const err = await resp.json();
+      if (loading) loading.textContent = `Error: ${err.error || resp.statusText}`;
+      return;
+    }
+    const data = await resp.json();
+    if (loading) loading.style.display = "none";
+
+    let html = "";
+
+    // Agent info
+    html += `<div class="agent-stats">Agent #${data.agent_id} | Chat ${data.chat_id} | Created ${formatTimestamp(data.created_at)} | ${data.num_db_turns} DB turns → ${data.num_messages} API messages</div>`;
+
+    // Agent config
+    if (data.agent_config && Object.keys(data.agent_config).length > 0) {
+      const configId = "agentcfg-" + uid();
+      const configStr = JSON.stringify(data.agent_config, null, 2);
+      html += `<div class="turn-card"><div class="turn-header"><span class="sender system">Agent Config</span><span class="toggle-arrow open" id="arrow-${configId}" onclick="toggleCollapsible('${configId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content open" id="${configId}" style="max-height:800px"><pre><code class="language-json">${escapeHtml(configStr)}</code></pre></div></div>`;
+    }
+
+    // Agent meta (extra fields beyond agent_config)
+    const extraMeta = Object.fromEntries(
+      Object.entries(data.agent_meta).filter(([k]) => k !== "agent_config")
+    );
+    if (Object.keys(extraMeta).length > 0) {
+      const metaId = "agentmeta-" + uid();
+      const metaStr = JSON.stringify(extraMeta, null, 2);
+      html += `<div class="turn-card"><div class="turn-header"><span class="sender system">Agent Meta</span><span class="toggle-arrow" id="arrow-${metaId}" onclick="toggleCollapsible('${metaId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content" id="${metaId}"><pre><code class="language-json">${escapeHtml(metaStr)}</code></pre></div></div>`;
+    }
+
+    // Message history — same grouping as main agent view
+    let i = 0;
+    while (i < data.history.length) {
+      const startIdx = i;
+      const firstRole = data.history[i].role;
+      let endIdx = i + 1;
+      if (firstRole === "assistant") {
+        while (endIdx < data.history.length) {
+          const msg = data.history[endIdx];
+          if (msg.role === "user") {
+            const content = msg.content;
+            const isToolResult = Array.isArray(content) && content.length > 0 &&
+              content.every(b => b.type === "tool_result");
+            if (isToolResult) { endIdx++; continue; }
+          }
+          if (msg.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }
+          break;
+        }
+      } else {
+        endIdx = i + 1;
+      }
+
+      const isSystemMsg = firstRole === "user" && typeof data.history[startIdx].content === "string" && data.history[startIdx].content.startsWith("<system>System message");
+      const sc = firstRole === "assistant" ? "bot" : (isSystemMsg ? "system" : "");
+      let bodyHtml = "";
+      for (let j = startIdx; j < endIdx; j++) {
+        const msg = data.history[j];
+        let msgBody = "";
+        if (typeof msg.content === "string") {
+          const id = "txt-" + uid();
+          const bytes = new Blob([msg.content]).size;
+          msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.content)}</div></div>`;
+        } else if (Array.isArray(msg.content)) {
+          msgBody = renderContentBlocks(msg.content);
+        }
+        if (msgBody) {
+          bodyHtml += `<div class="api-message">${msgBody}</div>`;
+        }
+      }
+
+      if (bodyHtml) {
+        const rangeLabel = startIdx === endIdx - 1 ? `#${startIdx}` : `#${startIdx}-${endIdx - 1}`;
+        const roleLabel = isSystemMsg ? "system" : firstRole;
+        html += `<div class="turn-card"><div class="turn-header"><span class="msg-id">${rangeLabel}</span><span class="sender ${sc}">${escapeHtml(roleLabel)}</span></div><div class="turn-body">${bodyHtml}</div></div>`;
+      }
+      i = endIdx;
+    }
+
+    container.innerHTML = html;
+    if (window.hljs) container.querySelectorAll("pre code").forEach(el => hljs.highlightElement(el));
+  } catch (e) {
+    if (loading) loading.textContent = "Error: " + e.message;
+    console.error("Failed to load subagent view:", e);
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -683,6 +784,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (document.getElementById("agent-container")) {
-    loadAgentView();
+    const params = new URLSearchParams(window.location.search);
+    const agentId = params.get("agent_id");
+    if (agentId) {
+      loadSubagentView(parseInt(agentId));
+    } else {
+      loadAgentView();
+    }
   }
 });

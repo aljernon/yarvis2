@@ -124,7 +124,9 @@ button:hover { background: #ece4ea; }
 }
 .badge.image { background: #45b5c4; color: #fff; }
 .badge.archived { background: #b0a0b4; color: #fff; }
-.badge.agent { background: #a078c0; color: #fff; }
+.badge.agent { background: #a078c0; color: #fff; cursor: pointer; }
+a.badge.agent { text-decoration: none; color: #fff; }
+a.badge.agent:hover { background: #b090d0; }
 .badge.usage { background: #2a7a3a; color: #fff; cursor: help; white-space: pre-line; }
 
 /* Subagent messages indented like a subthread */
@@ -285,6 +287,8 @@ button:hover { background: #ece4ea; }
 }
 
 .collapsible-content.open { display: block; }
+.collapsible-content pre { margin: 0; }
+.collapsible-content pre code.hljs { background: transparent; padding: 0; }
 
 .toggle-arrow { transition: transform 0.15s; font-size: 0.7em; }
 .toggle-arrow.open { transform: rotate(90deg); }

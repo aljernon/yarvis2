@@ -143,9 +143,12 @@ async def set_commands(application: Application):
         BotCommand(handler.name, handler.description) for handler in HANDLER_REGISTRY
     ]
     for chat_id in CHATS_WITH_COMMANDS:
-        await application.bot.set_my_commands(
-            commands, scope=BotCommandScopeChat(chat_id=chat_id)
-        )
+        try:
+            await application.bot.set_my_commands(
+                commands, scope=BotCommandScopeChat(chat_id=chat_id)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to set commands for chat {chat_id}: {e}")
 
 
 def main():
