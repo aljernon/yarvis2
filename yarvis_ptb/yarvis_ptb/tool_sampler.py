@@ -63,11 +63,11 @@ TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
 TOOL_EXECUTION_TIMEOUT_SEC = TOOL_MAX_TIMEOUT_SEC + 10  # hard limit per tool call
 
-GENERIC_LOCAL_TOOLS: list[LocalTool] = [
-    PythonREPLTool(),
-    BashRunTool(),
-    EditorTool(),
-]
+
+def _build_generic_tools() -> list[LocalTool]:
+    """Fresh instances each call — these are stateful, must not be shared across requests."""
+    return [PythonREPLTool(), BashRunTool(), EditorTool()]
+
 
 TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 
@@ -240,7 +240,7 @@ def _build_tools_from_classes(
         if tool_class == "anton_google":
             all_local_tool_objects.extend(ANTON_DATA_TOOLS)
         elif tool_class == "fs":
-            all_local_tool_objects.extend(GENERIC_LOCAL_TOOLS)
+            all_local_tool_objects.extend(_build_generic_tools())
         elif tool_class == "scheduling":
             all_local_tool_objects.extend(build_scheduling_tools(curr, chat_id))
         elif tool_class == "anton_message_search":
@@ -749,15 +749,6 @@ class _DummyJobQueue:
             data["check_interruption_started"].set()
 
 
-def _build_fresh_generic_tools() -> list[LocalTool]:
-    """Create fresh instances of generic tools (not singletons) for subagent use."""
-    return [
-        PythonREPLTool(),
-        BashRunTool(),
-        EditorTool(),
-    ]
-
-
 def _get_tools_by_names(
     names: Literal["all"] | list[str], curr, chat_id: int, bot
 ) -> list[LocalTool]:
@@ -783,7 +774,7 @@ def _get_tools_by_names(
 
     # Override generic tools with fresh instances so subagent doesn't share
     # state (init/close) with the parent's singletons
-    for tool in _build_fresh_generic_tools():
+    for tool in _build_generic_tools():
         name_to_tool[tool.name] = tool
 
     if names == "all":
