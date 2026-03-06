@@ -729,6 +729,13 @@ async def _process_query_with_tools(
             )
             break
 
+    # Ensure all content fields are plain lists — pydantic-core ≥2.28 may
+    # produce ValidatorIterator objects that are not JSON-serializable.
+    for msg in extra_messages:
+        c = msg.get("content")
+        if c is not None and not isinstance(c, list):
+            msg["content"] = list(c)  # type: ignore[typeddict-item]
+
     return extra_messages, claude_calls
 
 
