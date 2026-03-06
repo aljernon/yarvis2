@@ -241,33 +241,34 @@ def api_messages():
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            where_clauses = ["chat_id = %s"]
+            where_clauses = ["m.chat_id = %s"]
             params: list = [chat_id]
 
             if search:
-                where_clauses.append("message ILIKE %s")
+                where_clauses.append("m.message ILIKE %s")
                 params.append(f"%{search}%")
             if min_bytes > 0:
                 where_clauses.append(
-                    "octet_length(meta::text) + octet_length(message) >= %s"
+                    "octet_length(m.meta::text) + octet_length(m.message) >= %s"
                 )
                 params.append(min_bytes)
 
             where_sql = "WHERE " + " AND ".join(where_clauses)
 
             # Count
-            cur.execute(f"SELECT COUNT(*) as cnt FROM messages {where_sql}", params)
+            cur.execute(f"SELECT COUNT(*) as cnt FROM messages m {where_sql}", params)
             total = cur.fetchone()["cnt"]
 
             # Fetch page
             cur.execute(
                 f"""
-                SELECT id, created_at, chat_id, user_id, message, meta, marked_for_archive,
-                       octet_length(meta::text) + octet_length(message) as total_bytes,
-                       agent_id
-                FROM messages
+                SELECT m.id, m.created_at, m.chat_id, m.user_id, m.message, m.meta, m.marked_for_archive,
+                       octet_length(m.meta::text) + octet_length(m.message) as total_bytes,
+                       m.agent_id, a.slug as agent_slug
+                FROM messages m
+                LEFT JOIN agents a ON m.agent_id = a.id
                 {where_sql}
-                ORDER BY created_at DESC, id DESC
+                ORDER BY m.created_at DESC, m.id DESC
                 LIMIT %s OFFSET %s
                 """,
                 params + [PER_PAGE, offset],
@@ -293,6 +294,7 @@ def api_messages():
                     "has_image": "image_b64" in meta,
                     "total_bytes": row["total_bytes"],
                     "agent_id": row["agent_id"],
+                    "agent_slug": row["agent_slug"],
                 }
             )
 
@@ -490,7 +492,7 @@ def api_subagent(agent_id: int):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as dict_cur:
             # Get agent record
             dict_cur.execute(
-                "SELECT id, chat_id, created_at, meta FROM agents WHERE id = %s",
+                "SELECT id, chat_id, created_at, meta, slug FROM agents WHERE id = %s",
                 (agent_id,),
             )
             agent_row = dict_cur.fetchone()
@@ -521,6 +523,7 @@ def api_subagent(agent_id: int):
         return jsonify(
             {
                 "agent_id": agent_id,
+                "agent_slug": agent_row["slug"],
                 "chat_id": agent_row["chat_id"],
                 "created_at": agent_row["created_at"].isoformat()
                 if agent_row["created_at"]

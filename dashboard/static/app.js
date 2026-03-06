@@ -238,7 +238,7 @@ async function loadMessages(page) {
     card.className = msg.agent_id ? "turn-card subagent" : "turn-card";
 
     let badges = "";
-    if (msg.agent_id) badges += `<a href="/agent?agent_id=${msg.agent_id}" class="badge agent" title="View agent config & history">Agent #${msg.agent_id}</a>`;
+    if (msg.agent_id) badges += `<a href="/agent?agent_id=${msg.agent_id}" class="badge agent" title="View agent config & history">${msg.agent_slug || 'Agent #' + msg.agent_id}</a>`;
     if (msg.has_image) badges += `<span class="badge image">Image</span>`;
     if (msg.marked_for_archive) badges += `<span class="badge archived">Archived</span>`;
     badges += renderUsageBadge(msg.meta);
@@ -668,7 +668,7 @@ async function loadSubagentView(agentId) {
   const tokenBtn = document.getElementById("agent-token-btn");
   if (!container) return;
 
-  if (subtitle) subtitle.textContent = `Subagent #${agentId}`;
+  if (subtitle) subtitle.textContent = `Loading agent #${agentId}...`;
   if (tokenBtn) tokenBtn.style.display = "none";
   if (loading) loading.style.display = "";
 
@@ -685,7 +685,9 @@ async function loadSubagentView(agentId) {
     let html = "";
 
     // Agent info
-    html += `<div class="agent-stats">Agent #${data.agent_id} | Chat ${data.chat_id} | Created ${formatTimestamp(data.created_at)} | ${data.num_db_turns} DB turns → ${data.num_messages} API messages</div>`;
+    const agentLabel = data.agent_slug || `Agent #${data.agent_id}`;
+    if (subtitle) subtitle.textContent = agentLabel;
+    html += `<div class="agent-stats">${agentLabel} (#${data.agent_id}) | Chat ${data.chat_id} | Created ${formatTimestamp(data.created_at)} | ${data.num_db_turns} DB turns → ${data.num_messages} API messages</div>`;
 
     // Agent config
     if (data.agent_config && Object.keys(data.agent_config).length > 0) {
