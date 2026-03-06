@@ -8,6 +8,27 @@ from typing import Any, Literal, TypedDict
 
 import psycopg2
 
+logger = logging.getLogger(__name__)
+
+
+def _debug_find_unserializable(obj: Any, path: str = "") -> None:
+    """Walk a nested structure and log any non-JSON-serializable leaves."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _debug_find_unserializable(v, f"{path}.{k}")
+    elif isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            _debug_find_unserializable(v, f"{path}[{i}]")
+    else:
+        try:
+            json.dumps(obj)
+        except TypeError:
+            logger.error(
+                f"  Unserializable at {path}: type={type(obj).__name__} "
+                f"module={type(obj).__module__} repr={repr(obj)[:200]}"
+            )
+
+
 from yarvis_ptb.queries import (
     INIT_AGENTS_QUERY,
     INIT_MEMORY_QUERY,
@@ -248,6 +269,12 @@ def get_messages(
 def save_message(curr, message: DbMessage, *, is_visible: bool = True):
     """Save message to the dbwith connect() as curr"""
     assert message.message_id is None, "Will be auto-generated"
+    try:
+        meta_json = json.dumps(message.meta)
+    except TypeError as e:
+        logger.error(f"Failed to serialize message.meta: {e}")
+        _debug_find_unserializable(message.meta, path="meta")
+        raise
     curr.execute(
         """
             INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id, is_visible)
@@ -258,7 +285,7 @@ def save_message(curr, message: DbMessage, *, is_visible: bool = True):
             message.chat_id,
             message.user_id,
             message.message,
-            json.dumps(message.meta),
+            meta_json,
             message.marked_for_archive,
             message.agent_id,
             is_visible,
