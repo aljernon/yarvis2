@@ -28,6 +28,7 @@ from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
+    DbSchedule,
     Invocation,
     create_agent,
     get_agent_by_slug,
@@ -134,8 +135,14 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
             f"This agent session ({slug}) is now FROZEN. "
             f"Your conversation history up to this point is preserved and immutable. "
             f"Any future queries to you come from a newer version of yourself — "
-            f"respond helpfully but know that these exchanges are ephemeral and "
-            f"will not be added to your history."
+            f"these exchanges are ephemeral and will not be added to your history.\n\n"
+            f"When answering queries, act as a factual archive — not a chatbot. "
+            f"Extract and present the relevant information from your history directly. "
+            f"Do not ask follow-up questions or make "
+            f"conversational small talk. Just provide the facts. "
+            f"You may use tools if needed, but do not use them to look up current "
+            f"state (e.g., reading CKR) — the caller can do that itself. "
+            f"Your value is the knowledge in your conversation history."
         )
         save_message(
             curr,
@@ -186,13 +193,25 @@ async def invoke_new_session(
         message=new_session_msg,
     )
 
+    dau_schedule = DbSchedule(
+        next_run_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+        chat_id=chat_id,
+        title="New session: review yesterday and follow up",
+        schedule_type="at",
+        context=(
+            f"Yesterday's conversation was archived as '{slug}'. "
+            f"Query it with run_subagent to review what happened. "
+            f"Follow up on any pending tasks, commitments, or items that need attention. "
+            f"Update CKR if needed. Send a message to Anton only if there's something actionable."
+        ),
+    )
     await process_multi_message_claude_invocation(
         curr,
         application=application,
         bot=bot,
         chat_id=chat_id,
         agent_config=DEFAULT_AGENT_CONFIG,
-        invocation=Invocation(invocation_type="schedule"),
+        invocation=Invocation(invocation_type="schedule", db_invocation=dau_schedule),
         initial_db_message=initial_db_message,
     )
 
