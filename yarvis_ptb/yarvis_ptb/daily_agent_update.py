@@ -181,9 +181,10 @@ async def invoke_new_session(
         f'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
         f"Archived sessions (descriptions are LLM-generated summaries):\n"
         f"{sessions_text}\n\n"
-        f"Review yesterday's session and decide if there's anything you should "
-        f"proactively do: follow up on tasks, update CKR with important info, "
-        f"check on commitments, etc."
+        f"ACTION REQUIRED: Call run_subagent to query '{slug}' and review yesterday's "
+        f"conversation. Look for: pending tasks, commitments Anton made, follow-ups needed, "
+        f"anything that should be added to CKR. Do NOT just read current-status — that's "
+        f"already in your system prompt. Actually query the archive."
     )
     initial_db_message = DbMessage(
         chat_id=chat_id,
