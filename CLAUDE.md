@@ -21,6 +21,10 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 - `yarvis_ptb/yarvis_ptb/complex_chat.py`: Contains the main conversational logic, Claude integration, and message handling
 - `yarvis_ptb/yarvis_ptb/storage.py`: Manages database interactions for messages, memories, and scheduled invocations
 - `yarvis_ptb/yarvis_ptb/prompt_consts.py`: Contains system prompts
+- `yarvis_ptb/yarvis_ptb/agent_config.py`: `AgentConfig` (rendering + sampling + tool config), `AgentMeta` (typed wrapper for agents.meta JSONB)
+- `yarvis_ptb/yarvis_ptb/rendering_config.py`: `RenderingConfig` — prompt name, memory loading, context placement
+- `yarvis_ptb/yarvis_ptb/sampling.py`: `SamplingConfig` — model, max_tokens, output_mode
+- `yarvis_ptb/yarvis_ptb/daily_agent_update.py`: DAU (Disjoint Agent Union) — daily session rotation
 - `yarvis_ptb/yarvis_ptb/tools/`: Directory containing tool implementations
 
 ### Memory / Core knowledge repository
@@ -71,6 +75,16 @@ The bot can schedule its own future invocations using the scheduling system:
 - Scheduled invocations are stored in the database
 - Each invocation includes metadata, reason, and timing information
 
+## DAU (Disjoint Agent Union)
+Daily session rotation system. At 2am local time (`daily_agent_update.py`):
+1. Creates a frozen archive agent (`archive-YYYY-MM-DD`) for the previous session
+2. Reassigns main-chat messages (last 2 days, `agent_id IS NULL`) to the archive agent
+3. Generates a haiku summary of the archived conversation
+4. Inserts system messages (freeze notice in archive, new-session notice in main chat)
+5. Triggers a proactive Claude invocation for the new session
+
+Frozen archive agents are queryable via `run_subagent(agent="archive-2026-03-04", message="...")` — queries are ephemeral (not saved under the archive agent). Agent slugs use `coolname` for subagents and date-based format for archives (`agent_slugs.py`).
+
 ## Credentials & Environment Variables
 - API credentials (client IDs, secrets) go in `.env` (gitignored) and must also be set on Heroku via `heroku config:set`
 - OAuth token files (e.g. `whoop_token.json`, `nest_token.json`) are shipped to Heroku via `tokens_to_envs.sh`
@@ -78,7 +92,8 @@ The bot can schedule its own future invocations using the scheduling system:
 
 ## Deployment
 The project is hosted on Heroku with PostgreSQL database integration.
-- Heroku app name: `claude-telegram`
+- Heroku app name: `claude-telegram-v2` (fork of original `claude-telegram`/yarvis)
+- Both apps share the same Postgres database (`postgresql-shaped-06547`)
 - **Never push to Heroku directly** (`git push heroku`). Deploys happen automatically after pushing to GitHub.
 - `update_tokens.sh` must be run inside the conda env: `conda run -n clam ./update_tokens.sh`
 

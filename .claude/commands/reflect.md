@@ -12,13 +12,13 @@ Arguments: $ARGUMENTS
 **If arguments contain "current" or "this":** Reflect on the current session only. The current session is the most recent JSONL file:
 
 ```bash
-ls -t ~/.claude/projects/-Users-anton-projects-yarvis/*.jsonl | head -1
+ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -1
 ```
 
 **Otherwise (default):** Find the 6 most recent session JSONL files (by modification time), then **skip the first one** (it's the current `/reflect` session):
 
 ```bash
-ls -t ~/.claude/projects/-Users-anton-projects-yarvis/*.jsonl | head -6 | tail -5
+ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -6 | tail -5
 ```
 
 Read each session file. Sessions can be large — for files over 200KB, read the first 500 and last 500 lines to capture the start and end of the conversation.

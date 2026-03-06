@@ -198,8 +198,9 @@ def _summarize_messages(
     # Render messages as text
     lines: list[str] = []
     for msg in db_messages:
-        if msg.user_id == BOT_USER_ID and msg.meta and "message_params" in msg.meta:
-            for param in msg.meta["message_params"]:
+        meta = msg.meta
+        if msg.user_id == BOT_USER_ID and meta and "message_params" in meta:
+            for param in meta["message_params"]:
                 lines.extend(render_mesage_param_exact(param))
         elif msg.user_id == SYSTEM_USER_ID:
             lines.append(f"[SYSTEM] {msg.message}")

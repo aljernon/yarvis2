@@ -121,6 +121,7 @@ def resolve_memory_preload(spec: "list[str] | str") -> str:
 
     if not spec:
         return ""
+    assert isinstance(spec, list)
     skill_content, _missing = load_skills_by_name(spec)
     if not skill_content:
         return ""

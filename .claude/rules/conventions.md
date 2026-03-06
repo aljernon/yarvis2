@@ -5,3 +5,6 @@
 - When passing a single boolean `True`/`False` as an argument, always use the keyword form (e.g. `get_timezone(complex_chat=True)` not `get_timezone(True)`)
 - Always use top-level imports, never local/deferred imports unless needed to break a circular dependency
 - All imports must be at the top of the file, never scattered between function definitions
+- After making functional changes, test with `cli_prompt.py` before declaring done
+- Use `client.messages.count_tokens()` for token budget enforcement, not character-count heuristics
+- Never pass pytz timezones to datetime constructor; always use `tz.localize(dt)`. Prefer `America/Los_Angeles` over `US/Pacific`

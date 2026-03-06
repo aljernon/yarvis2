@@ -1,8 +1,7 @@
 {
 	"site_package_search_strategy": "pep561",
 	"search_path": [
-		"/opt/homebrew/Caskroom/miniconda/base/envs/clam/lib/python3.10/site-packages",
-		"/Users/anton/projects/yarvis/yarvis_ptb"
+		"/opt/homebrew/Caskroom/miniconda/base/envs/clam/lib/python3.10/site-packages"
 	],
 	"source_directories": [
 		"yarvis_ptb"
@@ -23,7 +22,6 @@
 		"yarvis_ptb/yarvis_ptb/tools/python_repl.py",
 		"yarvis_ptb/yarvis_ptb/tools/scheduling_tools.py",
 		"yarvis_ptb/yarvis_ptb/tools/telegram_tools.py",
-		"yarvis_ptb/yarvis_ptb/daily_agent_update.py",
 		"yarvis_ptb/yarvis_ptb/tools/tool_output.py",
 		"yarvis_ptb/yarvis_ptb/transcription.py"
 	]

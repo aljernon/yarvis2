@@ -71,7 +71,7 @@ class SamplingResult(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    message_params: list[dict] = []
+    message_params: list[MessageParam] = []
     """Full turn history from this generation (assistant + tool_result turns)."""
 
     agent_messages: list[str] = []
