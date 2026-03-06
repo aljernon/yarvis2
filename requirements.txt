@@ -19,7 +19,6 @@ tqdm==4.67.1
 termcolor==2.5.0
 pytest==8.3.4
 tenacity==9.0.0
-selenium==4.30.0
 
 # PG-based similarity vectors; not used right now
 # pgvector
