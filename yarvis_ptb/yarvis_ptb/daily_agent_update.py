@@ -28,7 +28,6 @@ from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
-    DbSchedule,
     Invocation,
     create_agent,
     get_agent_by_slug,
@@ -193,25 +192,13 @@ async def invoke_new_session(
         message=new_session_msg,
     )
 
-    dau_schedule = DbSchedule(
-        next_run_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-        chat_id=chat_id,
-        title="New session: review yesterday and follow up",
-        schedule_type="at",
-        context=(
-            f"Yesterday's conversation was archived as '{slug}'. "
-            f"Query it with run_subagent to review what happened. "
-            f"Follow up on any pending tasks, commitments, or items that need attention. "
-            f"Update CKR if needed. Send a message to Anton only if there's something actionable."
-        ),
-    )
     await process_multi_message_claude_invocation(
         curr,
         application=application,
         bot=bot,
         chat_id=chat_id,
         agent_config=DEFAULT_AGENT_CONFIG,
-        invocation=Invocation(invocation_type="schedule", db_invocation=dau_schedule),
+        invocation=Invocation(invocation_type="new_session"),
         initial_db_message=initial_db_message,
     )
 
