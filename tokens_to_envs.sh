@@ -34,11 +34,11 @@ for file in "${files[@]}"; do
         fi
     elif [[ "$1" = "from_env" ]]; then
         echo "Reading $env_var from environment to $file"
-        if [ -z "${!env_var}" ]; then
+        if [ -z "${!env_var:-}" ]; then
             echo "Error: Environment variable $env_var is not set"
             continue
         fi
-        echo ${!env_var} | base64 -d | gunzip > "$file"
+        echo "${!env_var}" | base64 -d | gunzip > "$file"
     else
         echo "Error: Invalid argument $1"
         echo "Usage: $0 to_env|from_env"
