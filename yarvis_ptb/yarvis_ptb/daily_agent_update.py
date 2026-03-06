@@ -78,15 +78,13 @@ SUMMARY_PROMPT_TEMPLATE = (
 
 NEW_SESSION_MSG_TEMPLATE = (
     "=== New Session ===\n"
-    "Your conversation history up to {yesterday} has been moved to archive "
-    "agent '{slug}'. Your current context is now empty — use "
-    'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
-    "Archived sessions (descriptions are LLM-generated summaries):\n"
-    "{sessions_text}\n\n"
-    "ACTION REQUIRED: Call run_subagent to query '{slug}' and review yesterday's "
-    "conversation. Look for: pending tasks, commitments Anton made, follow-ups needed, "
-    "anything that should be added to CKR. Do NOT just read current-status — that's "
-    "already in your system prompt. Actually query the archive."
+    "Your conversation history has been rotated. Messages up to {yesterday} are now "
+    "in archive agent '{slug}'. Your current context starts fresh.\n\n"
+    "The self-reflection process should have already captured important information "
+    "into CKR files. If you notice something missing from your knowledge files, "
+    "query the relevant archive with run_subagent and update CKR.\n\n"
+    "Recent archives (descriptions are LLM-generated summaries):\n"
+    "{sessions_text}"
 )
 
 
@@ -188,7 +186,7 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
             ),
         )
 
-    # 5-7. Build new-session message and trigger invocation
+    # 5-6. Build new-session message and trigger invocation
     await invoke_new_session(curr, chat_id, yesterday, slug, application, bot)
     logger.info(f"DAU: new session invocation complete for {slug}")
 
@@ -199,9 +197,23 @@ async def invoke_new_session(
     """Build the new-session system message and trigger a Claude invocation."""
     from yarvis_ptb.complex_chat import process_multi_message_claude_invocation
 
+    db_msg = build_new_session_message(curr, chat_id, yesterday, slug)
+    await process_multi_message_claude_invocation(
+        curr,
+        application=application,
+        bot=bot,
+        chat_id=chat_id,
+        agent_config=DEFAULT_AGENT_CONFIG,
+        invocation=Invocation(invocation_type="new_session"),
+        initial_db_message=db_msg,
+    )
+
+
+def build_new_session_message(curr, chat_id: int, yesterday, slug: str) -> DbMessage:
+    """Build the new-session system message."""
     sessions = get_dau_sessions(curr, chat_id)
     session_entries = []
-    for s in sessions[:10]:  # Show last 10
+    for s in sessions[:5]:
         s_summary = s["meta"].get("summary", "no summary")
         session_entries.append(
             json.dumps({"agent": s["slug"], "description": s_summary})
@@ -211,21 +223,11 @@ async def invoke_new_session(
     new_session_msg = NEW_SESSION_MSG_TEMPLATE.format(
         yesterday=yesterday, slug=slug, sessions_text=sessions_text
     )
-    initial_db_message = DbMessage(
+    return DbMessage(
         chat_id=chat_id,
         created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
         user_id=SYSTEM_USER_ID,
         message=new_session_msg,
-    )
-
-    await process_multi_message_claude_invocation(
-        curr,
-        application=application,
-        bot=bot,
-        chat_id=chat_id,
-        agent_config=DEFAULT_AGENT_CONFIG,
-        invocation=Invocation(invocation_type="new_session"),
-        initial_db_message=initial_db_message,
     )
 
 
