@@ -69,7 +69,7 @@ class PythonREPL:
 
 class PythonREPLTool(LocalTool):
     def __init__(self):
-        self._repl = PythonREPL()
+        self._repl: PythonREPL
         self._max_output_length = 4096
 
     def spec(self) -> ToolSpec:

@@ -51,7 +51,7 @@ class BashSingleCommandRunner:
 
 class BashRunTool(LocalTool):
     def __init__(self):
-        self._repl = BashSingleCommandRunner()
+        self._repl: BashSingleCommandRunner
         self._max_output_length = 4096
 
     def spec(self) -> ToolSpec:
