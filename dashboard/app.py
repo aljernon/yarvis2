@@ -13,7 +13,7 @@ from flask import Flask, jsonify, render_template, request
 
 # Load .env from project root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 # Add yarvis_ptb to path so we can import settings
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "yarvis_ptb"))
