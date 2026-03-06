@@ -215,9 +215,7 @@ def main():
         application.job_queue.run_once(register_custom_routes, when=1)
 
         # Start the webhook
-        webhook_url = (
-            f"https://claude-telegram-v2-b2825ba2ed68.herokuapp.com/{TELEGRAM_BOT_TOKEN}"
-        )
+        webhook_url = f"https://claude-telegram-v2-b2825ba2ed68.herokuapp.com/{TELEGRAM_BOT_TOKEN}"
         logger.info(f"Setting webhook to: {webhook_url}")
         application.run_webhook(
             listen="0.0.0.0",
