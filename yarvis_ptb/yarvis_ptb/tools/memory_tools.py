@@ -25,7 +25,7 @@ class ReadMemoryTool(LocalTool):
             ],
         )
 
-    async def _execute(self, *, name: str, **kwargs) -> ToolResult:
+    async def _execute(self, *, name: str, **kwargs) -> ToolResult:  # pyre-ignore[14]
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
 
         # Construct path to SKILL.md

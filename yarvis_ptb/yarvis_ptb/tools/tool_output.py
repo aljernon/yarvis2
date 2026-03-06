@@ -28,7 +28,9 @@ class GetToolOutputTool(LocalTool):
             ],
         )
 
-    async def _execute(self, msg_id: int, tool_index: int) -> ToolResult:
+    async def _execute(  # pyre-ignore[14]
+        self, msg_id: int, tool_index: int, **kwargs
+    ) -> ToolResult:
         self.curr.execute(
             "SELECT meta FROM messages WHERE id = %s",
             (msg_id,),

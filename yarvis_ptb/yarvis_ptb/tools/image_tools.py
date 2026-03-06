@@ -34,7 +34,7 @@ class SaveImageFromMessageTool(LocalTool):
             ],
         )
 
-    async def _execute(
+    async def _execute(  # pyre-ignore[14]
         self, *, file_path: str, message_index: int = 0, **kwargs
     ) -> ToolResult:
         assert not kwargs, f"Unexpected kwargs: {kwargs}"

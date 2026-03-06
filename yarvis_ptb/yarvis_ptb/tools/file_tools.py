@@ -29,7 +29,9 @@ class SendPhotoTool(LocalTool):
             ],
         )
 
-    async def _execute(self, *, file_path: str, **kwargs) -> ToolResult:
+    async def _execute(  # pyre-ignore[14]
+        self, *, file_path: str, **kwargs
+    ) -> ToolResult:
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
 
         file_path_obj = pathlib.Path(file_path)
@@ -75,7 +77,9 @@ class SendFileTool(LocalTool):
             ],
         )
 
-    async def _execute(self, *, file_path: str, **kwargs) -> ToolResult:
+    async def _execute(  # pyre-ignore[14]
+        self, *, file_path: str, **kwargs
+    ) -> ToolResult:
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
 
         if not file_path.startswith("/tmp/"):
@@ -113,7 +117,9 @@ class SeePhotoTool(LocalTool):
             ],
         )
 
-    async def _execute(self, *, file_path: str, **kwargs) -> ToolResult:
+    async def _execute(  # pyre-ignore[14]
+        self, *, file_path: str, **kwargs
+    ) -> ToolResult:
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
 
         file_path_obj = pathlib.Path(file_path)

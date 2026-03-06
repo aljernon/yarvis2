@@ -31,7 +31,7 @@ class TelegramSingletonClient:
         if cls._num_entrances == 1:
             cls._maybe_client = telethon.TelegramClient(
                 "session_name2",
-                os.environ["TELEGRAM_ID"],
+                int(os.environ["TELEGRAM_ID"]),
                 os.environ["TELEGRAM_HASH"],
             )
             await cls._maybe_client.connect()
