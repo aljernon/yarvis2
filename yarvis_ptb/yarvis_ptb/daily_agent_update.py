@@ -43,6 +43,52 @@ logger = logging.getLogger(__name__)
 
 DAU_HOUR = 2  # 2am local time
 
+FREEZE_MSG_TEMPLATE = (
+    "This agent session ({slug}) is now FROZEN. "
+    "Your conversation history up to this point is preserved and immutable. "
+    "Any future queries to you come from a newer version of yourself — "
+    "these exchanges are ephemeral and will not be added to your history.\n\n"
+    "When answering queries, act as a factual archive — not a chatbot. "
+    "Extract and present the relevant information from your history directly. "
+    "Do not ask follow-up questions or make "
+    "conversational small talk. Just provide the facts. "
+    "You may use tools if needed, but do not use them to look up current "
+    "state (e.g., reading CKR) — the caller can do that itself. "
+    "Your value is the knowledge in your conversation history."
+)
+
+SUMMARY_PROMPT_TEMPLATE = (
+    "You are creating an index summary of a conversation archive. "
+    "This summary will be used by other AI agents to decide whether to query "
+    "this archive for information. Maximize keyword/topic coverage so relevant "
+    "queries can find this archive. Be token-efficient: use comma-separated "
+    "lists, not bullet points.\n\n"
+    "Format:\n"
+    "# Session Summary\n"
+    "One sentence overview.\n\n"
+    "**Topics:** comma-separated list of all topics/subjects/themes "
+    "(be comprehensive, include minor topics)\n\n"
+    "**People:** Name (context), Name (context), ...\n\n"
+    "**Events:** comma-separated list of events/appointments/activities\n\n"
+    "**Instructions/Preferences:** any user corrections, preferences, or rules established\n\n"
+    "**Learnings:** new information learned, insights, discoveries\n\n"
+    "Do NOT include action items or forward-looking tasks.\n\n"
+    "<conversation>\n{conversation}\n</conversation>"
+)
+
+NEW_SESSION_MSG_TEMPLATE = (
+    "=== New Session ===\n"
+    "Your conversation history up to {yesterday} has been moved to archive "
+    "agent '{slug}'. Your current context is now empty — use "
+    'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
+    "Archived sessions (descriptions are LLM-generated summaries):\n"
+    "{sessions_text}\n\n"
+    "ACTION REQUIRED: Call run_subagent to query '{slug}' and review yesterday's "
+    "conversation. Look for: pending tasks, commitments Anton made, follow-ups needed, "
+    "anything that should be added to CKR. Do NOT just read current-status — that's "
+    "already in your system prompt. Actually query the archive."
+)
+
 
 def should_run_dau(curr, chat_id: int) -> bool:
     """Check if the daily agent update should run now.
@@ -130,19 +176,7 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
             logger.info(f"DAU: summary for {slug}: {summary[:200]}")
 
         # 4. Insert freeze system message into the archive agent
-        freeze_msg = (
-            f"This agent session ({slug}) is now FROZEN. "
-            f"Your conversation history up to this point is preserved and immutable. "
-            f"Any future queries to you come from a newer version of yourself — "
-            f"these exchanges are ephemeral and will not be added to your history.\n\n"
-            f"When answering queries, act as a factual archive — not a chatbot. "
-            f"Extract and present the relevant information from your history directly. "
-            f"Do not ask follow-up questions or make "
-            f"conversational small talk. Just provide the facts. "
-            f"You may use tools if needed, but do not use them to look up current "
-            f"state (e.g., reading CKR) — the caller can do that itself. "
-            f"Your value is the knowledge in your conversation history."
-        )
+        freeze_msg = FREEZE_MSG_TEMPLATE.format(slug=slug)
         save_message(
             curr,
             DbMessage(
@@ -174,17 +208,8 @@ async def invoke_new_session(
         )
     sessions_text = "\n".join(session_entries) if session_entries else "(none)"
 
-    new_session_msg = (
-        f"=== New Session ===\n"
-        f"Your conversation history up to {yesterday} has been moved to archive "
-        f"agent '{slug}'. Your current context is now empty — use "
-        f'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
-        f"Archived sessions (descriptions are LLM-generated summaries):\n"
-        f"{sessions_text}\n\n"
-        f"ACTION REQUIRED: Call run_subagent to query '{slug}' and review yesterday's "
-        f"conversation. Look for: pending tasks, commitments Anton made, follow-ups needed, "
-        f"anything that should be added to CKR. Do NOT just read current-status — that's "
-        f"already in your system prompt. Actually query the archive."
+    new_session_msg = NEW_SESSION_MSG_TEMPLATE.format(
+        yesterday=yesterday, slug=slug, sessions_text=sessions_text
     )
     initial_db_message = DbMessage(
         chat_id=chat_id,
@@ -228,27 +253,8 @@ def _summarize_messages(
     haiku_model = SUBAGENT_MODEL_MAP["haiku"]
     max_input_tokens = max_summary_tokens
 
-    prompt_template = (
-        "You are creating an index summary of a conversation archive. "
-        "This summary will be used by other AI agents to decide whether to query "
-        "this archive for information. Maximize keyword/topic coverage so relevant "
-        "queries can find this archive. Be token-efficient: use comma-separated "
-        "lists, not bullet points.\n\n"
-        "Format:\n"
-        "# Session Summary\n"
-        "One sentence overview.\n\n"
-        "**Topics:** comma-separated list of all topics/subjects/themes "
-        "(be comprehensive, include minor topics)\n\n"
-        "**People:** Name (context), Name (context), ...\n\n"
-        "**Events:** comma-separated list of events/appointments/activities\n\n"
-        "**Instructions/Preferences:** any user corrections, preferences, or rules established\n\n"
-        "**Learnings:** new information learned, insights, discoveries\n\n"
-        "Do NOT include action items or forward-looking tasks.\n\n"
-        "<conversation>\n{conversation}\n</conversation>"
-    )
-
     # Truncate from the left until we fit within the token budget
-    full_prompt = prompt_template.format(conversation=conversation_text)
+    full_prompt = SUMMARY_PROMPT_TEMPLATE.format(conversation=conversation_text)
     messages: list[dict] = [{"role": "user", "content": full_prompt}]
     while (
         client.messages.count_tokens(model=haiku_model, messages=messages).input_tokens
@@ -257,7 +263,7 @@ def _summarize_messages(
         conversation_text = (
             "(truncated) ...\n" + conversation_text[len(conversation_text) // 2 :]
         )
-        full_prompt = prompt_template.format(conversation=conversation_text)
+        full_prompt = SUMMARY_PROMPT_TEMPLATE.format(conversation=conversation_text)
         messages = [{"role": "user", "content": full_prompt}]
 
     max_output_tokens = 1000
