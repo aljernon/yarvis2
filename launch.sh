@@ -15,7 +15,6 @@ fi
 
 bash tokens_to_envs.sh from_env
 
-ls ~/.ssh
 mkdir -p ~/.ssh
 set +x
 echo "$GITHUB_SSH_PRIVATE" > ~/.ssh/id_ed25519
