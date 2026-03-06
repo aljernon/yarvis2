@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from anthropic.types import MessageParam
@@ -65,22 +66,20 @@ class NoOpHooks:
         return False
 
 
-class SamplingResult(BaseModel):
+@dataclass
+class SamplingResult:
     """Result of a sampling run."""
 
-    class Config:
-        arbitrary_types_allowed = True
-
-    message_params: list[MessageParam] = []
+    message_params: list[MessageParam] = field(default_factory=list)
     """Full turn history from this generation (assistant + tool_result turns)."""
 
-    agent_messages: list[str] = []
+    agent_messages: list[str] = field(default_factory=list)
     """Extracted agent output messages (from text or send_message tool calls)."""
 
-    claude_calls: list = []
+    claude_calls: list = field(default_factory=list)
     """List of ClaudeCallInfo for token tracking."""
 
-    subagent_usages: list[dict] = []
+    subagent_usages: list[dict] = field(default_factory=list)
     """Cost dicts from any subagent invocations."""
 
     tool_init_time: float = 0.0

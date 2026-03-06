@@ -636,6 +636,9 @@ async function loadAgentView() {
           msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.content)}</div></div>`;
         } else if (Array.isArray(msg.content)) {
           msgBody = renderContentBlocks(msg.content);
+          if (!msgBody && msg.content.length === 0) {
+            msgBody = `<div class="text-block"><em>(empty content)</em></div>`;
+          }
         }
         if (msgBody) {
           bodyHtml += `<div class="api-message" data-agent-idx="${j}">${msgBody}</div>`;
@@ -740,6 +743,9 @@ async function loadSubagentView(agentId) {
           msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.content)}</div></div>`;
         } else if (Array.isArray(msg.content)) {
           msgBody = renderContentBlocks(msg.content);
+          if (!msgBody && msg.content.length === 0) {
+            msgBody = `<div class="text-block"><em>(empty content)</em></div>`;
+          }
         }
         if (msgBody) {
           bodyHtml += `<div class="api-message">${msgBody}</div>`;
