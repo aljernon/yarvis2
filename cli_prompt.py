@@ -12,6 +12,7 @@ import sys
 import typer
 
 from yarvis_ptb import tool_sampler
+from yarvis_ptb.agent_config import AgentMeta
 from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
 from yarvis_ptb.prompting import (
     build_claude_input,
@@ -26,6 +27,7 @@ from yarvis_ptb.storage import (
     DbMessage,
     Invocation,
     connect,
+    get_agent_by_slug,
     get_messages,
     get_schedules,
 )
@@ -63,25 +65,47 @@ def run(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Verbose output with tool details"
     ),
+    agent: str = typer.Option(
+        None,
+        "--agent",
+        "-a",
+        help="Agent slug to chat with (loads agent's config and history)",
+    ),
 ):
-    asyncio.run(main(prompt=prompt, verbose=verbose))
+    asyncio.run(main(prompt=prompt, verbose=verbose, agent=agent))
 
 
-async def main(prompt: str, verbose: bool):
+async def main(prompt: str, verbose: bool, agent: str | None = None):
     load_env()
     setup_logging()
 
     chat_id = ID_USER_MAP[USER_ANTON]
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
-    agent_config = DEFAULT_AGENT_CONFIG
-    rendering_config = agent_config.rendering
-    sampling_config = agent_config.sampling
 
     with connect() as conn:
         with conn.cursor() as curr:
+            # Resolve agent config
+            agent_id = None
+            if agent is not None:
+                result = get_agent_by_slug(curr, chat_id, agent)
+                if result is None:
+                    print(f"Agent '{agent}' not found.", file=sys.stderr)
+                    raise typer.Exit(1)
+                agent_id, raw_meta = result
+                agent_meta = AgentMeta.model_validate(raw_meta)
+                agent_config = agent_meta.agent_config
+                print(f"[agent: {agent} (id={agent_id})]", file=sys.stderr)
+            else:
+                agent_config = DEFAULT_AGENT_CONFIG
+            rendering_config = agent_config.rendering
+            sampling_config = agent_config.sampling
+
             # Load history from DB
             db_messages = get_messages(
-                curr, chat_id=chat_id, limit=rendering_config.max_history_length_turns
+                curr,
+                chat_id=chat_id,
+                limit=rendering_config.max_history_length_turns,
+                agent_id=agent_id,
             )
             initial_db_message = DbMessage(
                 created_at=now,
