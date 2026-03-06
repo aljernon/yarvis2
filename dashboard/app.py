@@ -24,6 +24,7 @@ SYSTEM_USER_ID = -2
 TOOL_CALL_USER_ID = -3
 
 os.environ.setdefault("SETTINGS_NAME", "anton")
+from yarvis_ptb.agent_config import AgentConfig
 from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
 from yarvis_ptb.prompting import (
     build_claude_input,
@@ -549,7 +550,16 @@ def api_subagent(agent_id: int):
         with conn.cursor() as cur:
             db_messages = get_messages(cur, agent_row["chat_id"], agent_id=agent_id)
 
-        api_messages = convert_db_messages_to_claude_messages(db_messages)
+        # Build system prompt from agent config
+        agent_config_dict = agent_meta.get("agent_config", {})
+        try:
+            agent_config = AgentConfig.model_validate(agent_config_dict)
+            system_prompt, api_messages = build_claude_input(
+                db_messages, agent_config.rendering
+            )
+        except Exception:
+            system_prompt = None
+            api_messages = convert_db_messages_to_claude_messages(db_messages)
 
         # Truncate base64 image data for display
         for msg in api_messages:
@@ -561,9 +571,6 @@ def api_subagent(agent_id: int):
                         if source.get("type") == "base64":
                             source["data"] = "[truncated]"
 
-        # Extract agent config if present
-        agent_config_dict = agent_meta.get("agent_config", {})
-
         return jsonify(
             {
                 "agent_id": agent_id,
@@ -574,6 +581,7 @@ def api_subagent(agent_id: int):
                 else None,
                 "agent_config": agent_config_dict,
                 "agent_meta": agent_meta,
+                "system_prompt": system_prompt,
                 "history": api_messages,
                 "num_messages": len(api_messages),
                 "num_db_turns": len(db_messages),

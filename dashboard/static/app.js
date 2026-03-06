@@ -699,6 +699,11 @@ async function loadSubagentView(agentId) {
       html += `<div class="turn-card"><div class="turn-header"><span class="sender system">Agent Config</span><span class="toggle-arrow open" id="arrow-${configId}" onclick="toggleCollapsible('${configId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content open" id="${configId}" style="max-height:800px"><pre><code class="language-json">${escapeHtml(configStr)}</code></pre></div></div>`;
     }
 
+    // System prompt
+    if (data.system_prompt) {
+      html += renderSystemPrompt(data.system_prompt);
+    }
+
     // Agent meta (extra fields beyond agent_config)
     const extraMeta = Object.fromEntries(
       Object.entries(data.agent_meta).filter(([k]) => k !== "agent_config")
