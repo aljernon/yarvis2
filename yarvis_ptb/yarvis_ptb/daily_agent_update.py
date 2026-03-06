@@ -76,7 +76,6 @@ def should_run_dau(curr, chat_id: int) -> bool:
 
 async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
     """Execute the DAU: freeze yesterday's session and start a new one."""
-    from yarvis_ptb.complex_chat import process_multi_message_claude_invocation
 
     if COMPLEX_CHAT_LOCK.locked():
         logger.info("DAU: skipping, complex chat lock is held")
@@ -149,36 +148,44 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
             ),
         )
 
-        # 5. Build list of available frozen predecessors
-        sessions = get_dau_sessions(curr, chat_id)
-        session_entries = []
-        for s in sessions[:10]:  # Show last 10
-            s_summary = s["meta"].get("summary", "no summary")
-            session_entries.append(
-                json.dumps({"agent": s["slug"], "description": s_summary})
-            )
-        sessions_text = "\n".join(session_entries) if session_entries else "(none)"
+    # 5-7. Build new-session message and trigger invocation
+    await invoke_new_session(curr, chat_id, yesterday, slug, application, bot)
+    logger.info(f"DAU: new session invocation complete for {slug}")
 
-        # 6. Insert system message in main chat about the new session
-        new_session_msg = (
-            f"=== New Session ===\n"
-            f"Your conversation history up to {yesterday} has been moved to archive "
-            f"agent '{slug}'. Your current context is now empty — use "
-            f'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
-            f"Archived sessions (descriptions are LLM-generated summaries):\n"
-            f"{sessions_text}\n\n"
-            f"Review yesterday's session and decide if there's anything you should "
-            f"proactively do: follow up on tasks, update CKR with important info, "
-            f"check on commitments, etc."
-        )
-        initial_db_message = DbMessage(
-            chat_id=chat_id,
-            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-            user_id=SYSTEM_USER_ID,
-            message=new_session_msg,
-        )
 
-    # 7. Trigger Claude invocation (outside the lock — process_multi_message takes its own)
+async def invoke_new_session(
+    curr, chat_id: int, yesterday, slug: str, application, bot
+) -> None:
+    """Build the new-session system message and trigger a Claude invocation."""
+    from yarvis_ptb.complex_chat import process_multi_message_claude_invocation
+
+    sessions = get_dau_sessions(curr, chat_id)
+    session_entries = []
+    for s in sessions[:10]:  # Show last 10
+        s_summary = s["meta"].get("summary", "no summary")
+        session_entries.append(
+            json.dumps({"agent": s["slug"], "description": s_summary})
+        )
+    sessions_text = "\n".join(session_entries) if session_entries else "(none)"
+
+    new_session_msg = (
+        f"=== New Session ===\n"
+        f"Your conversation history up to {yesterday} has been moved to archive "
+        f"agent '{slug}'. Your current context is now empty — use "
+        f'run_subagent(agent="{slug}", message="...") to query past conversations.\n\n'
+        f"Archived sessions (descriptions are LLM-generated summaries):\n"
+        f"{sessions_text}\n\n"
+        f"Review yesterday's session and decide if there's anything you should "
+        f"proactively do: follow up on tasks, update CKR with important info, "
+        f"check on commitments, etc."
+    )
+    initial_db_message = DbMessage(
+        chat_id=chat_id,
+        created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+        user_id=SYSTEM_USER_ID,
+        message=new_session_msg,
+    )
+
     await process_multi_message_claude_invocation(
         curr,
         application=application,
@@ -188,7 +195,6 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
         invocation=Invocation(invocation_type="schedule"),
         initial_db_message=initial_db_message,
     )
-    logger.info(f"DAU: new session invocation complete for {slug}")
 
 
 def _summarize_messages(

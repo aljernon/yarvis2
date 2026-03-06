@@ -20,7 +20,11 @@ from yarvis_ptb.complex_chat import (
     handle_message_root_user_assistant,
     process_multi_message_claude_invocation,
 )
-from yarvis_ptb.daily_agent_update import run_daily_agent_update, should_run_dau
+from yarvis_ptb.daily_agent_update import (
+    invoke_new_session,
+    run_daily_agent_update,
+    should_run_dau,
+)
 from yarvis_ptb.daily_self_reflect import (
     run_auto_reflect,
     run_force_reflect,
@@ -538,6 +542,21 @@ async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackConte
             chat_id=sched.chat_id,
             agent_config=DEFAULT_AGENT_CONFIG,
             invocation=Invocation(invocation_type="schedule", db_invocation=sched),
+        )
+
+
+@RegisteredCommandHandler.register(description="Trigger DAU new-session invocation")
+@auth_decorator_complex_chat
+async def handler_invoke_dau(update: Update, context: CallbackContext):
+    message = ensure(update.message)
+    yesterday = (
+        datetime.datetime.now(DEFAULT_TIMEZONE) - datetime.timedelta(days=1)
+    ).date()
+    slug = f"archive-{yesterday}"
+    await message.reply_text(f"Triggering new-session invocation for {slug}...")
+    with context.bot_data["conn"].cursor() as curr:
+        await invoke_new_session(
+            curr, message.chat_id, yesterday, slug, context.application, context.bot
         )
 
 
