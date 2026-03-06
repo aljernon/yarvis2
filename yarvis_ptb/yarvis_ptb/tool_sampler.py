@@ -35,7 +35,7 @@ from yarvis_ptb.ptb_util import (
     InterruptionScope,
     get_async_anthropic_client,
 )
-from yarvis_ptb.sampling import NoOpHooks, SamplingHooks, SamplingResult
+from yarvis_ptb.sampling import SamplingHooks, SamplingResult
 from yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
 )
@@ -730,58 +730,6 @@ async def _process_query_with_tools(
             break
 
     return extra_messages, claude_calls
-
-
-async def process_subagent_query(
-    system: str,
-    messages: list[MessageParam],
-    agent_config: AgentConfig,
-    chat_id: int,
-    agent_id: int,
-    curr,
-    bot,
-    scope: InterruptionScope | None = None,
-) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
-    """Simplified query function for subagents.
-
-    No streaming, no interruption handling, no MCP.
-    Returns (message_params, claude_calls).
-
-    If scope is provided, the subagent will respect the parent's interruption
-    (e.g. if the user sends a new message while the subagent is running).
-    """
-    if scope is None:
-        scope = InterruptionScope(chat_id=chat_id, message_id=None)
-
-    config = agent_config.sampling
-    model_name = config.resolve_model_name()
-
-    # Build tool objects from names ("all" or explicit list)
-    all_tool_objects = _get_tools_by_names(config.tool_subset, curr, chat_id, bot)
-
-    claude_tools: list[ClaudeTool] = [
-        tool.spec().to_claude_tool() for tool in all_tool_objects
-    ]
-    tool_map = {t.name: t for t in all_tool_objects}
-    noop_hooks = NoOpHooks()
-
-    async with AsyncExitStack() as stack:
-        for tool in all_tool_objects:
-            await stack.enter_async_context(tool.context())
-
-        msg_params, claude_calls = await _process_query_with_tools(
-            system=system,
-            messages=messages,
-            claude_tools=claude_tools,
-            all_local_tool_objects=tool_map,
-            on_update=noop_hooks.on_update,
-            scope=scope,
-            model_name=model_name,
-            job_queue=_DummyJobQueue(),
-            max_tokens=config.max_tokens,
-            thinking=config.thinking,
-        )
-        return msg_params, claude_calls
 
 
 class _DummyJobQueue:

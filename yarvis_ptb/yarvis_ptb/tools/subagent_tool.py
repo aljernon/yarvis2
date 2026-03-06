@@ -12,8 +12,9 @@ from yarvis_ptb.prompting import (
     convert_db_messages_to_claude_messages,
     render_mesage_param_exact,
 )
+from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.rendering_config import RenderingConfig
-from yarvis_ptb.sampling import SamplingConfig
+from yarvis_ptb.sampling import NoOpHooks, SamplingConfig
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -341,23 +342,32 @@ class RunSubagentTool(LocalTool):
     ) -> tuple[list[MessageParam], list[ClaudeCallInfo], str]:
         """Run the agent query. Returns (message_params, claude_calls, model_id)."""
         from yarvis_ptb.interruption_scope_internal import INTERRUPTABLES
-        from yarvis_ptb.tool_sampler import process_subagent_query
+        from yarvis_ptb.tool_sampler import (
+            _DummyJobQueue,
+            get_tools_for_agent_config,
+            process_query,
+        )
 
         parent_scope = None
         for s in reversed(INTERRUPTABLES):
             if s.chat_id == self._chat_id:
                 parent_scope = s
                 break
+        if parent_scope is None:
+            parent_scope = InterruptionScope(chat_id=self._chat_id, message_id=None)
+
+        tools = get_tools_for_agent_config(
+            agent_config, self._curr, self._chat_id, self._bot
+        )
 
         try:
-            message_params, claude_calls = await process_subagent_query(
+            result = await process_query(
                 system=system,
                 messages=messages,
                 agent_config=agent_config,
-                chat_id=self._chat_id,
-                agent_id=agent_id,
-                curr=self._curr,
-                bot=self._bot,
+                tools=tools,
+                hooks=NoOpHooks(),
+                job_queue=_DummyJobQueue(),
                 scope=parent_scope,
             )
         except Exception as e:
@@ -365,7 +375,7 @@ class RunSubagentTool(LocalTool):
             raise
 
         model_id = agent_config.sampling.resolve_model_name()
-        return message_params, claude_calls, model_id
+        return result.message_params, result.claude_calls, model_id
 
     def _finalize(
         self,
@@ -581,7 +591,11 @@ if __name__ == "__main__":
 
     async def test_subagent_integration():
         print("\n=== Integration test: subagent flow ===")
-        from yarvis_ptb.tool_sampler import process_subagent_query
+        from yarvis_ptb.tool_sampler import (
+            _DummyJobQueue,
+            get_tools_for_agent_config,
+            process_query,
+        )
 
         craete_all()
 
@@ -601,17 +615,21 @@ if __name__ == "__main__":
                 }
             ]
 
-            message_params, _claude_calls = await process_subagent_query(
+            agent_config = AgentConfig(
+                sampling=SamplingConfig(tool_subset=["python_repl"]),
+            )
+            tools = get_tools_for_agent_config(agent_config, curr, TEST_CHAT_ID, None)
+            scope = InterruptionScope(chat_id=TEST_CHAT_ID, message_id=None)
+            result = await process_query(
                 system=system,
                 messages=messages,
-                agent_config=AgentConfig(
-                    sampling=SamplingConfig(tool_subset=["python_repl"]),
-                ),
-                chat_id=TEST_CHAT_ID,
-                agent_id=agent_id,
-                curr=curr,
-                bot=None,
+                agent_config=agent_config,
+                tools=tools,
+                hooks=NoOpHooks(),
+                job_queue=_DummyJobQueue(),
+                scope=scope,
             )
+            message_params = result.message_params
 
             # 3. Verify message_params non-empty
             assert message_params, "message_params should not be empty"

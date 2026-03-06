@@ -22,7 +22,7 @@ from yarvis_ptb.prompting import (
     render_mesage_param_exact,
 )
 from yarvis_ptb.ptb_util import InterruptionScope
-from yarvis_ptb.sampling import SamplingConfig
+from yarvis_ptb.sampling import NoOpHooks, SamplingConfig
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -34,7 +34,11 @@ from yarvis_ptb.storage import (
     save_message,
 )
 from yarvis_ptb.timezones import get_timezone
-from yarvis_ptb.tool_sampler import process_query, process_subagent_query
+from yarvis_ptb.tool_sampler import (
+    _DummyJobQueue,
+    get_tools_for_agent_config,
+    process_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -252,15 +256,18 @@ async def run_force_reflect(
         ),
     )
 
-    msg_params, _claude_calls = await process_subagent_query(
+    tools = get_tools_for_agent_config(reflect_config, curr, chat_id, bot)
+    scope = InterruptionScope(chat_id=chat_id, message_id=None)
+    result = await process_query(
         system=system,
         messages=[user_message],
         agent_config=reflect_config,
-        chat_id=chat_id,
-        agent_id=agent_id,
-        curr=curr,
-        bot=bot,
+        tools=tools,
+        hooks=NoOpHooks(),
+        job_queue=_DummyJobQueue(),
+        scope=scope,
     )
+    msg_params = result.message_params
 
     # Save to DB under the agent_id
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
@@ -410,9 +417,6 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
     Results are saved under an agent_id (visible on dashboard, not in main history).
     A placeholder assistant message is inserted into main history.
     """
-    from yarvis_ptb.sampling import NoOpHooks
-    from yarvis_ptb.tool_sampler import get_tools_for_agent_config
-
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
     agent_config = DEFAULT_AGENT_CONFIG
 
