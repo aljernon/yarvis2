@@ -6,7 +6,6 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, Protocol
 
-import telegram
 import tenacity
 from anthropic import APIStatusError, RateLimitError
 from anthropic.types import (
@@ -29,7 +28,6 @@ from anthropic.types.beta import (
 )
 
 from yarvis_ptb.agent_config import AgentConfig
-from yarvis_ptb.chat_config import ChatConfig
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
 from yarvis_ptb.prompt_consts import INTERRUPTION_MESSAGE, SAMPLING_FAILED_MESSAGE_TPL
 from yarvis_ptb.prompting import NormalizedMessageParam, normalize_message_param
@@ -37,10 +35,9 @@ from yarvis_ptb.ptb_util import (
     InterruptionScope,
     get_async_anthropic_client,
 )
-from yarvis_ptb.settings import FULL_LOG_CHAT_ID
+from yarvis_ptb.sampling import NoOpHooks, SamplingHooks, SamplingResult
 from yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
-    SUBAGENT_MODEL_MAP,
 )
 from yarvis_ptb.tools.bash_repl import BashRunTool
 from yarvis_ptb.tools.editor_tool import EditorTool
@@ -195,22 +192,17 @@ class PartialSample:
     seconds_till_start: float | None
 
 
-def get_tools_for_config(
-    chat_config: ChatConfig, curr, chat_id, bot
+def get_tools_for_agent_config(
+    agent_config: AgentConfig, curr, chat_id, bot
 ) -> list[LocalTool]:
-    tool_classes = []
-    if chat_config.tool_filter == "none":
-        pass
-    elif chat_config.tool_filter == "basic":
-        tool_classes = ["fs", "chat_send_file"]
-    elif chat_config.tool_filter == "logseq":
-        tool_classes = ["anton_google", "fs", "chat_send_file"]
+    """Build tools based on AgentConfig.
 
-        # Add messaging tool only when tool_only_messaging is enabled
-        # This tool requires "all" tool filter
-        if chat_config.tool_only_messaging:
-            tool_classes.append("messaging")
-    elif chat_config.tool_filter == "all":
+    Uses sampling.tool_subset as base, then adds tools implied by
+    rendering/sampling config (memory, tool_output, messaging).
+    """
+    tool_subset = agent_config.sampling.tool_subset
+
+    if tool_subset == "all":
         tool_classes = [
             "anton_google",
             "fs",
@@ -219,23 +211,21 @@ def get_tools_for_config(
             "chat_send_file",
             "telegram",
             "image_editing",
-            "memory",
             "subagent",
         ]
-
-        # Add messaging tool only when tool_only_messaging is enabled
-        # This tool requires "all" tool filter
-        if chat_config.tool_only_messaging:
-            tool_classes.append("messaging")
-
-        if chat_config.tool_result_truncation_after_n_turns is not None:
-            tool_classes.append("tool_output")
     else:
-        raise ValueError(f"Unknown tool_filter: {chat_config.tool_filter}")
-    debug_chat_id = FULL_LOG_CHAT_ID if chat_config.is_complex_chat else None
-    return _build_tools_from_classes(
-        tool_classes, curr, chat_id, bot, debug_chat_id=debug_chat_id
-    )
+        # Specific tools requested — build from names
+        return _get_tools_by_names(tool_subset, curr, chat_id, bot)
+
+    # Add tools derived from config properties
+    if agent_config.requires_memory_tools:
+        tool_classes.append("memory")
+    if agent_config.requires_tool_output_tool:
+        tool_classes.append("tool_output")
+    if agent_config.requires_messaging_tool:
+        tool_classes.append("messaging")
+
+    return _build_tools_from_classes(tool_classes, curr, chat_id, bot)
 
 
 def _build_tools_from_classes(
@@ -243,7 +233,6 @@ def _build_tools_from_classes(
     curr,
     chat_id: int,
     bot,
-    debug_chat_id: int | None = None,
 ) -> list[LocalTool]:
     """Build tool objects from a list of tool class names."""
     all_local_tool_objects = []
@@ -257,9 +246,7 @@ def _build_tools_from_classes(
         elif tool_class == "anton_message_search":
             all_local_tool_objects.extend(build_message_search_tools(chat_id))
         elif tool_class == "chat_send_file":
-            all_local_tool_objects.extend(
-                build_chat_send_file_tools(chat_id, bot, debug_chat_id=debug_chat_id)
-            )
+            all_local_tool_objects.extend(build_chat_send_file_tools(chat_id, bot))
         elif tool_class == "telegram":
             all_local_tool_objects.extend(TELEGRAM_TOOLS)
         elif tool_class == "messaging":
@@ -277,64 +264,46 @@ def _build_tools_from_classes(
     return all_local_tool_objects
 
 
-def get_tool_specs_for_config(chat_config: ChatConfig) -> list[ClaudeTool]:
-    """Get tool specs for a chat config without needing runtime dependencies.
-
-    Safe to call without DB cursor, bot, or chat_id — only used for spec generation.
-    """
-    tools = get_tools_for_config(chat_config, None, 0, None)
-    return [t.spec().to_claude_tool() for t in tools]
-
-
-async def dummy_on_update(messages: list[MessageParam]) -> None:
-    pass
-
-
 async def process_query(
-    curr: Any,
-    bot: telegram.Bot,
-    chat_config: ChatConfig,
-    chat_id: int,
     system: str,
     messages: list[MessageParam],
-    job_queue,
+    agent_config: AgentConfig,
+    tools: list[LocalTool],
+    hooks: SamplingHooks,
+    job_queue: JobQueueLike,
     scope: InterruptionScope,
-    on_update: Callable[[list[MessageParam]], Awaitable[Any]] | None = None,
-) -> tuple[list[MessageParam], list[ClaudeCallInfo] | None, float, list[dict]]:
+) -> SamplingResult:
     """Process a query using Claude and available tools.
 
-    Returns:
-        Tuple of (message_params, claude_calls, tool_init_time, subagent_usages)
-        where claude_calls contains num input tokens and time till first token
-        for all claude calls - initial and after each tool.
-        subagent_usages is a list of cost dicts from any subagent invocations.
+    Tools should be pre-resolved by the caller using get_tools_for_agent_config().
     """
+    config = agent_config.sampling
+    model_name = config.resolve_model_name()
 
     start = time.monotonic()
-    all_local_tool_objects = get_tools_for_config(chat_config, curr, chat_id, bot)
-    local_tools: list[ClaudeTool] = [
-        tool.spec().to_claude_tool() for tool in all_local_tool_objects
-    ]
+    local_tools: list[ClaudeTool] = [tool.spec().to_claude_tool() for tool in tools]
     async with AsyncExitStack() as stack:
-        for local_tool in all_local_tool_objects:
-            if scope.is_interrupted:
+        for local_tool in tools:
+            if hooks.is_interrupted:
                 logger.warning("Interruption before generation started")
-                return [], None, 0.0, []
+                return SamplingResult()
             await stack.enter_async_context(local_tool.context())
-        if scope.is_interrupted:
+        if hooks.is_interrupted:
             logger.warning("Interruption before generation started")
-            return [], None, 0.0, []
+            return SamplingResult()
         tool_init_time = time.monotonic() - start
-        tool_map = {t.name: t for t in all_local_tool_objects}
+        tool_map = {t.name: t for t in tools}
         msg, claude_calls = await _process_query_with_tools(
             system,
             messages,
             claude_tools=local_tools,
             all_local_tool_objects=tool_map,
-            on_update=on_update if on_update is not None else dummy_on_update,
+            on_update=hooks.on_update,
             scope=scope,
-            model_name=chat_config.model_name,
+            model_name=model_name,
             job_queue=job_queue,
+            max_tokens=config.max_tokens,
+            thinking=config.thinking,
         )
         # Collect subagent cost info if any subagents were used
         from yarvis_ptb.tools.subagent_tool import RunSubagentTool
@@ -343,8 +312,62 @@ async def process_query(
         for tool in tool_map.values():
             if isinstance(tool, RunSubagentTool) and tool.subagent_usages:
                 subagent_usages.extend(tool.subagent_usages)
-        return msg, claude_calls, tool_init_time, subagent_usages
-    raise ValueError("Should not reach here")
+
+        # Extract agent messages from the result
+        agent_messages = _extract_agent_messages(msg, config.output_mode)
+
+        return SamplingResult(
+            message_params=msg,
+            agent_messages=agent_messages,
+            claude_calls=claude_calls,
+            subagent_usages=subagent_usages,
+            tool_init_time=tool_init_time,
+        )
+
+
+def _extract_agent_messages(
+    message_params: list[MessageParam],
+    output_mode: str,
+) -> list[str]:
+    """Extract the agent's output messages from message_params."""
+    if output_mode == "tool_message":
+        # Collect text from send_message tool calls
+        messages: list[str] = []
+        for msg in message_params:
+            content = msg.get("content", [])
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "send_message"
+                    and isinstance(block.get("input"), dict)
+                ):
+                    text = block["input"].get("text") or block["input"].get(
+                        "message", ""
+                    )
+                    if text:
+                        messages.append(text)
+        return messages
+    else:
+        # Extract from final assistant text
+        for msg in reversed(message_params):
+            if msg.get("role") == "assistant":
+                content = msg.get("content", [])
+                if isinstance(content, str):
+                    return [content] if content else []
+                texts = []
+                for block in content:
+                    if (
+                        isinstance(block, dict)
+                        and block.get("type") == "text"
+                        and block.get("text")
+                    ):
+                        texts.append(block["text"])
+                if texts:
+                    return ["\n".join(texts)]
+        return []
 
 
 def add_caching_to_messages(
@@ -392,6 +415,8 @@ async def _process_query_with_tools(
     scope: InterruptionScope,
     job_queue: JobQueueLike,
     model_name: str = CLAUDE_MODEL_NAME,
+    max_tokens: int = 16000,
+    thinking: str = "adaptive",
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
     async_client = get_async_anthropic_client()
 
@@ -438,7 +463,7 @@ async def _process_query_with_tools(
             ),
             # betas=["token-efficient-tools-2025-02-19"],
         )
-        if model_name in ADAPTIVE_THINKING_MODELS:
+        if thinking == "adaptive" and model_name in ADAPTIVE_THINKING_MODELS:
             kwargs["thinking"] = {"type": "adaptive"}
 
         count = -2
@@ -483,7 +508,7 @@ async def _process_query_with_tools(
             sampling_is_done = asyncio.Event()
 
             async with async_client.beta.messages.stream(
-                max_tokens=16000, **kwargs
+                max_tokens=max_tokens, **kwargs
             ) as stream:
                 # Stream processing in the main task
                 try:
@@ -728,15 +753,17 @@ async def process_subagent_query(
     if scope is None:
         scope = InterruptionScope(chat_id=chat_id, message_id=None)
 
-    model_name = SUBAGENT_MODEL_MAP[agent_config.model]
+    config = agent_config.sampling
+    model_name = config.resolve_model_name()
 
     # Build tool objects from names ("all" or explicit list)
-    all_tool_objects = _get_tools_by_names(agent_config.tool_subset, curr, chat_id, bot)
+    all_tool_objects = _get_tools_by_names(config.tool_subset, curr, chat_id, bot)
 
     claude_tools: list[ClaudeTool] = [
         tool.spec().to_claude_tool() for tool in all_tool_objects
     ]
     tool_map = {t.name: t for t in all_tool_objects}
+    noop_hooks = NoOpHooks()
 
     async with AsyncExitStack() as stack:
         for tool in all_tool_objects:
@@ -747,10 +774,12 @@ async def process_subagent_query(
             messages=messages,
             claude_tools=claude_tools,
             all_local_tool_objects=tool_map,
-            on_update=dummy_on_update,
+            on_update=noop_hooks.on_update,
             scope=scope,
             model_name=model_name,
             job_queue=_DummyJobQueue(),
+            max_tokens=config.max_tokens,
+            thinking=config.thinking,
         )
         return msg_params, claude_calls
 

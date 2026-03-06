@@ -18,7 +18,7 @@ from telegram import Bot, Update, constants
 from telegram.ext import Application, CallbackContext
 
 from yarvis_ptb import tool_sampler
-from yarvis_ptb.chat_config import ChatConfig
+from yarvis_ptb.agent_config import AgentConfig
 from yarvis_ptb.debug_chat import (
     MessageAsFile,
     add_debug_message_to_queue,
@@ -37,11 +37,14 @@ from yarvis_ptb.prompting import (
 )
 from yarvis_ptb.ptb_util import (
     AuthInfo,
+    InterruptionScope,
     build_interruptable_scope,
     get_anthropic_client,
     reply_maybe_markdown,
     typing_action,
 )
+from yarvis_ptb.rendering_config import RenderingConfig
+from yarvis_ptb.sampling import SamplingConfig
 from yarvis_ptb.settings import (
     BOT_USER_ID,
     DEFAULT_TIMEZONE,
@@ -52,7 +55,6 @@ from yarvis_ptb.settings import (
     SYSTEM_USER_ID,
     USER_ID_MAP,
 )
-from yarvis_ptb.settings.main import CONFIGURED_CHATS, KNOWN_USER_PRIVATE_CHAT_CONFIGS
 from yarvis_ptb.storage import (
     IMAGE_B64_META_FIELD,
     DbMessage,
@@ -68,22 +70,84 @@ from yarvis_ptb.util import RateController, ensure
 
 COMPLEX_CHAT_LOCK = asyncio.Lock()
 
-COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING = False
-COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END = True
-
-
-DEFAULT_COMPLEX_CHAT_CONFIG = ChatConfig(
-    prompt_name=COMPLEX_ANTON_PROMPT,
-    is_complex_chat=True,
-    memory_access=True,
-    tool_filter="all",
-    max_history_length_turns_override=HISTORY_LENGTH_LONG_TURNS,
-    tool_only_messaging=True,
-    tool_result_truncation_after_n_turns=5,
+DEFAULT_AGENT_CONFIG = AgentConfig(
+    rendering=RenderingConfig(
+        prompt_name=COMPLEX_ANTON_PROMPT,
+        include_memories=True,
+        max_history_length_turns=HISTORY_LENGTH_LONG_TURNS,
+        tool_result_truncation_after_n_turns=5,
+    ),
+    sampling=SamplingConfig(
+        model="opus",
+        tool_subset="all",
+        output_mode="tool_message",
+    ),
 )
 
 
 logger = logging.getLogger(__name__)
+
+
+class TelegramHooks:
+    """SamplingHooks implementation for interactive Telegram sessions."""
+
+    def __init__(
+        self,
+        bot: Bot,
+        chat_id: int,
+        application: Application,
+        output_message: Any | None,
+        output_mode: str,
+        scope: InterruptionScope,
+    ):
+        self._bot = bot
+        self._chat_id = chat_id
+        self._application = application
+        self._output_message = output_message
+        self._output_mode = output_mode
+        self._scope = scope
+        self._rate_controller = RateController(wait_between_events_secs=1.0)
+        self._num_messages_sent_to_debug_chat = 0
+
+    @property
+    def output_message(self):
+        return self._output_message
+
+    @property
+    def num_messages_sent_to_debug_chat(self) -> int:
+        return self._num_messages_sent_to_debug_chat
+
+    async def on_update(self, message_params: list[MessageParam]) -> None:
+        if self._rate_controller.can_run():
+            if self._output_message is not None:
+                response_text = (
+                    render_claude_response_short(message_params, remove_thinking=False)
+                    + "\n**processing...**"
+                )
+                if self._output_mode == "tool_message":
+                    response_text = format_as_quote(response_text)
+                self._output_message = await reply_maybe_markdown(
+                    self._bot,
+                    self._chat_id,
+                    message=self._output_message,
+                    text=response_text,
+                )
+            new_complete_debug_messages = (
+                len(message_params) - self._num_messages_sent_to_debug_chat - 1
+            )
+            if new_complete_debug_messages:
+                add_debug_message_to_queue(
+                    message_params[:-1],
+                    skip_first_n=self._num_messages_sent_to_debug_chat,
+                )
+                self._num_messages_sent_to_debug_chat += new_complete_debug_messages
+                ensure(self._application.job_queue).run_once(
+                    maybe_send_messages_to_debug_chat, when=1
+                )
+
+    @property
+    def is_interrupted(self) -> bool:
+        return self._scope.is_interrupted
 
 
 class DataclassJSONEncoder(json.JSONEncoder):
@@ -120,17 +184,6 @@ def format_as_quote(text: str) -> str:
     return "> " + text.replace("\n", "\n> ")
 
 
-def get_chat_config(auth: AuthInfo) -> ChatConfig:
-    if auth.is_root_user_debug_chat or auth.is_root_user_complex_chat:
-        chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
-    elif not auth.group_chat_id and auth.user_id in KNOWN_USER_PRIVATE_CHAT_CONFIGS:
-        chat_config = KNOWN_USER_PRIVATE_CHAT_CONFIGS[auth.user_id]
-    else:
-        assert auth.group_chat_name, auth
-        chat_config = CONFIGURED_CHATS[auth.group_chat_name]
-    return chat_config
-
-
 async def handle_message_root_user_assistant(
     curr, auth: AuthInfo, update: Update, context: CallbackContext, is_voice: bool
 ) -> None:
@@ -151,7 +204,7 @@ async def handle_message_root_user_assistant(
         )
     else:
         chat_id = update.message.chat_id
-    chat_config = get_chat_config(auth)
+    agent_config = DEFAULT_AGENT_CONFIG
 
     chat_vars = VariablesForChat(curr=curr, chat_id=chat_id)
     logger.info(f"{chat_vars.variables=}")
@@ -275,7 +328,7 @@ async def handle_message_root_user_assistant(
         application=context.application,
         bot=context.bot,
         chat_id=chat_id,
-        chat_config=chat_config,
+        agent_config=agent_config,
         invocation=Invocation(
             invocation_type="reply", reply_to_message_id=ensure(update.message).id
         ),
@@ -291,7 +344,7 @@ async def process_multi_message_claude_invocation(
     chat_id: int,
     invocation: Invocation,
     *,
-    chat_config: ChatConfig,
+    agent_config: AgentConfig,
     initial_db_message: DbMessage | None = None,
     skip_db: bool = False,
     telegram_message_id: int | None = None,
@@ -303,7 +356,7 @@ async def process_multi_message_claude_invocation(
             bot,
             chat_id,
             invocation,
-            chat_config=chat_config,
+            agent_config=agent_config,
             initial_db_message=initial_db_message,
             skip_db=skip_db,
             telegram_message_id=telegram_message_id,
@@ -317,10 +370,9 @@ async def _process_multi_message_claude_invocation_no_lock(
     chat_id: int,
     invocation: Invocation,
     *,
-    chat_config: ChatConfig,
+    agent_config: AgentConfig,
     initial_db_message: DbMessage | None = None,
     skip_db: bool = False,
-    # Datetime to use for "now" for the last user message and the context.
     forced_now_date: datetime.datetime | None = None,
     telegram_message_id: int | None = None,
 ):
@@ -331,7 +383,7 @@ async def _process_multi_message_claude_invocation_no_lock(
             bot,
             chat_id,
             invocation,
-            chat_config=chat_config,
+            agent_config=agent_config,
             initial_db_message=initial_db_message,
             skip_db=skip_db,
             forced_now_date=forced_now_date,
@@ -346,7 +398,7 @@ async def _process_multi_message_claude_invocation_inner(
     chat_id: int,
     invocation: Invocation,
     *,
-    chat_config: ChatConfig,
+    agent_config: AgentConfig,
     initial_db_message: DbMessage | None = None,
     skip_db: bool = False,
     forced_now_date: datetime.datetime | None = None,
@@ -354,8 +406,13 @@ async def _process_multi_message_claude_invocation_inner(
 ):
     start = time.monotonic()
     client = get_anthropic_client()
+    rendering_config = agent_config.rendering
+    sampling_config = agent_config.sampling
+    output_mode = sampling_config.output_mode
+    model_name = sampling_config.resolve_model_name()
+
     do_streaming = (
-        invocation.invocation_type != "schedule" and not chat_config.tool_only_messaging
+        invocation.invocation_type != "schedule" and output_mode != "tool_message"
     )
     if invocation.invocation_type != "schedule" and invocation.reply_to_message_id:
         await bot.set_message_reaction(
@@ -365,7 +422,6 @@ async def _process_multi_message_claude_invocation_inner(
         )  # type: ignore
 
     if do_streaming:
-        # No notification. WIll notify final message only.
         output_message = await reply_maybe_markdown(
             bot, chat_id, "**Processing...**", disable_notification=True
         )
@@ -374,14 +430,11 @@ async def _process_multi_message_claude_invocation_inner(
 
     now_date = (forced_now_date or datetime.datetime.now()).astimezone(DEFAULT_TIMEZONE)
 
-    max_history_length_turns = chat_config.max_history_length_turns
+    max_history_length_turns = rendering_config.max_history_length_turns
     db_messages = get_messages(curr, chat_id=chat_id, limit=max_history_length_turns)
     if initial_db_message is not None:
-        # Re-do timestamp so that messages that were sent during previous message generation are sill sorted properly.
         initial_db_message.created_at = now_date
         if initial_db_message.user_id == SYSTEM_USER_ID:
-            # System messages (e.g. scheduled invocation details) are saved to DB
-            # but not appended to context — Claude already sees this via <invocation>.
             add_debug_message_to_queue(f"**SYSTEM:**\n" + initial_db_message.message)
         else:
             add_debug_message_to_queue(f"**ANTON:**\n" + initial_db_message.message)
@@ -389,24 +442,19 @@ async def _process_multi_message_claude_invocation_inner(
 
     scheduled_invocations = get_schedules(curr, chat_id)
 
-    # Send the message to Claude
     logger.debug("Sending message to Claude")
     system, message_params = build_claude_input(
         db_messages,
-        chat_config,
+        rendering_config,
         invocation=invocation,
-        put_context_at_the_beginning=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-        put_context_at_the_end=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
         scheduled_invocations=scheduled_invocations,
         forced_now_date=now_date,
     )
 
-    # Note, this context is only sent for debug; we are trying to make it match
-    # whaterver is used in build_claude_input, but they could deiverge.
     context_message = build_context_info(
         invocation=invocation,
         scheduled_invocations=scheduled_invocations,
-        chat_config=chat_config,
+        rendering_config=rendering_config,
         forced_now_date=now_date,
     )
     add_debug_message_to_queue(f"**CONTEXT:**:\n```\n{context_message}\n```")
@@ -422,41 +470,6 @@ async def _process_multi_message_claude_invocation_inner(
         )
     ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=1)
 
-    rate_controller = RateController(wait_between_events_secs=1.0)
-    num_messages_sent_to_debug_chat = 0
-
-    async def update_message_output(message_params: list[MessageParam]) -> None:
-        nonlocal output_message
-        nonlocal num_messages_sent_to_debug_chat
-        if rate_controller.can_run():
-            if output_message is not None:
-                response_text = (
-                    render_claude_response_short(message_params, remove_thinking=False)
-                    + "\n**processing...**"
-                )
-
-                # In tool_only_messaging mode, format the response as a quote
-                if chat_config.tool_only_messaging:
-                    response_text = format_as_quote(response_text)
-
-                output_message = await reply_maybe_markdown(
-                    bot,
-                    chat_id,
-                    message=output_message,
-                    text=response_text,
-                )
-            new_complete_debug_messages = (
-                len(message_params) - num_messages_sent_to_debug_chat - 1
-            )
-            if new_complete_debug_messages:
-                add_debug_message_to_queue(
-                    message_params[:-1], skip_first_n=num_messages_sent_to_debug_chat
-                )
-                num_messages_sent_to_debug_chat += new_complete_debug_messages
-                ensure(application.job_queue).run_once(
-                    maybe_send_messages_to_debug_chat, when=1
-                )
-
     sizes = compute_token_counts(
         client,
         system,
@@ -466,38 +479,44 @@ async def _process_multi_message_claude_invocation_inner(
 
     pre_call_time = time.monotonic() - start
 
+    # Resolve tools
+    all_tools = tool_sampler.get_tools_for_agent_config(
+        agent_config, curr, chat_id, bot
+    )
+
     with build_interruptable_scope(chat_id, message_id=telegram_message_id) as scope:
+        hooks = TelegramHooks(
+            bot=bot,
+            chat_id=chat_id,
+            application=application,
+            output_message=output_message,
+            output_mode=output_mode,
+            scope=scope,
+        )
         logger.info(
             f"Divining into tool_sampler.process_query: {chat_id=} {telegram_message_id=}"
         )
         try:
-            (
-                message_params,
-                maybe_claude_calls,
-                tool_init_time,
-                subagent_usages,
-            ) = await tool_sampler.process_query(
-                curr=curr,
-                bot=bot,
-                chat_config=chat_config,
-                chat_id=chat_id,
+            result = await tool_sampler.process_query(
                 system=system,
                 messages=message_params,
-                on_update=update_message_output,
-                scope=scope,
+                agent_config=agent_config,
+                tools=all_tools,
+                hooks=hooks,
                 job_queue=application.job_queue,
+                scope=scope,
             )
         except Exception:
             tb = traceback.format_exc()
             logger.exception("process_query crashed")
             await force_send_to_debug_chat(f"**process_query CRASHED**\n```\n{tb}\n```")
             error_line = tb.splitlines()[-1]
-            if output_message is not None:
+            if hooks.output_message is not None:
                 await reply_maybe_markdown(
                     bot,
                     chat_id,
                     f"Generation failed: {error_line}",
-                    message=output_message,
+                    message=hooks.output_message,
                     final_update=True,
                 )
             if not skip_db:
@@ -512,13 +531,16 @@ async def _process_multi_message_claude_invocation_inner(
                 save_message_and_update_index(curr, error_msg)
             return
 
+    message_params = result.message_params
+    claude_calls = result.claude_calls
+
     prompt_size: int | None
     cost: float | None = None
-    if (claude_calls := maybe_claude_calls) is not None:
+    if claude_calls:
         prompt_size = claude_calls[0].num_prompt_tokens if claude_calls else -2
-        cost = tool_sampler.estimate_cost(claude_calls, chat_config.model_name)
+        cost = tool_sampler.estimate_cost(claude_calls, model_name)
         sizes["claude_calls"] = claude_calls
-        sizes["tool_init_time"] = tool_init_time
+        sizes["tool_init_time"] = result.tool_init_time
         sizes["pre_call_time"] = pre_call_time
         if cost is not None:
             sizes["estimated_cost_usd"] = f"${cost:.4f}"
@@ -529,23 +551,25 @@ async def _process_multi_message_claude_invocation_inner(
         prompt_size = None
 
     if message_params:
-        if chat_config.tool_only_messaging:
-            if output_message is not None:
-                await bot.delete_message(chat_id=chat_id, message_id=output_message.id)  # type: ignore
+        if output_mode == "tool_message":
+            if hooks.output_message is not None:
+                await bot.delete_message(
+                    chat_id=chat_id, message_id=hooks.output_message.id
+                )  # type: ignore
         else:
-            # Send short version of the message to the main chat.
             response_text = render_claude_response_short(message_params)
             await reply_maybe_markdown(
                 bot,
                 chat_id,
                 response_text,
-                message=output_message,
+                message=hooks.output_message,
                 final_update=True,
             )
     else:
-        # Empty messages params -> interruption
-        if output_message is not None:
-            await bot.delete_message(chat_id=chat_id, message_id=output_message.id)  # type: ignore
+        if hooks.output_message is not None:
+            await bot.delete_message(
+                chat_id=chat_id, message_id=hooks.output_message.id
+            )  # type: ignore
         if invocation.reply_to_message_id:
             await bot.set_message_reaction(
                 chat_id=chat_id,
@@ -553,7 +577,7 @@ async def _process_multi_message_claude_invocation_inner(
                 reaction=constants.ReactionEmoji.SHRUG,
             )  # type: ignore
 
-    if chat_config.memory_access and any(
+    if rendering_config.include_memories and any(
         x["type"] == "tool_use"
         for mp in message_params
         if isinstance(mp["content"], list)
@@ -564,23 +588,22 @@ async def _process_multi_message_claude_invocation_inner(
 
     if not skip_db:
         if initial_db_message is not None:
-            # Saving to db only at the end.
             save_message_and_update_index(curr, initial_db_message)
         bot_meta: dict = {"message_params": message_params}
-        if claude_calls is not None:
-            pricing = tool_sampler.MODEL_PRICING.get(chat_config.model_name)
+        if claude_calls:
+            pricing = tool_sampler.MODEL_PRICING.get(model_name)
             subagent_total_cost = sum(
-                u.get("estimated_cost_usd", 0) or 0 for u in subagent_usages
+                u.get("estimated_cost_usd", 0) or 0 for u in result.subagent_usages
             )
             bot_meta["usage"] = {
                 "calls": [c.to_usage_dict(pricing) for c in claude_calls],
                 "estimated_cost_usd": (cost or 0) + subagent_total_cost,
                 "cost_breakdown_usd": tool_sampler.cost_breakdown(
-                    claude_calls, chat_config.model_name
+                    claude_calls, model_name
                 ),
             }
-            if subagent_usages:
-                bot_meta["usage"]["subagent_usages"] = subagent_usages
+            if result.subagent_usages:
+                bot_meta["usage"]["subagent_usages"] = result.subagent_usages
         db_message = DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
@@ -592,9 +615,8 @@ async def _process_multi_message_claude_invocation_inner(
 
     archive_marked_messages(curr, chat_id)
 
-    # Send full version to the debug chat.
     add_debug_message_to_queue(
-        message_params, skip_first_n=num_messages_sent_to_debug_chat
+        message_params, skip_first_n=hooks.num_messages_sent_to_debug_chat
     )
     ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=1)
 
@@ -603,20 +625,17 @@ async def _process_multi_message_claude_invocation_inner(
         and prompt_size > HISTORY_LENGTH_LONG_TOKENS
         and invocation.invocation_type != "context_overflow"
     ):
-        # Calculate message sizes and the total size.
         message_sizes = [
             (msg, len(json.dumps(msg.meta or {}) + msg.message)) for msg in db_messages
         ]
         total_size = sum(size for _, size in message_sizes)
         large_message_threshold = total_size * LARGE_MESSAGE_SIZE_THRESHOLD
 
-        # Check for large messages
         large_messages = [
             (msg, size) for msg, size in message_sizes if size > large_message_threshold
         ]
 
         if large_messages:
-            # If we have messages >30%, only delete those
             ids_to_archive = [msg.message_id for msg, _ in large_messages]
             large_msg_info = [
                 f"{size/1024:.1f}KB ({size/total_size*100:.1f}%)"
@@ -624,7 +643,6 @@ async def _process_multi_message_claude_invocation_inner(
             ]
             archiving_string = f"Large messages found: {', '.join(large_msg_info)}"
         else:
-            # Otherwise use proportional deletion
             num_messages_to_kill = int(
                 len(db_messages) * HISTORY_LENGTH_LONG_SHRINKING_FACTOR
             )
@@ -662,7 +680,7 @@ async def _process_multi_message_claude_invocation_inner(
             application=application,
             bot=bot,
             chat_id=chat_id,
-            chat_config=chat_config,
+            agent_config=agent_config,
             invocation=Invocation(invocation_type="context_overflow"),
         )
 

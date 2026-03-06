@@ -6,12 +6,14 @@ import pathlib
 from inspect import cleandoc
 from typing import TYPE_CHECKING
 
-from yarvis_ptb.agent_config import AgentConfig
+from yarvis_ptb.agent_config import DEFAULT_SUBAGENT_TOOL_SUBSET, AgentConfig
 from yarvis_ptb.on_disk_memory import load_skills_by_name
 from yarvis_ptb.prompting import (
     convert_db_messages_to_claude_messages,
     render_mesage_param_exact,
 )
+from yarvis_ptb.rendering_config import RenderingConfig
+from yarvis_ptb.sampling import SamplingConfig
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE
 from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -180,15 +182,21 @@ class RunSubagentTool(LocalTool):
         if skills:
             skill_names = [s.strip() for s in skills.split(",") if s.strip()]
 
+        tool_subset: list[str] = list(DEFAULT_SUBAGENT_TOOL_SUBSET)
+        if tools:
+            tool_subset = [t.strip() for t in tools.split(",") if t.strip()]
+
         agent_config = AgentConfig(
             description=message[:500],
-            model=model_short,
-            autoload_memories=skill_names,
+            rendering=RenderingConfig(
+                include_memories=False,
+                autoload_memories=skill_names,
+            ),
+            sampling=SamplingConfig(
+                model=model_short,
+                tool_subset=tool_subset,
+            ),
         )
-        if tools:
-            agent_config.tool_subset = [
-                t.strip() for t in tools.split(",") if t.strip()
-            ]
 
         # 1. Create agent record
         agent_id = create_agent(
@@ -202,8 +210,10 @@ class RunSubagentTool(LocalTool):
         system = _load_subagent_system_prompt()
 
         # 2a. Inject requested skills into system prompt
-        if agent_config.autoload_memories:
-            skill_content, missing = load_skills_by_name(agent_config.autoload_memories)
+        if agent_config.rendering.autoload_memories:
+            skill_content, missing = load_skills_by_name(
+                agent_config.rendering.autoload_memories
+            )
             if missing:
                 return ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
             if skill_content:
@@ -271,16 +281,16 @@ class RunSubagentTool(LocalTool):
 
         # 2. Resolve model — args override, else fall back to agent's original
         if model:
-            agent_config.model = model
-        model_id = SUBAGENT_MODEL_MAP.get(agent_config.model)
+            agent_config.sampling.model = model
+        model_id = SUBAGENT_MODEL_MAP.get(agent_config.sampling.model)
         if model_id is None:
             return ToolResult.error(
-                f"Unknown model '{agent_config.model}'. Use: haiku, sonnet, or opus"
+                f"Unknown model '{agent_config.sampling.model}'. Use: haiku, sonnet, or opus"
             )
 
         # 3. Resolve tools — args override, else fall back to agent's original
         if tools is not None:
-            agent_config.tool_subset = [
+            agent_config.sampling.tool_subset = [
                 t.strip() for t in tools.split(",") if t.strip()
             ]
 
@@ -354,7 +364,7 @@ class RunSubagentTool(LocalTool):
             logger.exception(f"Agent {agent_id} failed: {e}")
             raise
 
-        model_id = SUBAGENT_MODEL_MAP[agent_config.model]
+        model_id = agent_config.sampling.resolve_model_name()
         return message_params, claude_calls, model_id
 
     def _finalize(
@@ -594,7 +604,9 @@ if __name__ == "__main__":
             message_params, _claude_calls = await process_subagent_query(
                 system=system,
                 messages=messages,
-                agent_config=AgentConfig(tool_subset=["python_repl"]),
+                agent_config=AgentConfig(
+                    sampling=SamplingConfig(tool_subset=["python_repl"]),
+                ),
                 chat_id=TEST_CHAT_ID,
                 agent_id=agent_id,
                 curr=curr,

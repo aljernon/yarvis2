@@ -24,7 +24,7 @@ SYSTEM_USER_ID = -2
 TOOL_CALL_USER_ID = -3
 
 os.environ.setdefault("SETTINGS_NAME", "anton")
-from yarvis_ptb.complex_chat import DEFAULT_COMPLEX_CHAT_CONFIG
+from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
 from yarvis_ptb.prompting import (
     build_claude_input,
     convert_db_messages_to_claude_messages,
@@ -36,7 +36,16 @@ from yarvis_ptb.storage import (
     get_messages,
     get_schedules,
 )
-from yarvis_ptb.tool_sampler import get_tool_specs_for_config
+from yarvis_ptb.tool_sampler import get_tools_for_agent_config
+
+
+def get_tool_specs_for_agent_config(agent_config):
+    """Build Claude tool spec dicts from agent config (for dashboard display/token counting)."""
+    # Dashboard doesn't have a real cursor/bot, but we need tool specs.
+    # Pass None for curr/bot — tools that need them will fail at execution, not spec time.
+    tools = get_tools_for_agent_config(agent_config, curr=None, chat_id=0, bot=None)
+    return [t.spec().to_claude_tool() for t in tools]
+
 
 DEFAULT_CHAT_ID = ROOT_USER_ID
 PER_PAGE = 500
@@ -486,9 +495,7 @@ def api_agent_view():
 
         system_prompt, history = build_claude_input(
             messages,
-            DEFAULT_COMPLEX_CHAT_CONFIG,
-            put_context_at_the_end=True,
-            put_context_at_the_beginning=False,
+            DEFAULT_AGENT_CONFIG.rendering,
             scheduled_invocations=scheduled_invocations,
         )
 
@@ -502,7 +509,7 @@ def api_agent_view():
                         if source.get("type") == "base64":
                             source["data"] = "[truncated]"
 
-        tool_specs = get_tool_specs_for_config(DEFAULT_COMPLEX_CHAT_CONFIG)
+        tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
         tool_names = [t["name"] for t in tool_specs]
 
         return jsonify(
@@ -531,13 +538,11 @@ def api_agent_view_tokens():
 
         system_prompt, history = build_claude_input(
             messages,
-            DEFAULT_COMPLEX_CHAT_CONFIG,
-            put_context_at_the_end=True,
-            put_context_at_the_beginning=False,
+            DEFAULT_AGENT_CONFIG.rendering,
             scheduled_invocations=scheduled_invocations,
         )
 
-        tool_specs = get_tool_specs_for_config(DEFAULT_COMPLEX_CHAT_CONFIG)
+        tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
 
         def has_tool_use(msg: dict) -> bool:
             content = msg.get("content", [])

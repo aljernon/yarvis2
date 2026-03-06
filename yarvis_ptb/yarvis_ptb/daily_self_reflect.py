@@ -9,9 +9,7 @@ from anthropic.types import MessageParam
 from yarvis_ptb.agent_config import AgentConfig
 from yarvis_ptb.complex_chat import (
     COMPLEX_CHAT_LOCK,
-    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
-    DEFAULT_COMPLEX_CHAT_CONFIG,
+    DEFAULT_AGENT_CONFIG,
 )
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
 from yarvis_ptb.message_search import save_message_and_update_index
@@ -24,6 +22,7 @@ from yarvis_ptb.prompting import (
     render_mesage_param_exact,
 )
 from yarvis_ptb.ptb_util import InterruptionScope
+from yarvis_ptb.sampling import SamplingConfig
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
@@ -236,8 +235,7 @@ async def run_force_reflect(
 
     reflect_config = AgentConfig(
         description="force-reflect",
-        model="opus",
-        tool_subset="all",
+        sampling=SamplingConfig(model="opus", tool_subset="all"),
     )
     agent_id = create_agent(curr, chat_id, meta=reflect_config.to_meta())
 
@@ -412,8 +410,11 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
     Results are saved under an agent_id (visible on dashboard, not in main history).
     A placeholder assistant message is inserted into main history.
     """
+    from yarvis_ptb.sampling import NoOpHooks
+    from yarvis_ptb.tool_sampler import get_tools_for_agent_config
+
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
-    chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
+    agent_config = DEFAULT_AGENT_CONFIG
 
     # Don't block if lock is held (user conversation in progress)
     if COMPLEX_CHAT_LOCK.locked():
@@ -425,7 +426,8 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
         add_debug_message_to_queue("**AUTO-REFLECT: starting**")
 
         # 1. Load messages (same as normal invocation)
-        max_history_length_turns = chat_config.max_history_length_turns
+        rendering_config = agent_config.rendering
+        max_history_length_turns = rendering_config.max_history_length_turns
         db_messages = get_messages(
             curr, chat_id=chat_id, limit=max_history_length_turns
         )
@@ -443,32 +445,26 @@ async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
         scheduled_invocations = get_schedules(curr, chat_id)
         system, message_params = build_claude_input(
             db_messages,
-            chat_config,
-            invocation=Invocation(invocation_type="schedule"),  # no special type needed
-            put_context_at_the_beginning=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-            put_context_at_the_end=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
+            rendering_config,
+            invocation=Invocation(invocation_type="schedule"),
             scheduled_invocations=scheduled_invocations,
             forced_now_date=now,
         )
 
         # 4. Call process_query with full tool access
         scope = InterruptionScope(chat_id=chat_id, message_id=None)
-        (
-            result_params,
-            claude_calls,
-            tool_init_time,
-            subagent_usages,
-        ) = await process_query(
-            curr=curr,
-            bot=bot,
-            chat_config=chat_config,
-            chat_id=chat_id,
+        all_tools = get_tools_for_agent_config(agent_config, curr, chat_id, bot)
+        hooks = NoOpHooks()
+        result = await process_query(
             system=system,
             messages=message_params,
-            on_update=None,
-            scope=scope,
+            agent_config=agent_config,
+            tools=all_tools,
+            hooks=hooks,
             job_queue=application.job_queue,
+            scope=scope,
         )
+        result_params = result.message_params
 
         # 5. Save trigger + bot response under agent
         agent_id = create_agent(curr, chat_id, meta={"type": "auto_reflect"})

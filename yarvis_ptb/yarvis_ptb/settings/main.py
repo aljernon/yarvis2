@@ -1,8 +1,7 @@
 import pathlib
+from typing import Any
 
 import pytz
-
-from yarvis_ptb.chat_config import ChatConfig
 
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 LOCATION_PATH = PROJECT_ROOT / "locations.json"
@@ -19,7 +18,6 @@ SUBAGENT_DEFAULT_MODEL = "haiku"
 DEFAULT_TIMEZONE = pytz.timezone(DEFAULT_TIMEZONE_STR)
 
 
-
 HISTORY_LENGTH_TURNS = 60
 HISTORY_LENGTH_LONG_TURNS = 400
 HISTORY_LENGTH_LONG_TOKENS = 80_000
@@ -32,11 +30,11 @@ BOT_USER_ID = -1
 TOOL_CALL_USER_ID = -3
 SYSTEM_USER_ID = -2
 
-KNOWN_USER_PRIVATE_CHAT_CONFIGS: dict[int, ChatConfig] = {}
+KNOWN_USER_PRIVATE_CHAT_CONFIGS: dict[int, Any] = {}
 
 # chat name -> config. Only works if root in the the channel and the message
 # from the root.
-CONFIGURED_CHATS: dict[str, ChatConfig] = {}
+CONFIGURED_CHATS: dict[str, Any] = {}
 
 
 def load_env():

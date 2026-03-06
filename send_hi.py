@@ -10,6 +10,7 @@ from telegram.ext import (
 )
 
 from yarvis_ptb.complex_chat import (
+    DEFAULT_AGENT_CONFIG,
     Invocation,
     _process_multi_message_claude_invocation_no_lock,
 )
@@ -17,9 +18,8 @@ from yarvis_ptb.debug_chat import RENDERED_MESSAGES_QUEUE
 from yarvis_ptb.settings import ID_USER_MAP
 from yarvis_ptb.settings.anton import USER_ANTON
 from yarvis_ptb.storage import DbMessage, Invocation, connect
-from yarvis_ptb.yarvis_ptb.complex_chat import DEFAULT_COMPLEX_CHAT_CONFIG
 from yarvis_ptb.yarvis_ptb.logging import setup_logging
-from yarvis_ptb.yarvis_ptb.settings.main import CONFIGURED_CHATS, load_env
+from yarvis_ptb.yarvis_ptb.settings.main import load_env
 
 app = typer.Typer()
 
@@ -51,9 +51,7 @@ async def main(config_name: str | None):
 
     created_at = datetime.datetime.now(tz=datetime.timezone.utc)
 
-    config = (
-        CONFIGURED_CHATS[config_name] if config_name else DEFAULT_COMPLEX_CHAT_CONFIG
-    )
+    agent_config = DEFAULT_AGENT_CONFIG
 
     for _ in range(1):
         RENDERED_MESSAGES_QUEUE.clear()
@@ -68,10 +66,9 @@ async def main(config_name: str | None):
                     created_at=created_at,
                     chat_id=chat_id,
                     user_id=chat_id,
-                    # message="Please create file /tmp/aab with some multiline content, and then call command to edit it in some way.",
                     message="Please compute 2+2 in python",
                 ),
-                chat_config=config,
+                agent_config=agent_config,
                 skip_db=True,
                 forced_now_date=created_at,
             )

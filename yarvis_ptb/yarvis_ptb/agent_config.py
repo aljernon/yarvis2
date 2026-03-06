@@ -1,24 +1,40 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
-DEFAULT_TOOL_SUBSET: list[str] = ["python_repl", "bash_run", "editor"]
+from yarvis_ptb.rendering_config import RenderingConfig
+from yarvis_ptb.sampling import SamplingConfig
+
+DEFAULT_SUBAGENT_TOOL_SUBSET: list[str] = ["python_repl", "bash_run", "editor"]
 
 
 class AgentConfig(BaseModel):
-    """Structured configuration for a subagent.
+    """Universal agent configuration. Composes rendering + sampling.
 
     Stored as JSON in the agent's meta column under the "agent_config" key.
+    Used for both top-level agents and subagents.
     """
 
     description: str = ""
-    model: str = "haiku"
-    tool_subset: Literal["all"] | list[str] = Field(
-        default_factory=lambda: list(DEFAULT_TOOL_SUBSET)
-    )
-    autoload_memories: list[str] = Field(default_factory=list)
+
+    rendering: RenderingConfig = Field(default_factory=RenderingConfig)
+
+    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
+
+    @property
+    def requires_memory_tools(self) -> bool:
+        """Rendering includes memories -> agent needs read/write_memory tools."""
+        return self.rendering.include_memories
+
+    @property
+    def requires_tool_output_tool(self) -> bool:
+        """Rendering truncates old results -> agent needs get_tool_output tool."""
+        return self.rendering.tool_result_truncation_after_n_turns is not None
+
+    @property
+    def requires_messaging_tool(self) -> bool:
+        """Output mode is tool-based -> agent needs send_message tool."""
+        return self.sampling.output_mode == "tool_message"
 
     def to_meta(self) -> dict:
         """Serialize to a meta dict suitable for DB storage."""

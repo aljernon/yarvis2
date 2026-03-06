@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytz
 
-from yarvis_ptb.complex_chat import DEFAULT_COMPLEX_CHAT_CONFIG
+from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
 from yarvis_ptb.prompting import build_context_info
 from yarvis_ptb.settings import DEFAULT_TIMEZONE, DEFAULT_TIMEZONE_STR
 from yarvis_ptb.timezones import (
@@ -68,7 +68,7 @@ class TestTimezone(unittest.TestCase):
             context = build_context_info(
                 invocation=None,
                 scheduled_invocations=None,
-                chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
+                rendering_config=DEFAULT_AGENT_CONFIG.rendering,
             )
 
             # Bangkok time should be ahead of UTC

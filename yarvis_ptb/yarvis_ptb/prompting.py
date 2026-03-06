@@ -19,9 +19,9 @@ from anthropic.types import (
 )
 from typing_extensions import Required
 
-from yarvis_ptb.chat_config import ChatConfig
 from yarvis_ptb.on_disk_memory import render_memory_content
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
+from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.settings import (
     BOT_USER_ID,
     DEFAULT_TIMEZONE,
@@ -86,12 +86,12 @@ def build_context_info(
     *,
     invocation: Invocation | None,
     scheduled_invocations: list[DbSchedule] | None,
-    chat_config: ChatConfig,
+    rendering_config: RenderingConfig,
     forced_now_date: datetime.datetime | None = None,
 ) -> str:
     # Build Dynamic Context information that changes with each message
     system_parts = []
-    target_tz = get_timezone(chat_config.is_complex_chat)
+    target_tz = get_timezone(complex_chat=True)
     if forced_now_date is not None:
         now = forced_now_date.astimezone(target_tz)
     else:
@@ -112,18 +112,17 @@ def build_context_info(
             if invocation.db_invocation.context:
                 invocation_dict["context"] = invocation.db_invocation.context
         system_parts.append(f"<invocation>{invocation_dict}</invocation>")
-    if chat_config.is_complex_chat:
-        constants = {
-            "max_history_length_turns": chat_config.max_history_length_turns,
-            "HISTORY_LENGTH_LONG_TOKENS": HISTORY_LENGTH_LONG_TOKENS,
-            "HISTORY_LENGTH_LONG_SHRINKING_FACTOR": HISTORY_LENGTH_LONG_SHRINKING_FACTOR,
-            "LARGE_MESSAGE_SIZE_THRESHOLD": LARGE_MESSAGE_SIZE_THRESHOLD,
-        }
-        if chat_config.tool_result_truncation_after_n_turns is not None:
-            constants["tool_result_truncation_after_n_turns"] = (
-                chat_config.tool_result_truncation_after_n_turns
-            )
-        system_parts.append(f"<constants>{json.dumps(constants)}</constants>")
+    constants = {
+        "max_history_length_turns": rendering_config.max_history_length_turns,
+        "HISTORY_LENGTH_LONG_TOKENS": HISTORY_LENGTH_LONG_TOKENS,
+        "HISTORY_LENGTH_LONG_SHRINKING_FACTOR": HISTORY_LENGTH_LONG_SHRINKING_FACTOR,
+        "LARGE_MESSAGE_SIZE_THRESHOLD": LARGE_MESSAGE_SIZE_THRESHOLD,
+    }
+    if rendering_config.tool_result_truncation_after_n_turns is not None:
+        constants["tool_result_truncation_after_n_turns"] = (
+            rendering_config.tool_result_truncation_after_n_turns
+        )
+    system_parts.append(f"<constants>{json.dumps(constants)}</constants>")
 
     if scheduled_invocations is not None:
         str_chunks = []
@@ -319,41 +318,39 @@ def apply_tool_call_compactification(
 
 def build_claude_input(
     messages: list[DbMessage],
-    chat_config: ChatConfig,
+    rendering_config: RenderingConfig,
     *,
-    put_context_at_the_end: bool,
-    put_context_at_the_beginning: bool,
     invocation: Invocation | None = None,
     scheduled_invocations: list[DbSchedule] | None = None,
     forced_now_date: datetime.datetime | None = None,
 ) -> tuple[str, list[MessageParam]]:
-    # Build input with system prompt (containing Core Knowledge Repository) and Dynamic Context
-    system = SYSTEM_PROMPTS[chat_config.prompt_name]
+    """Build system prompt and message history for a Claude API call.
+
+    Context is always appended at the end of messages.
+    """
+    system = SYSTEM_PROMPTS[rendering_config.prompt_name]
     context_info = build_context_info(
         invocation=invocation,
         scheduled_invocations=scheduled_invocations,
-        chat_config=chat_config,
+        rendering_config=rendering_config,
         forced_now_date=forced_now_date,
     )
-    assert put_context_at_the_end or put_context_at_the_beginning, "No context? Really?"
-    if put_context_at_the_end:
-        context_message = DbMessage(
-            created_at=datetime.datetime.now(DEFAULT_TIMEZONE)
-            if forced_now_date is None
-            else forced_now_date,
-            chat_id=-1,  # Not used.
-            user_id=SYSTEM_USER_ID,
-            message=context_info,
-        )
-        messages = messages + [context_message]
+    # Context always goes at the end as a system message
+    context_message = DbMessage(
+        created_at=datetime.datetime.now(DEFAULT_TIMEZONE)
+        if forced_now_date is None
+        else forced_now_date,
+        chat_id=-1,  # Not used.
+        user_id=SYSTEM_USER_ID,
+        message=context_info,
+    )
+    messages = messages + [context_message]
 
-    if chat_config.memory_access:
+    if rendering_config.include_memories:
         system = f"{system}\n=== Core Knowledge Repository content:\n\nThe following is the current content of the Core Knowledge Repository. All repository files are on disk and can be modified using str_replace tool or directly via bash.\n\n{render_memory_content()}"
-        if put_context_at_the_beginning:
-            system = f"{system}\n{context_info}"
     history = convert_db_messages_to_claude_messages(
         messages,
-        tool_result_truncation_after_n_turns=chat_config.tool_result_truncation_after_n_turns,
+        tool_result_truncation_after_n_turns=rendering_config.tool_result_truncation_after_n_turns,
     )
     return system, history
 

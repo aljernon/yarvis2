@@ -16,9 +16,7 @@ from telegram.ext import Application, CallbackContext, ContextTypes
 from typing_extensions import Callable
 
 from yarvis_ptb.complex_chat import (
-    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
-    DEFAULT_COMPLEX_CHAT_CONFIG,
+    DEFAULT_AGENT_CONFIG,
     handle_message_root_user_assistant,
     process_multi_message_claude_invocation,
 )
@@ -34,7 +32,6 @@ from yarvis_ptb.debug_chat import (
 )
 from yarvis_ptb.on_disk_memory import read_autoload_memory
 from yarvis_ptb.prompting import (
-    SYSTEM_PROMPTS,
     build_claude_input,
     build_context_info,
     convert_db_messages_to_claude_messages,
@@ -197,15 +194,11 @@ async def handler_show_prompt(update: Update, context: CallbackContext):
         messages = get_messages(curr, chat_id=ROOT_USER_ID, limit=HISTORY_LENGTH_TURNS)
         scheduled_invocations = get_schedules(curr, ROOT_USER_ID)
 
-    chat_config = DEFAULT_COMPLEX_CHAT_CONFIG
-    system_prompt = SYSTEM_PROMPTS[chat_config.prompt_name]
-
+    agent_config = DEFAULT_AGENT_CONFIG
     system_prompt, history = build_claude_input(
         messages=messages,
-        chat_config=chat_config,
+        rendering_config=agent_config.rendering,
         scheduled_invocations=scheduled_invocations,
-        put_context_at_the_beginning=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-        put_context_at_the_end=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
     )
     formatted = [system_prompt]
     for rec in history:
@@ -265,7 +258,7 @@ async def handler_show_context(update: Update, context: CallbackContext):
         scheduled_invocations = get_schedules(curr, ROOT_USER_ID)
 
     context_info = build_context_info(
-        chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
+        rendering_config=DEFAULT_AGENT_CONFIG.rendering,
         scheduled_invocations=scheduled_invocations,
         invocation=Invocation(invocation_type="reply"),
     )
@@ -303,7 +296,7 @@ async def handler_compress_history(update: Update, context: CallbackContext):
             curr,
             context.application,
             context.bot,
-            chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
+            agent_config=DEFAULT_AGENT_CONFIG,
             chat_id=chat_id,
             invocation=Invocation(invocation_type="context_overflow"),
             initial_db_message=None,
@@ -542,7 +535,7 @@ async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackConte
             application=context.application,
             bot=context.bot,
             chat_id=sched.chat_id,
-            chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
+            agent_config=DEFAULT_AGENT_CONFIG,
             invocation=Invocation(invocation_type="schedule", db_invocation=sched),
         )
 
@@ -754,7 +747,7 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                     application=context.application,
                     bot=context.bot,
                     chat_id=sched.chat_id,
-                    chat_config=DEFAULT_COMPLEX_CHAT_CONFIG,
+                    agent_config=DEFAULT_AGENT_CONFIG,
                     invocation=Invocation(
                         invocation_type="schedule", db_invocation=sched
                     ),

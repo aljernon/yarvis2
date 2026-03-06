@@ -12,19 +12,16 @@ import sys
 import typer
 
 from yarvis_ptb import tool_sampler
-from yarvis_ptb.complex_chat import (
-    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-    COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
-    DEFAULT_COMPLEX_CHAT_CONFIG,
-)
+from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
 from yarvis_ptb.prompting import (
     build_claude_input,
     render_claude_response_short,
 )
-from yarvis_ptb.ptb_util import InterruptionScope, get_anthropic_client
+from yarvis_ptb.ptb_util import InterruptionScope
+from yarvis_ptb.sampling import NoOpHooks
 from yarvis_ptb.settings import DEFAULT_TIMEZONE, ID_USER_MAP
 from yarvis_ptb.settings.anton import USER_ANTON
-from yarvis_ptb.settings.main import CONFIGURED_CHATS, load_env
+from yarvis_ptb.settings.main import load_env
 from yarvis_ptb.storage import (
     DbMessage,
     Invocation,
@@ -32,7 +29,7 @@ from yarvis_ptb.storage import (
     get_messages,
     get_schedules,
 )
-from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_config
+from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
 from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult
 from yarvis_ptb.yarvis_ptb.logging import setup_logging
 
@@ -63,29 +60,28 @@ class _CliSendMessageTool(LocalTool):
 @app.command()
 def run(
     prompt: str = typer.Argument(..., help="Prompt to send to the agent"),
-    config: str | None = typer.Option(None, help="Chat config name"),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Verbose output with tool details"
     ),
 ):
-    asyncio.run(main(prompt=prompt, config_name=config, verbose=verbose))
+    asyncio.run(main(prompt=prompt, verbose=verbose))
 
 
-async def main(prompt: str, config_name: str | None, verbose: bool):
+async def main(prompt: str, verbose: bool):
     load_env()
     setup_logging()
 
     chat_id = ID_USER_MAP[USER_ANTON]
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
-    chat_config = (
-        CONFIGURED_CHATS[config_name] if config_name else DEFAULT_COMPLEX_CHAT_CONFIG
-    )
+    agent_config = DEFAULT_AGENT_CONFIG
+    rendering_config = agent_config.rendering
+    sampling_config = agent_config.sampling
 
     with connect() as conn:
         with conn.cursor() as curr:
             # Load history from DB
             db_messages = get_messages(
-                curr, chat_id=chat_id, limit=chat_config.max_history_length_turns
+                curr, chat_id=chat_id, limit=rendering_config.max_history_length_turns
             )
             initial_db_message = DbMessage(
                 created_at=now,
@@ -94,7 +90,7 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
                 message=prompt,
             )
             db_messages = [*db_messages, initial_db_message][
-                -chat_config.max_history_length_turns :
+                -rendering_config.max_history_length_turns :
             ]
 
             scheduled_invocations = get_schedules(curr, chat_id)
@@ -103,15 +99,12 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
             invocation = Invocation(invocation_type="reply")
             system, message_params = build_claude_input(
                 db_messages,
-                chat_config,
+                rendering_config,
                 invocation=invocation,
-                put_context_at_the_beginning=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_BEGINNING,
-                put_context_at_the_end=COMPLEX_CHAT_PUT_CONTEXT_AT_THE_END,
                 scheduled_invocations=scheduled_invocations,
                 forced_now_date=now,
             )
 
-            client = get_anthropic_client()
             scope = InterruptionScope(chat_id=chat_id, message_id=None)
 
             from telegram import Bot
@@ -119,8 +112,8 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
             bot = Bot(os.environ["TELEGRAM_BOT_TOKEN"])
 
             # Build tools, then intercept send_message to print to terminal
-            all_local_tool_objects = get_tools_for_config(
-                chat_config, curr, chat_id, bot
+            all_local_tool_objects = get_tools_for_agent_config(
+                agent_config, curr, chat_id, bot
             )
             tool_map = {}
             for t in all_local_tool_objects:
@@ -141,6 +134,7 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
                 for t in tool_map.values():
                     await stack.enter_async_context(t.context())
 
+                model_name = sampling_config.resolve_model_name()
                 (
                     result_params,
                     claude_calls,
@@ -149,10 +143,12 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
                     messages=message_params,
                     claude_tools=claude_tools,
                     all_local_tool_objects=tool_map,
-                    on_update=tool_sampler.dummy_on_update,
+                    on_update=NoOpHooks().on_update,
                     scope=scope,
-                    model_name=chat_config.model_name,
+                    model_name=model_name,
                     job_queue=_DummyJobQueue(),
+                    max_tokens=sampling_config.max_tokens,
+                    thinking=sampling_config.thinking,
                 )
 
             if not result_params:
@@ -168,7 +164,7 @@ async def main(prompt: str, config_name: str | None, verbose: bool):
                 total_prompt = sum(c.num_prompt_tokens for c in claude_calls)
                 total_cached = sum(c.num_cached_tokens for c in claude_calls)
                 total_output = sum(c.num_output_tokens for c in claude_calls)
-                cost = tool_sampler.estimate_cost(claude_calls, chat_config.model_name)
+                cost = tool_sampler.estimate_cost(claude_calls, model_name)
                 cost_str = f", ${cost:.4f}" if cost is not None else ""
                 print(
                     f"\n[{len(claude_calls)} API call(s), {total_prompt} prompt tokens, {total_cached} cached, {total_output} output{cost_str}]",

@@ -147,10 +147,13 @@ class SeePhotoTool(LocalTool):
 
 
 def build_chat_send_file_tools(
-    chat_id: int, bot: telegram.Bot, debug_chat_id: int | None
+    chat_id: int,
+    bot: telegram.Bot,
 ) -> list[LocalTool]:
+    from yarvis_ptb.settings import FULL_LOG_CHAT_ID
+
     return [
         SendPhotoTool(chat_id, bot),
         SendFileTool(chat_id, bot),
-        SeePhotoTool(debug_chat_id, bot),
+        SeePhotoTool(FULL_LOG_CHAT_ID, bot),
     ]
