@@ -88,6 +88,11 @@ func initDB() {
 		log.Fatal().Err(err).Msg("Failed to init database")
 	}
 
+	// Backfill conversations table from existing incoming messages
+	db.Exec(`INSERT OR IGNORE INTO conversations (conversation_id, partner_phone, partner_name)
+		SELECT conversation_id, sender, sender_name FROM messages
+		WHERE direction='incoming' AND sender != '' GROUP BY conversation_id`)
+
 	// Load persisted caches
 	loadParticipantCache()
 	loadConversationCache()
