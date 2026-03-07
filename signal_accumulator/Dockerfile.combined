@@ -1,0 +1,25 @@
+# Combined signal-cli-rest-api + accumulator in one container.
+# Eliminates message loss from accumulator disconnects — both processes
+# start and stop together.
+FROM bbernhard/signal-cli-rest-api AS base
+
+USER root
+
+# Install Python
+RUN apt-get update -qq && \
+    apt-get install -y -qq python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python deps in a venv (to avoid externally-managed-environment error)
+RUN python3 -m venv /opt/accumulator-venv
+COPY requirements.txt /opt/accumulator/
+RUN /opt/accumulator-venv/bin/pip install --no-cache-dir -r /opt/accumulator/requirements.txt
+
+COPY accumulator.py /opt/accumulator/
+COPY entrypoint.sh /opt/accumulator/
+RUN chmod +x /opt/accumulator/entrypoint.sh
+
+VOLUME /data
+EXPOSE 8080 8081
+
+ENTRYPOINT ["/opt/accumulator/entrypoint.sh"]

@@ -1,39 +1,30 @@
 # Signal Accumulator
 
-Python (Flask) service that listens to the Signal API websocket, stores messages in SQLite, and exposes a query API on port 8081.
+Combined container: `bbernhard/signal-cli-rest-api` + Python accumulator in one Docker image. Both processes start/stop together, eliminating message loss from accumulator websocket disconnects.
 
 ## Architecture
 
-- Connects to `bbernhard/signal-cli-rest-api` via websocket
-- Stores incoming Signal messages in SQLite
-- Exposes HTTP query API
-
-### Signal CLI REST API (upstream dependency)
-- Docker container: `bbernhard/signal-cli-rest-api`, running in JSON-RPC mode
-- Bound to Tailscale IP only (`-p 100.108.7.78:8080:8080`)
+- `signal-cli-rest-api` (Java) runs in JSON-RPC mode, receives messages from Signal servers
+- `accumulator.py` (Python/Flask) connects to it via `ws://localhost:8080`, stores messages in SQLite
+- Both run in the same container via `entrypoint.sh` — if either exits, the other is stopped
 - Signal number: `+16506603785`
-- Data volume: `signal-cli-data`
 
 ## Key files
 
-- `accumulator.py` — entire service (single file): websocket listener, SQLite storage, Flask API
-- `Dockerfile` — Python slim image
-- `requirements.txt` — Flask + websocket dependencies
+- `accumulator.py` — websocket listener, SQLite storage, Flask API
+- `Dockerfile.combined` — combined image (base: signal-cli-rest-api + Python + accumulator)
+- `Dockerfile` — standalone accumulator only (legacy, for separate-container setup)
+- `entrypoint.sh` — starts signal-cli in background, waits for ready, starts accumulator
+- `requirements.txt` — Flask + websocket-client
 
 ## HTTP API
 
-### `GET /messages`
-Query params (all optional):
-- `hours` (float, default 24) — lookback window
-- `sender` (string) — partial match on sender
-- `limit` (int, default 100)
-
-### `GET /health`
-Returns `{"status": "ok"}`
+- `GET /messages?hours=24&source=...&limit=100` — query messages
+- `GET /health` — websocket connection status
 
 ## Deployment
 
-Runs on the GCP VM (`signal-api`, `100.108.7.78`). Must be on `signal-net` Docker network (same as `signal-connection-server`) and use Docker DNS, not Tailscale IP.
+Runs on GCP VM (`signal-api`, `100.108.7.78`).
 
 ```bash
 # Copy files to VM
@@ -41,16 +32,20 @@ gcloud compute scp signal_accumulator/* signal-api:~/signal_accumulator/ --zone 
 
 # On the VM: build and redeploy
 cd ~/signal_accumulator
-sudo docker build -t signal-accumulator .
-sudo docker stop signal-accumulator && sudo docker rm signal-accumulator
-sudo docker run -d --name signal-accumulator \
+sudo docker build -f Dockerfile.combined -t signal-combined .
+sudo docker stop signal-combined signal-accumulator signal-connection-server 2>/dev/null
+sudo docker rm signal-combined signal-accumulator signal-connection-server 2>/dev/null
+sudo docker run -d --name signal-combined \
   --restart=unless-stopped \
-  --network signal-net \
+  -p 100.108.7.78:8080:8080 \
   -p 100.108.7.78:8081:8081 \
+  -v signal-cli-data:/home/.local/share/signal-cli \
   -v signal-accumulator-data:/data \
-  -e SIGNAL_WS_URL=ws://signal-connection-server:8080 \
-  signal-accumulator
+  signal-combined
 
 # Verify
-sudo docker logs --tail 10 signal-accumulator
+sudo docker logs --tail 20 signal-combined
 ```
+
+Note: this replaces BOTH the old `signal-connection-server` and `signal-accumulator` containers.
+The signal-cli data volume (`signal-cli-data`) is reused from the old setup.

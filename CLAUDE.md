@@ -109,9 +109,8 @@ A GCP VM runs message accumulator services as Docker containers, accessible via 
 - **Heroku ↔ GCP**: Tailscale buildpack (`mvisonneau/heroku-buildpack-tailscale`), env vars: `TAILSCALE_AUTH_KEY`, `SIGNAL_API_URL`
 
 ### Services on the VM
-- **Signal accumulator** (`signal_accumulator/`): Flask app, port 8081. See `signal_accumulator/CLAUDE.md`.
+- **Signal combined** (`signal_accumulator/`): signal-cli-rest-api + accumulator in one container (ports 8080+8081). See `signal_accumulator/CLAUDE.md`.
 - **SMS accumulator** (`sms_accumulator/`): Go service, port 8082. See `sms_accumulator/CLAUDE.md`.
-- **signal-cli-rest-api**: Upstream Signal API (`bbernhard/signal-cli-rest-api`), port 8080.
 
 ## Development
 To work on this project locally:
