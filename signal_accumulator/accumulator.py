@@ -38,15 +38,67 @@ def init_db():
             source_number TEXT,
             source_name TEXT,
             destination_number TEXT,
+            destination_name TEXT DEFAULT '',
+            group_id TEXT DEFAULT '',
+            group_name TEXT DEFAULT '',
             message TEXT,
             is_sync INTEGER DEFAULT 0,
+            is_group INTEGER DEFAULT 0,
             raw_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ts ON messages(timestamp_ms)")
+    # Migrations for existing databases
+    for col, typedef in [
+        ("destination_name", "TEXT DEFAULT ''"),
+        ("group_id", "TEXT DEFAULT ''"),
+        ("group_name", "TEXT DEFAULT ''"),
+        ("is_group", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE messages ADD COLUMN {col} {typedef}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     conn.close()
+
+
+def _resolve_contact_name(conn, number):
+    """Look up a contact name from previously received messages."""
+    if not number:
+        return ""
+    row = conn.execute(
+        "SELECT source_name FROM messages WHERE source_number = ? AND source_name != '' ORDER BY timestamp_ms DESC LIMIT 1",
+        (number,),
+    ).fetchone()
+    return row[0] if row else ""
+
+
+def _extract_group_info(msg_obj):
+    """Extract group ID and name from a dataMessage or sentMessage."""
+    group = msg_obj.get("groupInfo") or msg_obj.get("groupV2") or {}
+    group_id = group.get("groupId", "")
+    group_name = group.get("groupName", "") or group.get("name", "")
+    return group_id, group_name
+
+
+# Cache of group_id -> group_name learned from messages
+_group_name_cache = {}
+
+
+def _resolve_group_name(conn, group_id):
+    """Look up a group name from cache or previously stored messages."""
+    if group_id in _group_name_cache:
+        return _group_name_cache[group_id]
+    row = conn.execute(
+        "SELECT group_name FROM messages WHERE group_id = ? AND group_name != '' ORDER BY timestamp_ms DESC LIMIT 1",
+        (group_id,),
+    ).fetchone()
+    name = row[0] if row else ""
+    if name:
+        _group_name_cache[group_id] = name
+    return name
 
 
 def store_message(envelope):
@@ -66,16 +118,52 @@ def store_message(envelope):
     is_sync = 1 if sync.get("message") else 0
     dest = sync.get("destinationNumber", "") if is_sync else ""
 
+    # Group info from whichever message object has content
+    msg_obj = sync if is_sync else dm
+    group_id, group_name = _extract_group_info(msg_obj)
+    is_group = 1 if group_id else 0
+
     conn = sqlite3.connect(DB_PATH)
+
+    # Resolve destination name for sync DMs
+    dest_name = ""
+    if is_sync and dest:
+        dest_name = _resolve_contact_name(conn, dest)
+
+    # Resolve group name if we got an ID but no name
+    if group_id and not group_name:
+        group_name = _resolve_group_name(conn, group_id)
+    elif group_id and group_name:
+        _group_name_cache[group_id] = group_name
+
     conn.execute(
-        "INSERT INTO messages (timestamp_ms, source_number, source_name, destination_number, message, is_sync, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (ts, source, source_name, dest, text, is_sync, json.dumps(envelope)),
+        "INSERT INTO messages (timestamp_ms, source_number, source_name, destination_number, destination_name, group_id, group_name, message, is_sync, is_group, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            ts,
+            source,
+            source_name,
+            dest,
+            dest_name,
+            group_id,
+            group_name,
+            text,
+            is_sync,
+            is_group,
+            json.dumps(envelope),
+        ),
     )
     conn.commit()
     conn.close()
-    print(
-        f"Stored: {'[sync]' if is_sync else '[recv]'} {source_name or source}: {text[:80]}"
-    )
+
+    label = "[sync]" if is_sync else "[recv]"
+    who = source_name or source
+    if is_group:
+        where = f" in {group_name or group_id}"
+    elif is_sync:
+        where = f" -> {dest_name or dest}"
+    else:
+        where = ""
+    print(f"Stored: {label} {who}{where}: {text[:80]}")
 
 
 RETENTION_DAYS = 7
@@ -166,6 +254,10 @@ def get_messages():
                 "source_number": r["source_number"],
                 "source_name": r["source_name"],
                 "destination_number": r["destination_number"],
+                "destination_name": r["destination_name"] or "",
+                "group_id": r["group_id"] or "",
+                "group_name": r["group_name"] or "",
+                "is_group": bool(r["is_group"]),
                 "message": r["message"],
                 "is_sync": bool(r["is_sync"]),
             }

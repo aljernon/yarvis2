@@ -118,20 +118,26 @@ A GCP VM runs `signal-cli-rest-api` to give Yarvis read access to Signal message
 ### Signal Accumulator
 Code lives in `signal_accumulator/` in this repo. It's a Flask app that listens to the Signal API websocket, stores messages in SQLite, and exposes a query API on port 8081.
 
-**Deployment**: Code is committed here, then manually copied to the GCP VM and run as a Docker container:
+**Deployment**: Code is committed here, then manually copied to the GCP VM and run as a Docker container.
+Must be on `signal-net` Docker network (same as `signal-connection-server`) and use Docker DNS, not Tailscale IP.
 ```bash
 # Copy files to VM
 gcloud compute scp signal_accumulator/* signal-api:~/signal_accumulator/ --zone us-central1-a --tunnel-through-iap
 
-# On the VM: build and run
+# On the VM: build and redeploy
 cd ~/signal_accumulator
 sudo docker build -t signal-accumulator .
+sudo docker stop signal-accumulator && sudo docker rm signal-accumulator
 sudo docker run -d --name signal-accumulator \
   --restart=unless-stopped \
+  --network signal-net \
   -p 100.108.7.78:8081:8081 \
   -v signal-accumulator-data:/data \
-  -e SIGNAL_WS_URL=ws://100.108.7.78:8080 \
+  -e SIGNAL_WS_URL=ws://signal-connection-server:8080 \
   signal-accumulator
+
+# Verify
+sudo docker logs --tail 10 signal-accumulator
 ```
 
 ### SMS Accumulator
@@ -172,3 +178,7 @@ SETTINGS_NAME=anton conda run -n clam python dump_messages.py -s 2026-02-27  # s
 SETTINGS_NAME=anton conda run -n clam python dump_messages.py -n 50          # limit to 50 messages
 SETTINGS_NAME=anton conda run -n clam python dump_messages.py --max-line-length 0  # no line truncation (default: 200 chars)
 ```
+
+# Style guide
+
+Use pyhton 3.10 syntax. For typing, don't use List or Optional
