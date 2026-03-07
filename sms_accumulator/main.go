@@ -67,10 +67,19 @@ func initDB() {
 		);
 		CREATE INDEX IF NOT EXISTS idx_ts ON messages(timestamp_ms);
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_id ON messages(message_id);
+
+		CREATE TABLE IF NOT EXISTS participants (
+			participant_id TEXT PRIMARY KEY,
+			phone_number TEXT,
+			name TEXT
+		);
 	`)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to init database")
 	}
+
+	// Load persisted participant cache
+	loadParticipantCache()
 }
 
 func storeMessage(msgID string, timestampMs int64, sender, senderName, message, direction, conversationID string) {
@@ -100,6 +109,76 @@ func cleanupOldMessages() {
 			log.Info().Int64("deleted", n).Msg("Cleaned up old messages")
 		}
 		time.Sleep(time.Hour)
+	}
+}
+
+func loadParticipantCache() {
+	rows, err := db.Query("SELECT participant_id, phone_number, name FROM participants")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load participant cache")
+		return
+	}
+	defer rows.Close()
+	count := 0
+	participantCacheMu.Lock()
+	defer participantCacheMu.Unlock()
+	for rows.Next() {
+		var pid, phone, name string
+		rows.Scan(&pid, &phone, &name)
+		if phone != "" {
+			participantCache[pid] = phone
+		}
+		if name != "" {
+			participantNameCache[pid] = name
+		}
+		count++
+	}
+	log.Info().Int("count", count).Msg("Loaded participant cache from DB")
+}
+
+func persistParticipant(pid, phone, name string) {
+	dbMu.Lock()
+	defer dbMu.Unlock()
+	_, err := db.Exec(
+		"INSERT INTO participants (participant_id, phone_number, name) VALUES (?, ?, ?) ON CONFLICT(participant_id) DO UPDATE SET phone_number=COALESCE(NULLIF(excluded.phone_number,''), phone_number), name=COALESCE(NULLIF(excluded.name,''), name)",
+		pid, phone, name,
+	)
+	if err != nil {
+		log.Error().Err(err).Str("pid", pid).Msg("Failed to persist participant")
+	}
+}
+
+func resolveUnresolvedSenders() {
+	participantCacheMu.RLock()
+	cache := make(map[string]string, len(participantCache))
+	nameCache := make(map[string]string, len(participantNameCache))
+	for k, v := range participantCache {
+		cache[k] = v
+	}
+	for k, v := range participantNameCache {
+		nameCache[k] = v
+	}
+	participantCacheMu.RUnlock()
+
+	dbMu.Lock()
+	defer dbMu.Unlock()
+
+	total := int64(0)
+	for pid, phone := range cache {
+		name := nameCache[pid]
+		res, err := db.Exec(
+			"UPDATE messages SET sender = ?, sender_name = COALESCE(NULLIF(?, ''), sender_name) WHERE sender = ?",
+			phone, name, pid,
+		)
+		if err != nil {
+			log.Error().Err(err).Str("pid", pid).Msg("Failed to resolve sender")
+			continue
+		}
+		n, _ := res.RowsAffected()
+		total += n
+	}
+	if total > 0 {
+		log.Info().Int64("updated", total).Msg("Resolved previously unresolved senders")
 	}
 }
 
@@ -241,20 +320,26 @@ func cacheConversationParticipants(conv *gmproto.Conversation) {
 			continue
 		}
 		// Resolve to phone number: prefer ID.Number, fall back to FormattedNumber
+		phone := ""
 		if num := p.GetID().GetNumber(); num != "" {
 			participantCache[pid] = num
+			phone = num
 		} else if fNum := p.GetFormattedNumber(); fNum != "" {
 			participantCache[pid] = fNum
+			phone = fNum
 		}
-		if name := p.GetFullName(); name != "" {
+		name := p.GetFullName()
+		if name != "" {
 			participantNameCache[pid] = name
 		}
 		log.Debug().Str("participant_id", pid).
 			Str("number", p.GetID().GetNumber()).
 			Str("formatted", p.GetFormattedNumber()).
-			Str("name", p.GetFullName()).
+			Str("name", name).
 			Bool("is_me", p.GetIsMe()).
 			Msg("Cached participant")
+		// Persist to SQLite (run outside lock to avoid deadlock with dbMu)
+		go persistParticipant(pid, phone, name)
 	}
 }
 
@@ -332,6 +417,7 @@ func backfillMessages(conversations []*gmproto.Conversation) {
 		}
 	}
 	log.Info().Int("messages", total).Msg("Backfill complete")
+	resolveUnresolvedSenders()
 }
 
 // --- HTTP API ---
