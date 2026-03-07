@@ -97,55 +97,21 @@ The project is hosted on Heroku with PostgreSQL database integration.
 - **Never push to Heroku directly** (`git push heroku`). Deploys happen automatically after pushing to GitHub.
 - `update_tokens.sh` must be run inside the conda env: `conda run -n clam ./update_tokens.sh`
 
-## GCP Infrastructure (Signal API)
-A GCP VM runs `signal-cli-rest-api` to give Yarvis read access to Signal messages.
+## GCP Infrastructure
+
+A GCP VM runs message accumulator services as Docker containers, accessible via Tailscale.
 
 - **GCP project**: `signal-api-project`
-- **VM name**: `signal-api`, zone `us-central1-a`, machine type `e2-micro` (free tier)
-- **OS**: Ubuntu 24.04 LTS
-- **Networking**: Tailscale private network (no public ports except SSH)
-  - VM Tailscale IP: `100.108.7.78`
-  - Signal API accessible at `http://100.108.7.78:8080`
-- **Signal API**: `bbernhard/signal-cli-rest-api` Docker container, running in JSON-RPC mode
-  - Bound to Tailscale IP only (`-p 100.108.7.78:8080:8080`)
-  - Signal number: `+16506603785`
-  - Data volume: `signal-cli-data`
-- **Heroku ↔ GCP**: Tailscale buildpack (`mvisonneau/heroku-buildpack-tailscale`) on Heroku app
-  - Env vars on Heroku: `TAILSCALE_AUTH_KEY`, `SIGNAL_API_URL=http://100.108.7.78:8080`
+- **VM**: `signal-api`, zone `us-central1-a`, `e2-micro` (free tier), Ubuntu 24.04 LTS
+- **Tailscale IP**: `100.108.7.78`
 - **Local gcloud**: `/opt/homebrew/share/google-cloud-sdk/bin/gcloud`
 - **SSH**: `gcloud compute ssh signal-api --zone us-central1-a --tunnel-through-iap`
+- **Heroku ↔ GCP**: Tailscale buildpack (`mvisonneau/heroku-buildpack-tailscale`), env vars: `TAILSCALE_AUTH_KEY`, `SIGNAL_API_URL`
 
-### Signal Accumulator
-Code lives in `signal_accumulator/` in this repo. It's a Flask app that listens to the Signal API websocket, stores messages in SQLite, and exposes a query API on port 8081.
-
-**Deployment**: Code is committed here, then manually copied to the GCP VM and run as a Docker container.
-Must be on `signal-net` Docker network (same as `signal-connection-server`) and use Docker DNS, not Tailscale IP.
-```bash
-# Copy files to VM
-gcloud compute scp signal_accumulator/* signal-api:~/signal_accumulator/ --zone us-central1-a --tunnel-through-iap
-
-# On the VM: build and redeploy
-cd ~/signal_accumulator
-sudo docker build -t signal-accumulator .
-sudo docker stop signal-accumulator && sudo docker rm signal-accumulator
-sudo docker run -d --name signal-accumulator \
-  --restart=unless-stopped \
-  --network signal-net \
-  -p 100.108.7.78:8081:8081 \
-  -v signal-accumulator-data:/data \
-  -e SIGNAL_WS_URL=ws://signal-connection-server:8080 \
-  signal-accumulator
-
-# Verify
-sudo docker logs --tail 10 signal-accumulator
-```
-
-### SMS Accumulator
-Go service in `sms_accumulator/` — connects to Google Messages via `libgm` (web pairing protocol), captures all SMS/RCS messages (incoming + outgoing), stores in SQLite, exposes query API on port 8082. See `sms_accumulator/CLAUDE.md` for details.
-
-- **API**: `GET /messages?hours=24&sender=...&limit=100`, `GET /health`
-- **VM port**: `100.108.7.78:8082`
-- **Docker volume**: `sms-accumulator-data` (holds `auth.json` + `sms_messages.db`)
+### Services on the VM
+- **Signal accumulator** (`signal_accumulator/`): Flask app, port 8081. See `signal_accumulator/CLAUDE.md`.
+- **SMS accumulator** (`sms_accumulator/`): Go service, port 8082. See `sms_accumulator/CLAUDE.md`.
+- **signal-cli-rest-api**: Upstream Signal API (`bbernhard/signal-cli-rest-api`), port 8080.
 
 ## Development
 To work on this project locally:
@@ -159,9 +125,6 @@ To work on this project locally:
 ```
 SETTINGS_NAME=anton conda run -n clam python -c "..."
 ```
-
-### Go
-Go is not installed locally. For Go services (e.g. `sms_accumulator/`), use Docker for builds — see the sub-project's own CLAUDE.md for build/deploy instructions.
 
 ### Testing changes
 Use `cli_prompt.py` to test changes end-to-end. It loads full conversation history from DB, runs Claude with all tools, and prints the response to terminal — without saving anything back to DB or involving Telegram.

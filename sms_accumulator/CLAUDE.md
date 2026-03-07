@@ -27,7 +27,7 @@ Derived from `MessageStatusType` (a protobuf enum):
 - 300: deleted (skipped)
 
 ### Participant resolution
-libgm identifies senders by opaque participant IDs (not phone numbers). On startup and when conversations update, we cache participant ID → phone number mappings from conversation metadata. This cache is in-memory only — rebuilt on each restart.
+libgm identifies senders by opaque participant IDs (not phone numbers). On startup and when conversations update, we cache participant ID → phone number mappings from conversation metadata. The cache is persisted to a `participants` SQLite table so it survives restarts. After each backfill, `resolveUnresolvedSenders()` updates any messages that were stored with raw participant IDs.
 
 ### Auth lifecycle
 - First run: `NewAuthData()` generates AES + ECDSA keys → QR pairing → saves to `/data/auth.json`
@@ -72,12 +72,11 @@ messages (
 Runs on the same GCP VM as the Signal accumulator (`signal-api`, `100.108.7.78`).
 
 ### Building
-The VM is an `e2-micro` (0.25 vCPU, 1GB RAM) — **too small to compile Go with CGO**. Cross-compile locally instead:
+The VM is an `e2-micro` (0.25 vCPU, 1GB RAM) — **too small to compile Go with CGO**. Build locally using Docker with platform emulation:
 ```bash
-# From sms_accumulator/ directory
-docker run --rm -v "$(pwd):/build" -w /build golang:1.23 sh -c \
-  "apt-get update -qq && apt-get install -y -qq gcc-x86-64-linux-gnu >/dev/null 2>&1 && \
-   CGO_ENABLED=1 CC=x86_64-linux-gnu-gcc GOOS=linux GOARCH=amd64 go build -o sms-accumulator ."
+# From sms_accumulator/ directory (works on Apple Silicon)
+docker run --rm --platform linux/amd64 -v "$(pwd)":/build -w /build golang:1.23-bookworm \
+  sh -c "CGO_ENABLED=1 go build -o sms-accumulator ."
 ```
 
 ### Deploying

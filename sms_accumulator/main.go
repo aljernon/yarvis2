@@ -42,6 +42,10 @@ var (
 	participantCache     = map[string]string{}
 	participantNameCache = map[string]string{}
 	participantCacheMu   sync.RWMutex
+
+	// conversationID → partner info (the non-"isMe" participant)
+	convPartnerCache   = map[string][2]string{} // [phone, name]
+	convPartnerCacheMu sync.RWMutex
 )
 
 // --- Database ---
@@ -73,13 +77,20 @@ func initDB() {
 			phone_number TEXT,
 			name TEXT
 		);
+
+		CREATE TABLE IF NOT EXISTS conversations (
+			conversation_id TEXT PRIMARY KEY,
+			partner_phone TEXT,
+			partner_name TEXT
+		);
 	`)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to init database")
 	}
 
-	// Load persisted participant cache
+	// Load persisted caches
 	loadParticipantCache()
+	loadConversationCache()
 }
 
 func storeMessage(msgID string, timestampMs int64, sender, senderName, message, direction, conversationID string) {
@@ -134,6 +145,37 @@ func loadParticipantCache() {
 		count++
 	}
 	log.Info().Int("count", count).Msg("Loaded participant cache from DB")
+}
+
+func loadConversationCache() {
+	rows, err := db.Query("SELECT conversation_id, partner_phone, partner_name FROM conversations")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load conversation cache")
+		return
+	}
+	defer rows.Close()
+	count := 0
+	convPartnerCacheMu.Lock()
+	defer convPartnerCacheMu.Unlock()
+	for rows.Next() {
+		var convID, phone, name string
+		rows.Scan(&convID, &phone, &name)
+		convPartnerCache[convID] = [2]string{phone, name}
+		count++
+	}
+	log.Info().Int("count", count).Msg("Loaded conversation cache from DB")
+}
+
+func persistConversation(convID, phone, name string) {
+	dbMu.Lock()
+	defer dbMu.Unlock()
+	_, err := db.Exec(
+		"INSERT INTO conversations (conversation_id, partner_phone, partner_name) VALUES (?, ?, ?) ON CONFLICT(conversation_id) DO UPDATE SET partner_phone=COALESCE(NULLIF(excluded.partner_phone,''), partner_phone), partner_name=COALESCE(NULLIF(excluded.partner_name,''), partner_name)",
+		convID, phone, name,
+	)
+	if err != nil {
+		log.Error().Err(err).Str("conv", convID).Msg("Failed to persist conversation")
+	}
 }
 
 func persistParticipant(pid, phone, name string) {
@@ -308,6 +350,7 @@ func processMessage(evt *libgm.WrappedMessage) {
 }
 
 func cacheConversationParticipants(conv *gmproto.Conversation) {
+	convID := conv.GetConversationID()
 	participantCacheMu.Lock()
 	defer participantCacheMu.Unlock()
 	for _, p := range conv.GetParticipants() {
@@ -340,6 +383,13 @@ func cacheConversationParticipants(conv *gmproto.Conversation) {
 			Msg("Cached participant")
 		// Persist to SQLite (run outside lock to avoid deadlock with dbMu)
 		go persistParticipant(pid, phone, name)
+		// Cache non-"isMe" participant as conversation partner
+		if !p.GetIsMe() && convID != "" {
+			convPartnerCacheMu.Lock()
+			convPartnerCache[convID] = [2]string{phone, name}
+			convPartnerCacheMu.Unlock()
+			go persistConversation(convID, phone, name)
+		}
 	}
 }
 
@@ -451,21 +501,21 @@ func handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	sinceMs := time.Now().UTC().Add(-time.Duration(hours * float64(time.Hour))).UnixMilli()
 
-	query := "SELECT timestamp_ms, sender, sender_name, message, direction, conversation_id FROM messages WHERE timestamp_ms >= ?"
+	query := "SELECT m.timestamp_ms, m.sender, m.sender_name, m.message, m.direction, m.conversation_id, COALESCE(c.partner_phone,''), COALESCE(c.partner_name,'') FROM messages m LEFT JOIN conversations c ON m.conversation_id = c.conversation_id WHERE m.timestamp_ms >= ?"
 	params := []any{sinceMs}
 
 	if sender != "" {
-		query += " AND (sender LIKE ? OR sender_name LIKE ?)"
-		params = append(params, "%"+sender+"%", "%"+sender+"%")
+		query += " AND (m.sender LIKE ? OR m.sender_name LIKE ? OR c.partner_name LIKE ? OR c.partner_phone LIKE ?)"
+		params = append(params, "%"+sender+"%", "%"+sender+"%", "%"+sender+"%", "%"+sender+"%")
 	}
 
 	convID := r.URL.Query().Get("conversation_id")
 	if convID != "" {
-		query += " AND conversation_id = ?"
+		query += " AND m.conversation_id = ?"
 		params = append(params, convID)
 	}
 
-	query += " ORDER BY timestamp_ms DESC LIMIT ?"
+	query += " ORDER BY m.timestamp_ms DESC LIMIT ?"
 	params = append(params, limit)
 
 	dbMu.Lock()
@@ -484,13 +534,15 @@ func handleMessages(w http.ResponseWriter, r *http.Request) {
 		Message        string `json:"message"`
 		Direction      string `json:"direction"`
 		ConversationID string `json:"conversation_id"`
+		PartnerPhone   string `json:"partner_phone,omitempty"`
+		PartnerName    string `json:"partner_name,omitempty"`
 	}
 
 	var messages []messageJSON
 	for rows.Next() {
 		var tsMs int64
 		var m messageJSON
-		rows.Scan(&tsMs, &m.Sender, &m.SenderName, &m.Message, &m.Direction, &m.ConversationID)
+		rows.Scan(&tsMs, &m.Sender, &m.SenderName, &m.Message, &m.Direction, &m.ConversationID, &m.PartnerPhone, &m.PartnerName)
 		m.Timestamp = time.UnixMilli(tsMs).UTC().Format(time.RFC3339)
 		messages = append(messages, m)
 	}
