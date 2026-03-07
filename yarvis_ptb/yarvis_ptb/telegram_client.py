@@ -172,6 +172,7 @@ async def get_recent_messages(
             text = msg.text or ""
             if msg.media and not msg.text:
                 text = f"[Media: {type(msg.media).__name__}]"
+            sender_phone = getattr(msg.sender, "phone", None) if msg.sender else None
             all_messages.append(
                 {
                     "timestamp": msg.date.isoformat(),
@@ -181,6 +182,7 @@ async def get_recent_messages(
                     "conversation_partner": dialog.name or f"Chat {dialog.id}",
                     "chat_id": dialog.id,
                     "is_group": is_group,
+                    "sender_phone": sender_phone,
                 }
             )
     return all_messages
