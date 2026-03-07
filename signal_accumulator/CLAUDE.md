@@ -37,6 +37,7 @@ sudo docker stop signal-combined signal-accumulator signal-connection-server 2>/
 sudo docker rm signal-combined signal-accumulator signal-connection-server 2>/dev/null
 sudo docker run -d --name signal-combined \
   --restart=unless-stopped \
+  -e MODE=json-rpc \
   -p 100.108.7.78:8080:8080 \
   -p 100.108.7.78:8081:8081 \
   -v signal-cli-data:/home/.local/share/signal-cli \
