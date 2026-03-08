@@ -309,6 +309,10 @@ async def handle_message_root_user_assistant(
                 "date": reply_msg.date.isoformat() if reply_msg.date else None,
             }
 
+    # When message comes from debug chat, the message ID belongs to the debug chat,
+    # not the main chat — don't pass it as reply_to_message_id to avoid reaction errors.
+    is_from_debug = auth.is_root_user_debug_chat
+    msg_id = ensure(update.message).id
     await process_multi_message_claude_invocation(
         curr=curr,
         application=context.application,
@@ -316,10 +320,11 @@ async def handle_message_root_user_assistant(
         chat_id=chat_id,
         agent_config=agent_config,
         invocation=Invocation(
-            invocation_type="reply", reply_to_message_id=ensure(update.message).id
+            invocation_type="reply",
+            reply_to_message_id=None if is_from_debug else msg_id,
         ),
         initial_db_message=initial_db_message,
-        telegram_message_id=update.message.id,
+        telegram_message_id=None if is_from_debug else msg_id,
     )
 
 
