@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 DAU_HOUR = 2  # 2am local time
 
 FREEZE_MSG_TEMPLATE = (
+    "<system>\n"
     "This agent session ({slug}) is now FROZEN. "
     "Your conversation history up to this point is preserved and immutable. "
     "Any future queries to you come from a newer version of yourself — "
@@ -54,7 +55,8 @@ FREEZE_MSG_TEMPLATE = (
     "conversational small talk. Just provide the facts. "
     "You may use tools if needed, but do not use them to look up current "
     "state (e.g., reading CKR) — the caller can do that itself. "
-    "Your value is the knowledge in your conversation history."
+    "Your value is the knowledge in your conversation history.\n"
+    "</system>"
 )
 
 SUMMARY_PROMPT_TEMPLATE = (
