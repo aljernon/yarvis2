@@ -91,13 +91,15 @@ NEW_SESSION_MSG_TEMPLATE = (
 def should_run_dau(curr, chat_id: int) -> bool:
     """Check if the daily agent update should run now.
 
-    Triggers once per day at DAU_HOUR local time if there are main-chat
+    Triggers once per day at/after DAU_HOUR local time if there are main-chat
     messages from yesterday and no archive agent for yesterday exists yet.
+    Uses a range (DAU_HOUR to DAU_HOUR+2) instead of exact hour match
+    to handle DST spring-forward where hour 2 may not exist.
     """
     local_tz = get_timezone(complex_chat=True)
     now_local = datetime.datetime.now(local_tz)
 
-    if now_local.hour != DAU_HOUR:
+    if not (DAU_HOUR <= now_local.hour < DAU_HOUR + 8):
         return False
 
     yesterday = (now_local - datetime.timedelta(days=1)).date()
