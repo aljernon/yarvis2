@@ -411,7 +411,15 @@ class RunSubagentTool(LocalTool):
             )
 
         # Debug chat
-        add_debug_message_to_queue(f"**AGENT {slug}** (msg: {message[:100]})")
+        cost_str = ""
+        if subagent_usage:
+            cost = subagent_usage.get("estimated_cost_usd")
+            if cost:
+                cost_str = f", cost: ${cost:.3f}"
+        frozen_str = " FROZEN" if frozen else ""
+        add_debug_message_to_queue(
+            f"**AGENT{frozen_str} {slug}** (model: {model_id}{cost_str}, msg: {message[:100]})"
+        )
         if message_params:
             add_debug_message_to_queue(message_params)
 
