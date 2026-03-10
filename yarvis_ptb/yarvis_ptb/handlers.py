@@ -79,6 +79,7 @@ from yarvis_ptb.storage import (
     save_message,
 )
 from yarvis_ptb.tools.scheduling_tools import compute_next_run
+from yarvis_ptb.tools.whoop_tools import maybe_refresh_whoop_token
 from yarvis_ptb.util import ensure
 from yarvis_ptb.whisper_transcription import transcribe_voice_message
 
@@ -805,3 +806,9 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                 f"**AUTO-REFLECT FAILED**\n```\n{traceback.format_exc()}\n```"
             )
             await maybe_send_messages_to_debug_chat(context.application)
+
+        # Proactive Whoop token refresh (every 12h)
+        try:
+            maybe_refresh_whoop_token()
+        except Exception:
+            logger.exception("Whoop token refresh failed")

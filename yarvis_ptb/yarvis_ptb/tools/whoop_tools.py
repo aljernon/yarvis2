@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -24,8 +24,6 @@ def _load_whoop_token() -> dict:
     created_at = token_data.get("created_at")
     expires_in = token_data.get("expires_in", 3600)
     if created_at:
-        from datetime import timezone
-
         created = datetime.fromisoformat(created_at)
         if datetime.now(timezone.utc) >= created + timedelta(seconds=expires_in - 60):
             token_data = _refresh_token(token_data)
@@ -61,7 +59,7 @@ def _refresh_token(token_data: dict) -> dict:
         "refresh_token": new_token.get("refresh_token", refresh_token),
         "scopes": new_token.get("scope", "").split() or token_data.get("scopes", []),
         "token_type": new_token.get("token_type", "bearer"),
-        "created_at": datetime.now(tz=__import__("datetime").timezone.utc).isoformat(),
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }
     with open(WHOOP_TOKEN_PATH, "w") as f:
         json.dump(save_data, f, indent=2)
@@ -146,6 +144,32 @@ class WhoopDataTool(LocalTool):
             )
         except Exception as e:
             return ToolResult.error(f"Failed to fetch {data_type} data: {e}")
+
+
+WHOOP_REFRESH_INTERVAL = timedelta(hours=12)
+
+
+def maybe_refresh_whoop_token() -> None:
+    """Proactively refresh the Whoop token if it's older than WHOOP_REFRESH_INTERVAL.
+
+    Called periodically from callback_minute to prevent token expiry.
+    """
+    if not WHOOP_TOKEN_PATH.exists():
+        return
+    try:
+        with open(WHOOP_TOKEN_PATH) as f:
+            token_data = json.load(f)
+        created_at = token_data.get("created_at")
+        if not created_at:
+            return
+        created = datetime.fromisoformat(created_at)
+        age = datetime.now(tz=created.tzinfo) - created
+        if age >= WHOOP_REFRESH_INTERVAL:
+            logger.info(f"Whoop token is {age} old, refreshing proactively")
+            _refresh_token(token_data)
+            logger.info("Whoop token refreshed successfully")
+    except Exception:
+        logger.exception("Whoop proactive token refresh failed")
 
 
 def get_whoop_tools() -> list[LocalTool]:
