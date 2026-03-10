@@ -137,6 +137,10 @@ function renderMessageParams(meta, turnId) {
   return html;
 }
 
+function shortModelName(model) {
+  return (model || "").replace(/^claude-/, "").replace(/-\d{8}$/, "");
+}
+
 function renderUsageBadge(meta) {
   const usage = meta && meta.usage;
   if (!usage) return "";
@@ -148,15 +152,19 @@ function renderUsageBadge(meta) {
   const totalUncached = calls.reduce((s, c) => s + (c.uncached_input || 0), 0);
   const totalCacheCreate = calls.reduce((s, c) => s + (c.cache_creation || 0), 0);
   const costStr = cost != null ? ` $${cost.toFixed(4)}` : "";
+  const model = shortModelName(usage.model);
+  const modelStr = model ? ` ${model}` : "";
   const parts = [];
   if (totalUncached) parts.push(`${totalUncached} in`);
   if (totalCached) parts.push(`${totalCached} cached`);
   if (totalCacheCreate) parts.push(`${totalCacheCreate} cache_wr`);
   if (totalOut) parts.push(`${totalOut} out`);
-  // Tooltip: per-category $ breakdown + per-call details
+  // Tooltip: model + per-category $ breakdown + per-call details
   const tooltipLines = [];
+  if (usage.model) tooltipLines.push(`model: ${usage.model}`);
   const bd = usage.cost_breakdown_usd;
   if (bd) {
+    if (usage.model) tooltipLines.push("");
     tooltipLines.push(`in: ${totalUncached} tok  $${(bd.uncached_input || 0).toFixed(4)}`);
     tooltipLines.push(`cached: ${totalCached} tok  $${(bd.cached_input || 0).toFixed(4)}`);
     tooltipLines.push(`cache_wr: ${totalCacheCreate} tok  $${(bd.cache_creation || 0).toFixed(4)}`);
@@ -180,14 +188,23 @@ function renderUsageBadge(meta) {
     tooltipLines.push("");
     for (let i = 0; i < subs.length; i++) {
       const s = subs[i];
-      const model = (s.model || "").replace(/^claude-/, "").replace(/-\d+$/, "");
+      const sModel = shortModelName(s.model);
       const sCost = s.estimated_cost_usd != null ? `$${s.estimated_cost_usd.toFixed(4)}` : "";
       const nCalls = (s.calls || []).length;
-      tooltipLines.push(`subagent ${i + 1} (${model}, ${nCalls} calls): ${sCost}`);
+      tooltipLines.push(`subagent ${i + 1} (${sModel}, ${nCalls} calls): ${sCost}`);
     }
   }
   const tooltip = tooltipLines.join("\n");
-  return `<span class="badge usage" title="${escapeHtml(tooltip)}">${parts.join(" | ")}${costStr}</span>`;
+  return `<span class="badge usage" title="${escapeHtml(tooltip)}">${parts.join(" | ")}${costStr}${modelStr}</span>`;
+}
+
+function findUsageForRange(turnUsages, startIdx, endIdx) {
+  if (!turnUsages) return null;
+  for (const tu of turnUsages) {
+    // Check if this turn's API range overlaps with the card's range
+    if (tu.api_start < endIdx && tu.api_end > startIdx) return tu.usage;
+  }
+  return null;
 }
 
 function senderClass(msg) {
@@ -648,7 +665,9 @@ async function loadAgentView() {
       if (bodyHtml) {
         const rangeLabel = startIdx === endIdx - 1 ? `#${startIdx}` : `#${startIdx}-${endIdx - 1}`;
         const roleLabel = isSystemMsg ? "system" : firstRole;
-        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span><span class="sender ${sc}">${escapeHtml(roleLabel)}</span></div><div class="turn-body">${bodyHtml}</div></div>`;
+        const turnUsage = findUsageForRange(data.turn_usages, startIdx, endIdx);
+        const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
+        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span><span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
       }
       i = endIdx;
     }
@@ -760,7 +779,9 @@ async function loadSubagentView(agentId) {
       if (bodyHtml) {
         const rangeLabel = startIdx === endIdx - 1 ? `#${startIdx}` : `#${startIdx}-${endIdx - 1}`;
         const roleLabel = isSystemMsg ? "system" : firstRole;
-        html += `<div class="turn-card"><div class="turn-header"><span class="msg-id">${rangeLabel}</span><span class="sender ${sc}">${escapeHtml(roleLabel)}</span></div><div class="turn-body">${bodyHtml}</div></div>`;
+        const turnUsage = findUsageForRange(data.turn_usages, startIdx, endIdx);
+        const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
+        html += `<div class="turn-card"><div class="turn-header"><span class="msg-id">${rangeLabel}</span><span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
       }
       i = endIdx;
     }

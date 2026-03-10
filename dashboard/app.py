@@ -52,6 +52,42 @@ DEFAULT_CHAT_ID = ROOT_USER_ID
 PER_PAGE = 500
 
 
+def extract_turn_usages(db_messages: list[DbMessage]) -> list[dict]:
+    """Extract usage data from bot DB messages with their API message index ranges.
+
+    Replays the same iteration logic as convert_db_messages_to_claude_messages
+    to compute which API message indices each DB message maps to.
+    """
+    usages = []
+    api_idx = 0
+    for msg in db_messages:
+        start = api_idx
+        if msg.user_id == BOT_USER_ID:
+            if msg.meta and "message_params" in msg.meta:
+                params = msg.meta["message_params"]
+                n = len(params)
+                # Account for empty trailing assistant message removal
+                # (mirrors logic in convert_db_messages_to_claude_messages)
+                if (
+                    n > 0
+                    and not params[-1].get("content")
+                    and params[-1].get("role") == "assistant"
+                ):
+                    n -= 1
+                api_idx += n
+            else:
+                api_idx += 1
+        elif msg.user_id == TOOL_CALL_USER_ID:
+            pass  # 0 API messages
+        else:
+            api_idx += 1
+        end = api_idx
+        usage = (msg.meta or {}).get("usage")
+        if usage and start < end:
+            usages.append({"api_start": start, "api_end": end, "usage": usage})
+    return usages
+
+
 def strip_thinking_blocks(messages: list[dict]) -> list[dict]:
     """Remove thinking/redacted_thinking blocks and empty text blocks from messages for token counting."""
     cleaned = []
@@ -583,6 +619,7 @@ def api_subagent(agent_id: int):
                 "agent_meta": agent_meta,
                 "system_prompt": system_prompt,
                 "history": api_messages,
+                "turn_usages": extract_turn_usages(db_messages),
                 "num_messages": len(api_messages),
                 "num_db_turns": len(db_messages),
             }
@@ -625,6 +662,7 @@ def api_agent_view():
             {
                 "system_prompt": system_prompt,
                 "history": history,
+                "turn_usages": extract_turn_usages(messages),
                 "num_messages": len(history),
                 "num_db_turns": len(messages),
                 "tools": tool_names,
