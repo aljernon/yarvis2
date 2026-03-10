@@ -53,6 +53,7 @@ from yarvis_ptb.tools.python_repl import PythonREPLTool
 from yarvis_ptb.tools.scheduling_tools import build_scheduling_tools
 from yarvis_ptb.tools.subagent_tool import build_subagent_tools
 from yarvis_ptb.tools.telegram_tools import get_telegram_tools
+from yarvis_ptb.tools.todo_tools import build_todo_tools
 from yarvis_ptb.tools.tool_output import GetToolOutputTool
 from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
 from yarvis_ptb.tools.whoop_tools import get_whoop_tools
@@ -212,6 +213,7 @@ def get_tools_for_agent_config(
             "telegram",
             "image_editing",
             "subagent",
+            "todo",
         ]
     else:
         # Specific tools requested — build from names
@@ -257,6 +259,8 @@ def _build_tools_from_classes(
             all_local_tool_objects.extend(build_memory_tools())
         elif tool_class == "subagent":
             all_local_tool_objects.extend(build_subagent_tools(curr, chat_id, bot))
+        elif tool_class == "todo":
+            all_local_tool_objects.extend(build_todo_tools())
         elif tool_class == "tool_output":
             all_local_tool_objects.append(GetToolOutputTool(curr))
         else:
@@ -767,6 +771,7 @@ def _get_tools_by_names(
         "telegram",
         "image_editing",
         "memory",
+        "todo",
         "tool_output",
     ]
     all_tools = _build_tools_from_classes(all_classes, curr, chat_id, bot)
