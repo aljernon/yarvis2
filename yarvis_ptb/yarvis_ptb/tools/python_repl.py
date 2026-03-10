@@ -2,12 +2,14 @@ import asyncio
 import code
 import io
 import json
+import tempfile
 import threading
 from contextlib import redirect_stderr, redirect_stdout
 from inspect import cleandoc
 from typing import Tuple
 
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
+from yarvis_ptb.util import truncate_middle_and_maybe_save
 
 TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
@@ -70,7 +72,7 @@ class PythonREPL:
 class PythonREPLTool(LocalTool):
     def __init__(self):
         self._repl: PythonREPL
-        self._max_output_length = 4096
+        self._max_output_length = 10000
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -82,7 +84,7 @@ class PythonREPLTool(LocalTool):
                 calls. However, the stade is cleaned after each dialogue turn.
 
                 Returns the output of the executiona as dict[Literal["stdout", "stderr"], str].
-                Both strigns are truncated after {self._max_output_length} characters.
+                Both strings are truncated after {self._max_output_length} characters (middle-truncated, keeping start and end).
                 """),
             args=[
                 ArgSpec(
@@ -103,12 +105,6 @@ class PythonREPLTool(LocalTool):
     async def _execute(
         self, *, code: str, timeout_sec: int | None = None, **kwargs
     ) -> ToolResult:
-        def _clip(s: str) -> str:
-            if len(s) <= self._max_output_length:
-                return s
-            num_extra_chars = len(s) - self._max_output_length
-            return s[: self._max_output_length] + f"... ({num_extra_chars} more chars)"
-
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
         timeout = min(timeout_sec or TOOL_DEFAULT_TIMEOUT_SEC, TOOL_MAX_TIMEOUT_SEC)
         try:
@@ -139,7 +135,23 @@ class PythonREPLTool(LocalTool):
             if error_box:
                 raise error_box[0]
             stdout, stderr, is_error = result_box[0]
-            result = dict(stdout=_clip(stdout), stderr=_clip(stderr))
+
+            def clip(s: str, stream: str) -> str:
+                save_path = None
+                if len(s) > self._max_output_length:
+                    f = tempfile.NamedTemporaryFile(
+                        prefix=f"python_{stream}_",
+                        suffix=".txt",
+                        dir="/tmp",
+                        delete=False,
+                    )
+                    save_path = f.name
+                    f.close()
+                return truncate_middle_and_maybe_save(
+                    s, self._max_output_length, save_path=save_path
+                )
+
+            result = dict(stdout=clip(stdout, "stdout"), stderr=clip(stderr, "stderr"))
             return ToolResult(json.dumps(result), is_error=is_error)
         except Exception as e:
             return ToolResult.error(f"Error executing Python code: {str(e)}")

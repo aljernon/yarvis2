@@ -72,6 +72,27 @@ def to_truncated_str(object, limit: int = 64, truncate_front: bool = True) -> st
     return str_repr
 
 
+def truncate_middle_and_maybe_save(
+    s: str, max_length: int, save_path: str | None = None
+) -> str:
+    """Truncate a string by removing the middle, keeping start and end.
+
+    If save_path is provided, the full output is saved to that file.
+    """
+    if len(s) <= max_length:
+        return s
+    half = max_length // 2
+    omitted = len(s) - max_length
+    saved_msg = ""
+    if save_path:
+        with open(save_path, "w") as f:
+            f.write(s)
+        saved_msg = (
+            f"\nFull output saved to (will not persist container restart): {save_path}"
+        )
+    return s[:half] + f"\n... ({omitted} chars omitted) ...{saved_msg}\n" + s[-half:]
+
+
 class RateController:
     def __init__(self, wait_between_events_secs: float):
         self.wait_between_events_secs = wait_between_events_secs

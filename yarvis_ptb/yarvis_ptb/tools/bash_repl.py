@@ -1,10 +1,12 @@
 import json
 import subprocess
+import tempfile
 from inspect import cleandoc
 from typing import Tuple
 
 from yarvis_ptb.settings import PROJECT_ROOT
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
+from yarvis_ptb.util import truncate_middle_and_maybe_save
 
 TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
@@ -52,13 +54,14 @@ class BashSingleCommandRunner:
 class BashRunTool(LocalTool):
     def __init__(self):
         self._repl: BashSingleCommandRunner
-        self._max_output_length = 4096
+        self._max_output_length = 10000
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="bash_run",
             description=cleandoc(f"""
                 Executes single sh command. Not persistent between calls.
+                Output is truncated after {self._max_output_length} characters (middle-truncated, keeping start and end).
 
                 CWD is {CWD}
                 """),
@@ -81,17 +84,27 @@ class BashRunTool(LocalTool):
     async def _execute(
         self, *, code: str, timeout_sec: int | None = None, **kwargs
     ) -> ToolResult:
-        def _clip(s: str) -> str:
-            if len(s) <= self._max_output_length:
-                return s
-            num_extra_chars = len(s) - self._max_output_length
-            return s[: self._max_output_length] + f"... ({num_extra_chars} more chars)"
-
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
         timeout = min(timeout_sec or TOOL_DEFAULT_TIMEOUT_SEC, TOOL_MAX_TIMEOUT_SEC)
         try:
             stdout, stderr, is_error = self._repl.execute(code, timeout=timeout)
-            result = dict(stdout=_clip(stdout), stderr=_clip(stderr))
+
+            def clip(s: str, stream: str) -> str:
+                save_path = None
+                if len(s) > self._max_output_length:
+                    f = tempfile.NamedTemporaryFile(
+                        prefix=f"bash_{stream}_",
+                        suffix=".txt",
+                        dir="/tmp",
+                        delete=False,
+                    )
+                    save_path = f.name
+                    f.close()
+                return truncate_middle_and_maybe_save(
+                    s, self._max_output_length, save_path=save_path
+                )
+
+            result = dict(stdout=clip(stdout, "stdout"), stderr=clip(stderr, "stderr"))
             return ToolResult(json.dumps(result), is_error=is_error)
 
         except Exception as e:
