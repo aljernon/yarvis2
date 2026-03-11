@@ -19,7 +19,11 @@ from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.sampling import NoOpHooks, SamplingConfig, SamplingResult
 from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, ROOT_AGENT_USER_ID
-from yarvis_ptb.settings.main import SUBAGENT_DEFAULT_MODEL, SUBAGENT_MODEL_MAP
+from yarvis_ptb.settings.main import (
+    MAX_AGENT_CONTEXT_TOKENS,
+    SUBAGENT_DEFAULT_MODEL,
+    SUBAGENT_MODEL_MAP,
+)
 from yarvis_ptb.storage import (
     DbMessage,
     create_agent,
@@ -36,11 +40,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-# Maximum context length for agent conversations (in estimated tokens).
-# When an agent's history exceeds this, it becomes "frozen" — new messages
-# are saved but marked hidden and won't appear in future agent calls.
-MAX_AGENT_CONTEXT_TOKENS = 50_000
 
 
 def _render_history_for_subagent(

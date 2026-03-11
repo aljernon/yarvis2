@@ -20,6 +20,7 @@ from yarvis_ptb.complex_chat import (
     DEFAULT_AGENT_CONFIG,
 )
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
+from yarvis_ptb.on_disk_memory import MEMORY_PATH
 from yarvis_ptb.prompting import render_mesage_param_exact
 from yarvis_ptb.ptb_util import get_anthropic_client
 from yarvis_ptb.rendering_config import RenderingConfig
@@ -78,16 +79,18 @@ SUMMARY_PROMPT_TEMPLATE = (
     "<conversation>\n{conversation}\n</conversation>"
 )
 
-NEW_SESSION_MSG_TEMPLATE = (
-    "=== New Session ===\n"
-    "Your conversation history has been rotated. Messages up to {yesterday} are now "
-    "in archive agent '{slug}'. Your current context starts fresh.\n\n"
-    "The self-reflection process should have already captured important information "
-    "into CKR files. If you notice something missing from your knowledge files, "
-    "query the relevant archive with run_subagent and update CKR.\n\n"
-    "Recent archives (descriptions are LLM-generated summaries):\n"
-    "{sessions_text}"
-)
+
+def _load_boot_template() -> str:
+    """Load BOOT.md from CKR, fall back to a minimal default."""
+    boot_path = MEMORY_PATH / "BOOT.md"
+    try:
+        return boot_path.read_text()
+    except FileNotFoundError:
+        return (
+            "=== New Session ===\n"
+            "Messages up to {yesterday} archived as '{slug}'.\n"
+            "Recent archives:\n{sessions_text}"
+        )
 
 
 def should_run_dau(curr, chat_id: int) -> bool:
@@ -224,7 +227,7 @@ def build_new_session_message(curr, chat_id: int, yesterday, slug: str) -> DbMes
         )
     sessions_text = "\n".join(session_entries) if session_entries else "(none)"
 
-    new_session_msg = NEW_SESSION_MSG_TEMPLATE.format(
+    new_session_msg = _load_boot_template().format(
         yesterday=yesterday, slug=slug, sessions_text=sessions_text
     )
     return DbMessage(
