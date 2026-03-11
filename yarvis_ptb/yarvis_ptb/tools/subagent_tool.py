@@ -32,7 +32,6 @@ from yarvis_ptb.storage import (
     save_message,
     update_agent_meta,
 )
-from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
 if TYPE_CHECKING:
@@ -40,6 +39,14 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+YARVIS_SUBAGENT_SYSTEM_MESSAGE = (
+    "<system>\n"
+    "You are running as a Yarvis subagent — a separate agent invoked by the main Yarvis agent. "
+    "You have the full Yarvis identity and tools, but your `send_message` calls return "
+    "messages to the parent agent, NOT to Anton directly. The parent decides what to show the user.\n"
+    "</system>"
+)
 
 
 def _render_history_for_subagent(
@@ -60,194 +67,24 @@ def _render_history_for_subagent(
     return "\n".join(lines)
 
 
-class RunSubagentTool(LocalTool):
+def _validate_model(model: str | None) -> tuple[str, ToolResult | None]:
+    """Validate model short name. Returns (model_short, error_or_None)."""
+    model_short = model or SUBAGENT_DEFAULT_MODEL
+    if model_short not in SUBAGENT_MODEL_MAP:
+        return "", ToolResult.error(
+            f"Unknown model '{model_short}'. Use: haiku, sonnet, or opus"
+        )
+    return model_short, None
+
+
+class _SubagentBase(LocalTool):
+    """Shared logic for all subagent tools."""
+
     def __init__(self, curr, chat_id: int, bot):
         self._curr = curr
         self._chat_id = chat_id
         self._bot = bot
         self.subagent_usages: list[dict] = []
-
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="run_subagent",
-            description=cleandoc(f"""
-                Runs a message in an agent context. Agents are separate Claude conversations
-                with their own tool access and history, stored separately from the main
-                conversation.
-
-                - Omit agent to create a new agent (returns its slug in the result)
-                - Pass agent slug to continue an existing agent's conversation
-
-                Agents have a context limit of {MAX_AGENT_CONTEXT_TOKENS} tokens. Once
-                exceeded, the agent becomes "frozen": it still responds, but the exchange
-                is not added to its persistent history. Create a new agent to continue.
-
-                Use for: research, multi-step computation, context-heavy work, any task
-                that doesn't need main conversation history.
-                """),
-            args=[
-                ArgSpec(
-                    name="message",
-                    type=str,
-                    description="The message to send to the agent. For new agents, this should be self-contained since the agent has no access to the main conversation.",
-                    is_required=True,
-                ),
-                ArgSpec(
-                    name="agent",
-                    type=str,
-                    description="Agent slug to resume (e.g. 'swift-pine' or 'archive-2026-03-04'). Omit to create a new agent.",
-                    is_required=False,
-                ),
-                ArgSpec(
-                    name="tools",
-                    type=str,
-                    description="Comma-separated tool names the agent should have access to. Default: python_repl,bash_run,editor. Only allowed when creating a new agent (without agent).",
-                    is_required=False,
-                ),
-                ArgSpec(
-                    name="model",
-                    type=str,
-                    description="Model to use: haiku, sonnet, or opus. Default: haiku",
-                    is_required=False,
-                ),
-                ArgSpec(
-                    name="skills",
-                    type=str,
-                    description="Comma-separated skill names from the Core Knowledge Repository to include in the agent's system prompt. Only allowed when creating a new agent (without agent).",
-                    is_required=False,
-                ),
-                ArgSpec(
-                    name="include_message_history",
-                    type=bool,
-                    description="If true, the agent will see the currently visible main conversation messages as a rendered text block (a system message before the main request). Only allowed when creating a new agent (without agent).",
-                    is_required=False,
-                ),
-            ],
-        )
-
-    # pyre-ignore[14]: Named params intentionally narrow **kwargs from base class
-    async def _execute(
-        self,
-        *,
-        message: str,
-        agent: str | None = None,
-        tools: str | None = None,
-        model: str | None = None,
-        skills: str | None = None,
-        include_message_history: bool = False,
-        **kwargs: object,
-    ) -> ToolResult:
-        if agent is not None:
-            if skills is not None:
-                return ToolResult.error(
-                    "The 'skills' parameter can only be used when creating a new agent (without agent)."
-                )
-            if tools is not None:
-                return ToolResult.error(
-                    "The 'tools' parameter can only be used when creating a new agent (without agent)."
-                )
-            if include_message_history:
-                return ToolResult.error(
-                    "The 'include_message_history' parameter can only be used when creating a new agent (without agent)."
-                )
-        else:
-            # Create new agent
-            agent, error = self._create_agent(
-                message=message,
-                tools=tools,
-                model=model,
-                skills=skills,
-                include_message_history=include_message_history,
-            )
-            if error is not None:
-                return error
-
-        return await self._run_agent_request(
-            agent_slug=agent, message=message, model=model
-        )
-
-    def _create_agent(
-        self,
-        *,
-        message: str,
-        tools: str | None,
-        model: str | None,
-        skills: str | None,
-        include_message_history: bool,
-    ) -> tuple[str, ToolResult | None]:
-        """Create a new agent record. Returns (slug, error_or_None)."""
-        model_short = model or SUBAGENT_DEFAULT_MODEL
-        if model_short not in SUBAGENT_MODEL_MAP:
-            return "", ToolResult.error(
-                f"Unknown model '{model_short}'. Use: haiku, sonnet, or opus"
-            )
-
-        skill_names: list[str] = []
-        if skills:
-            skill_names = [s.strip() for s in skills.split(",") if s.strip()]
-
-        # Validate skills exist
-        if skill_names:
-            _, missing = load_skills_by_name(skill_names)
-            if missing:
-                return "", ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
-
-        tool_subset: list[str] = list(DEFAULT_SUBAGENT_TOOL_SUBSET)
-        if tools:
-            tool_subset = [t.strip() for t in tools.split(",") if t.strip()]
-
-        agent_config = AgentConfig(
-            description=message[:500],
-            rendering=RenderingConfig(
-                prompt_name="subagent",
-                autoload_memory_logic=skill_names,
-                list_all_memories=False,
-                tool_result_truncation_after_n_turns=0,
-            ),
-            sampling=SamplingConfig(
-                model=model_short,
-                tool_subset=tool_subset,
-            ),
-        )
-        agent_meta = AgentMeta(agent_config=agent_config)
-
-        slug = generate_agent_slug()
-        agent_id = create_agent(
-            self._curr,
-            self._chat_id,
-            meta=agent_meta.model_dump(),
-            slug=slug,
-        )
-        logger.info(f"Created agent {slug} (id={agent_id}) for chat {self._chat_id}")
-
-        # Save main conversation history as initial messages under the agent
-        if include_message_history:
-            db_messages = get_messages(self._curr, chat_id=self._chat_id)
-            if db_messages:
-                history_text = _render_history_for_subagent(db_messages)
-                now = datetime.datetime.now(DEFAULT_TIMEZONE)
-                save_message(
-                    self._curr,
-                    DbMessage(
-                        created_at=now,
-                        chat_id=self._chat_id,
-                        user_id=ROOT_AGENT_USER_ID,
-                        message=f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
-                        agent_id=agent_id,
-                    ),
-                )
-                save_message(
-                    self._curr,
-                    DbMessage(
-                        created_at=now,
-                        chat_id=self._chat_id,
-                        user_id=BOT_USER_ID,
-                        message="Understood, I've read the main conversation history. What would you like me to do?",
-                        agent_id=agent_id,
-                    ),
-                )
-
-        return slug, None
 
     async def _run_agent_request(
         self,
@@ -260,9 +97,7 @@ class RunSubagentTool(LocalTool):
         # 1. Load agent by slug
         result = get_agent_by_slug(self._curr, self._chat_id, agent_slug)
         if result is None:
-            return ToolResult.error(
-                f"Agent '{agent_slug}' not found. Use run_subagent without agent to create a new one."
-            )
+            return ToolResult.error(f"Agent '{agent_slug}' not found.")
         agent_id, raw_meta = result
         logger.info(
             f"Running agent {agent_slug} (id={agent_id}) for chat {self._chat_id}"
@@ -285,33 +120,27 @@ class RunSubagentTool(LocalTool):
             or (agent_meta.last_prompt_tokens or 0) >= MAX_AGENT_CONTEXT_TOKENS
         )
 
-        # 5. Build system prompt + conversation history
+        # 4. Build system prompt + conversation history
         db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
         system, messages = build_claude_input(db_msgs, agent_config.rendering)
 
-        # 6. Append new user message
+        # 5. Append new user message
         messages.append({"role": "user", "content": message})
 
-        # 7. Build extra tools for frozen agents
-        extra_tools: list[LocalTool] = []
-        if agent_meta.is_frozen:
-            extra_tools.append(CollectMessageTool())
-
-        # 8. Run
+        # 6. Run
         try:
             result, model_id = await self._run_agent(
                 system=system,
                 messages=messages,
                 agent_config=agent_config,
                 agent_id=agent_id,
-                extra_tools=extra_tools,
             )
         except Exception as e:
             return ToolResult.error(
                 f"Agent {agent_slug} failed with {type(e).__name__}: {e}"
             )
 
-        # 9. Save and return
+        # 8. Save and return
         return self._finalize(
             agent_id=agent_id,
             slug=agent_slug,
@@ -328,7 +157,6 @@ class RunSubagentTool(LocalTool):
         messages: list[MessageParam],
         agent_config: AgentConfig,
         agent_id: int,
-        extra_tools: list[LocalTool] | None = None,
     ) -> tuple[SamplingResult, str]:
         """Run the agent query. Returns (SamplingResult, model_id)."""
         # Deferred import: circular dependency (tool_sampler imports subagent_tool)
@@ -349,10 +177,6 @@ class RunSubagentTool(LocalTool):
         tools = get_tools_for_agent_config(
             agent_config, self._curr, self._chat_id, self._bot
         )
-        if extra_tools:
-            # Extra tools override by name (e.g. CollectMessageTool replaces SendMessageTool)
-            extra_names = {t.name for t in extra_tools}
-            tools = [t for t in tools if t.name not in extra_names] + extra_tools
 
         try:
             result = await process_query(
@@ -475,6 +299,321 @@ class RunSubagentTool(LocalTool):
         return ToolResult.success(result_text)
 
 
+class CreateSubagentTool(_SubagentBase):
+    """Creates a new task subagent and sends the first message."""
+
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="create_subagent",
+            description=cleandoc(f"""
+                Creates a new task subagent and sends it a message. Returns the agent's
+                slug (for future message_subagent calls) and its response.
+
+                Subagents are separate Claude conversations with a task-focused prompt,
+                their own tool access and persistent history. They have a context limit
+                of {MAX_AGENT_CONTEXT_TOKENS:,} tokens before becoming frozen.
+
+                Use for: research, multi-step computation, context-heavy work, any task
+                that doesn't need main conversation history.
+                """),
+            args=[
+                ArgSpec(
+                    name="message",
+                    type=str,
+                    description="The message to send. Should be self-contained since the agent has no access to the main conversation.",
+                    is_required=True,
+                ),
+                ArgSpec(
+                    name="tools",
+                    type=str,
+                    description="Comma-separated tool names. Default: python_repl,bash_run,editor.",
+                    is_required=False,
+                ),
+                ArgSpec(
+                    name="model",
+                    type=str,
+                    description="Model to use: haiku, sonnet, or opus. Default: haiku.",
+                    is_required=False,
+                ),
+                ArgSpec(
+                    name="skills",
+                    type=str,
+                    description="Comma-separated CKR skill names to include in the agent's system prompt.",
+                    is_required=False,
+                ),
+                ArgSpec(
+                    name="include_message_history",
+                    type=bool,
+                    description="If true, the agent sees the main conversation as a rendered text block.",
+                    is_required=False,
+                ),
+            ],
+        )
+
+    # pyre-ignore[14]: Named params intentionally narrow **kwargs from base class
+    async def _execute(
+        self,
+        *,
+        message: str,
+        tools: str | None = None,
+        model: str | None = None,
+        skills: str | None = None,
+        include_message_history: bool = False,
+        **kwargs: object,
+    ) -> ToolResult:
+        model_short, err = _validate_model(model)
+        if err:
+            return err
+
+        skill_names: list[str] = []
+        if skills:
+            skill_names = [s.strip() for s in skills.split(",") if s.strip()]
+        if skill_names:
+            _, missing = load_skills_by_name(skill_names)
+            if missing:
+                return ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
+
+        tool_subset: list[str] = list(DEFAULT_SUBAGENT_TOOL_SUBSET)
+        if tools:
+            tool_subset = [t.strip() for t in tools.split(",") if t.strip()]
+
+        agent_config = AgentConfig(
+            description=message[:500],
+            rendering=RenderingConfig(
+                prompt_name="subagent",
+                autoload_memory_logic=skill_names,
+                list_all_memories=False,
+                tool_result_truncation_after_n_turns=0,
+            ),
+            sampling=SamplingConfig(
+                model=model_short,
+                tool_subset=tool_subset,
+            ),
+        )
+        agent_meta = AgentMeta(agent_config=agent_config)
+
+        slug = generate_agent_slug()
+        agent_id = create_agent(
+            self._curr,
+            self._chat_id,
+            meta=agent_meta.model_dump(),
+            slug=slug,
+        )
+        logger.info(f"Created subagent {slug} (id={agent_id}) for chat {self._chat_id}")
+
+        if include_message_history:
+            self._inject_message_history(agent_id)
+
+        return await self._run_agent_request(
+            agent_slug=slug, message=message, model=model
+        )
+
+    def _inject_message_history(self, agent_id: int) -> None:
+        """Save main conversation history as initial messages under the agent."""
+        db_messages = get_messages(self._curr, chat_id=self._chat_id)
+        if not db_messages:
+            return
+        history_text = _render_history_for_subagent(db_messages)
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        save_message(
+            self._curr,
+            DbMessage(
+                created_at=now,
+                chat_id=self._chat_id,
+                user_id=ROOT_AGENT_USER_ID,
+                message=f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
+                agent_id=agent_id,
+            ),
+        )
+        save_message(
+            self._curr,
+            DbMessage(
+                created_at=now,
+                chat_id=self._chat_id,
+                user_id=BOT_USER_ID,
+                message="Understood, I've read the main conversation history. What would you like me to do?",
+                agent_id=agent_id,
+            ),
+        )
+
+
+class CreateYarvisSubagentTool(_SubagentBase):
+    """Creates a new Yarvis-identity subagent with full tools and CKR."""
+
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="create_yarvis_subagent",
+            description=cleandoc("""
+                Creates a new subagent with the full Yarvis identity — same system
+                prompt, all autoloaded CKR skills, and full tool access. The agent's
+                send_message calls return messages to you (the parent), not to Anton.
+
+                Use for complex tasks requiring full Yarvis capabilities: calendar
+                analysis, multi-source research with context awareness, CKR updates
+                that need deep understanding of Anton's life.
+                """),
+            args=[
+                ArgSpec(
+                    name="message",
+                    type=str,
+                    description="The message to send to the new Yarvis subagent.",
+                    is_required=True,
+                ),
+                ArgSpec(
+                    name="model",
+                    type=str,
+                    description="Model to use: haiku, sonnet, or opus. Default: haiku.",
+                    is_required=False,
+                ),
+                ArgSpec(
+                    name="include_message_history",
+                    type=bool,
+                    description="If true, the agent sees the main conversation as a rendered text block.",
+                    is_required=False,
+                ),
+            ],
+        )
+
+    # pyre-ignore[14]: Named params intentionally narrow **kwargs from base class
+    async def _execute(
+        self,
+        *,
+        message: str,
+        model: str | None = None,
+        include_message_history: bool = False,
+        **kwargs: object,
+    ) -> ToolResult:
+        model_short, err = _validate_model(model)
+        if err:
+            return err
+
+        agent_config = AgentConfig(
+            description=message[:500],
+            rendering=RenderingConfig(
+                prompt_name="anton_private",
+                autoload_memory_logic="auto",  # load all autoloaded CKR skills
+                list_all_memories=True,
+                tool_result_truncation_after_n_turns=0,
+            ),
+            sampling=SamplingConfig(
+                model=model_short,
+                tool_subset="all",
+                output_mode="tool_message",
+            ),
+        )
+        agent_meta = AgentMeta(agent_config=agent_config)
+
+        slug = generate_agent_slug()
+        agent_id = create_agent(
+            self._curr,
+            self._chat_id,
+            meta=agent_meta.model_dump(),
+            slug=slug,
+        )
+        logger.info(
+            f"Created yarvis subagent {slug} (id={agent_id}) for chat {self._chat_id}"
+        )
+
+        # Inject system message explaining this is a subagent
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        save_message(
+            self._curr,
+            DbMessage(
+                created_at=now,
+                chat_id=self._chat_id,
+                user_id=ROOT_AGENT_USER_ID,
+                message=YARVIS_SUBAGENT_SYSTEM_MESSAGE,
+                agent_id=agent_id,
+            ),
+        )
+        save_message(
+            self._curr,
+            DbMessage(
+                created_at=now,
+                chat_id=self._chat_id,
+                user_id=BOT_USER_ID,
+                message="Understood. I'm running as a Yarvis subagent. send_message will return to the parent agent.",
+                agent_id=agent_id,
+            ),
+        )
+
+        if include_message_history:
+            db_messages = get_messages(self._curr, chat_id=self._chat_id)
+            if db_messages:
+                history_text = _render_history_for_subagent(db_messages)
+                save_message(
+                    self._curr,
+                    DbMessage(
+                        created_at=now,
+                        chat_id=self._chat_id,
+                        user_id=ROOT_AGENT_USER_ID,
+                        message=f"<main_conversation_history>\n{history_text}\n</main_conversation_history>",
+                        agent_id=agent_id,
+                    ),
+                )
+                save_message(
+                    self._curr,
+                    DbMessage(
+                        created_at=now,
+                        chat_id=self._chat_id,
+                        user_id=BOT_USER_ID,
+                        message="Understood, I've read the main conversation history.",
+                        agent_id=agent_id,
+                    ),
+                )
+
+        return await self._run_agent_request(
+            agent_slug=slug, message=message, model=model
+        )
+
+
+class MessageSubagentTool(_SubagentBase):
+    """Sends a message to an existing agent (task, yarvis, or archive)."""
+
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="message_subagent",
+            description=cleandoc("""
+                Sends a message to an existing agent and returns its response.
+                Works with any agent type: task subagents, yarvis subagents, or
+                archive agents (archive-YYYY-MM-DD).
+                """),
+            args=[
+                ArgSpec(
+                    name="agent",
+                    type=str,
+                    description="Agent slug (e.g. 'swift-pine' or 'archive-2026-03-04').",
+                    is_required=True,
+                ),
+                ArgSpec(
+                    name="message",
+                    type=str,
+                    description="The message to send to the agent.",
+                    is_required=True,
+                ),
+                ArgSpec(
+                    name="model",
+                    type=str,
+                    description="Model override: haiku, sonnet, or opus.",
+                    is_required=False,
+                ),
+            ],
+        )
+
+    # pyre-ignore[14]: Named params intentionally narrow **kwargs from base class
+    async def _execute(
+        self,
+        *,
+        agent: str,
+        message: str,
+        model: str | None = None,
+        **kwargs: object,
+    ) -> ToolResult:
+        return await self._run_agent_request(
+            agent_slug=agent, message=message, model=model
+        )
+
+
 def _extract_final_text(message_params: list[MessageParam]) -> str | None:
     """Extract the final text from message_params (last assistant turn)."""
     for msg in reversed(message_params):
@@ -492,7 +631,11 @@ def _extract_final_text(message_params: list[MessageParam]) -> str | None:
 
 
 def build_subagent_tools(curr, chat_id: int, bot) -> list[LocalTool]:
-    return [RunSubagentTool(curr, chat_id, bot)]
+    return [
+        CreateSubagentTool(curr, chat_id, bot),
+        CreateYarvisSubagentTool(curr, chat_id, bot),
+        MessageSubagentTool(curr, chat_id, bot),
+    ]
 
 
 if __name__ == "__main__":

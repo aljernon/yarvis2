@@ -40,6 +40,7 @@ from yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
 )
 from yarvis_ptb.tools.bash_repl import BashRunTool
+from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 from yarvis_ptb.tools.editor_tool import EditorTool
 from yarvis_ptb.tools.file_tools import build_chat_send_file_tools
 from yarvis_ptb.tools.gcal_tools import get_calendar_tools
@@ -225,7 +226,10 @@ def get_tools_for_agent_config(
     if agent_config.requires_tool_output_tool:
         tool_classes.append("tool_output")
     if agent_config.requires_messaging_tool:
-        tool_classes.append("messaging")
+        if agent_config.sampling.output_mode == "tool_message":
+            tool_classes.append("collect_messaging")
+        else:
+            tool_classes.append("messaging")
 
     return _build_tools_from_classes(tool_classes, curr, chat_id, bot)
 
@@ -253,6 +257,8 @@ def _build_tools_from_classes(
             all_local_tool_objects.extend(TELEGRAM_TOOLS)
         elif tool_class == "messaging":
             all_local_tool_objects.extend(build_message_tools(bot, chat_id, curr))
+        elif tool_class == "collect_messaging":
+            all_local_tool_objects.append(CollectMessageTool())
         elif tool_class == "image_editing":
             all_local_tool_objects.extend(build_image_tools(chat_id, curr))
         elif tool_class == "memory":
@@ -310,11 +316,11 @@ async def process_query(
             thinking=config.thinking,
         )
         # Collect subagent cost info if any subagents were used
-        from yarvis_ptb.tools.subagent_tool import RunSubagentTool
+        from yarvis_ptb.tools.subagent_tool import _SubagentBase
 
         subagent_usages: list[dict] = []
         for tool in tool_map.values():
-            if isinstance(tool, RunSubagentTool) and tool.subagent_usages:
+            if isinstance(tool, _SubagentBase) and tool.subagent_usages:
                 subagent_usages.extend(tool.subagent_usages)
 
         # Extract agent messages from the result
