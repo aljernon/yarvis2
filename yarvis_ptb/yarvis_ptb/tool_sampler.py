@@ -226,7 +226,7 @@ def get_tools_for_agent_config(
     if agent_config.requires_tool_output_tool:
         tool_classes.append("tool_output")
     if agent_config.requires_messaging_tool:
-        if agent_config.sampling.output_mode == "tool_message":
+        if agent_config.sampling.collect_messages:
             tool_classes.append("collect_messaging")
         else:
             tool_classes.append("messaging")

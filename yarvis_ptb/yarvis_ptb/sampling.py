@@ -32,6 +32,9 @@ class SamplingConfig(BaseModel):
     - "tool_message": agent responds via send_message tool calls
     """
 
+    collect_messages: bool = False
+    """If True, send_message is replaced with CollectMessageTool (returns to parent, not Telegram)."""
+
     def resolve_model_name(self) -> str:
         """Resolve short name to full model ID."""
         from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP

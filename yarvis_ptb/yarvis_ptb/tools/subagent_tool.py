@@ -18,7 +18,12 @@ from yarvis_ptb.prompting import (
 from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.sampling import NoOpHooks, SamplingConfig, SamplingResult
-from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, ROOT_AGENT_USER_ID
+from yarvis_ptb.settings import (
+    BOT_USER_ID,
+    DEFAULT_TIMEZONE,
+    ROOT_AGENT_USER_ID,
+    SYSTEM_USER_ID,
+)
 from yarvis_ptb.settings.main import (
     MAX_AGENT_CONTEXT_TOKENS,
     SUBAGENT_DEFAULT_MODEL,
@@ -499,6 +504,7 @@ class CreateYarvisSubagentTool(_SubagentBase):
                 model=model_short,
                 tool_subset="all",
                 output_mode="tool_message",
+                collect_messages=True,
             ),
         )
         agent_meta = AgentMeta(agent_config=agent_config)
@@ -521,18 +527,8 @@ class CreateYarvisSubagentTool(_SubagentBase):
             DbMessage(
                 created_at=now,
                 chat_id=self._chat_id,
-                user_id=ROOT_AGENT_USER_ID,
+                user_id=SYSTEM_USER_ID,
                 message=YARVIS_SUBAGENT_SYSTEM_MESSAGE,
-                agent_id=agent_id,
-            ),
-        )
-        save_message(
-            self._curr,
-            DbMessage(
-                created_at=now,
-                chat_id=self._chat_id,
-                user_id=BOT_USER_ID,
-                message="Understood. I'm running as a Yarvis subagent. send_message will return to the parent agent.",
                 agent_id=agent_id,
             ),
         )
