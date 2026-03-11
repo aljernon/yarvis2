@@ -298,7 +298,6 @@ AUTO_REFLECT_PROMPT = """\
 This is an automatic self-reflection triggered by the system, not a user message. \
 Please read the auto-reflect skill using read_memory tool (name: "auto-reflect") and follow its instructions."""
 
-DAILY_REFLECT_HOUR = 4  # 4am local time
 AUTO_REFLECT_COOLDOWN_SECS = 3600  # 1 hour
 AUTO_REFLECT_IDLE_MIN_SECS = 210  # 3:30
 AUTO_REFLECT_IDLE_MAX_SECS = 270  # 4:30
@@ -382,149 +381,121 @@ async def should_auto_reflect(curr, chat_id: int) -> bool:
     return True
 
 
-def should_daily_reflect(curr, chat_id: int) -> bool:
-    """Check if the daily 4am reflection should run.
+async def _run_reflect_inner(
+    curr, chat_id: int, application, bot, *, label: str = "Auto-reflect"
+) -> None:
+    """Core reflection logic. Caller must hold COMPLEX_CHAT_LOCK.
 
-    Triggers once per day at DAILY_REFLECT_HOUR local time, unless there's
-    already been a reflection with no new user messages since.
-    """
-    local_tz = get_timezone(complex_chat=True)
-    now_local = datetime.datetime.now(local_tz)
-
-    # Only trigger during the 4am hour
-    if now_local.hour != DAILY_REFLECT_HOUR:
-        return False
-
-    # Check if there's been a reflection today already
-    last_reflect = _get_last_reflect_time(curr, chat_id)
-    if last_reflect is not None:
-        if last_reflect.astimezone(local_tz).date() == now_local.date():
-            return False
-
-    # Check if there are any user messages since the last reflect
-    recent_messages = get_messages(curr, chat_id, limit=1)
-    if not recent_messages:
-        return False
-    last_msg = recent_messages[-1]
-    if last_msg.user_id <= 0:
-        return False
-    if last_reflect is not None and last_msg.created_at <= last_reflect:
-        return False
-
-    return True
-
-
-async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
-    """Run automatic self-reflection using the warm cache from recent conversation.
-
-    Unlike run_force_reflect(), this uses the same message-building pipeline as
-    process_multi_message_claude_invocation to get a cache hit on the prompt prefix.
+    Uses the same message-building pipeline as process_multi_message_claude_invocation
+    to get a cache hit on the prompt prefix.
     Results are saved under an agent_id (visible on dashboard, not in main history).
-    A placeholder assistant message is inserted into main history.
+    A placeholder system message is inserted into main history.
     """
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
     agent_config = DEFAULT_AGENT_CONFIG
 
-    # Don't block if lock is held (user conversation in progress)
+    logger.info(f"{label}: starting")
+    add_debug_message_to_queue(f"**{label.upper()}: starting**")
+
+    # 1. Load messages (same as normal invocation)
+    rendering_config = agent_config.rendering
+    max_history_length_turns = rendering_config.max_history_length_turns
+    db_messages = get_messages(curr, chat_id=chat_id, limit=max_history_length_turns)
+
+    # 2. Create the reflection trigger as a system message
+    reflect_msg = DbMessage(
+        chat_id=chat_id,
+        created_at=now,
+        user_id=SYSTEM_USER_ID,
+        message=AUTO_REFLECT_PROMPT,
+    )
+    db_messages = [*db_messages, reflect_msg][-max_history_length_turns:]
+
+    # 3. Build Claude input (same pipeline = cache hit)
+    scheduled_invocations = get_schedules(curr, chat_id)
+    system, message_params = build_claude_input(
+        db_messages,
+        rendering_config,
+        invocation=Invocation(invocation_type="schedule"),
+        scheduled_invocations=scheduled_invocations,
+        forced_now_date=now,
+    )
+
+    # 4. Call process_query with full tool access
+    scope = InterruptionScope(chat_id=chat_id, message_id=None)
+    all_tools = get_tools_for_agent_config(agent_config, curr, chat_id, bot)
+    hooks = NoOpHooks()
+    result = await process_query(
+        system=system,
+        messages=message_params,
+        agent_config=agent_config,
+        tools=all_tools,
+        hooks=hooks,
+        job_queue=application.job_queue,
+        scope=scope,
+    )
+    result_params = result.message_params
+
+    # 5. Save trigger + bot response under agent
+    agent_id = create_agent(
+        curr,
+        chat_id,
+        meta=AgentMeta(type="auto_reflect").model_dump(),
+        slug=None,
+    )
+
+    save_message(
+        curr,
+        DbMessage(
+            created_at=now,
+            chat_id=chat_id,
+            user_id=SYSTEM_USER_ID,
+            message=AUTO_REFLECT_PROMPT,
+            agent_id=agent_id,
+        ),
+    )
+    save_message(
+        curr,
+        DbMessage(
+            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            chat_id=chat_id,
+            user_id=BOT_USER_ID,
+            message="USE_CONTENT_FROM_META",
+            meta={"message_params": result_params},
+            agent_id=agent_id,
+        ),
+    )
+
+    # 6. Save a system message to main history noting that reflection happened
+    # NOTE: We intentionally do NOT save a bot/assistant placeholder here.
+    # Previously we saved an assistant message with placeholder text like
+    # "[Self-reflection completed; output omitted from history]", but Claude
+    # would see that in conversation history and mimic it instead of actually
+    # reflecting, producing the placeholder text as its real output.
+    save_message_and_update_index(
+        curr,
+        DbMessage(
+            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            chat_id=chat_id,
+            user_id=SYSTEM_USER_ID,
+            message=f"{label} completed. Full output saved separately.",
+            meta={"is_reflection": True},
+        ),
+    )
+
+    # 7. Commit memory changes
+    commit_memory()
+
+    summary = render_claude_response_short(result_params)
+    logger.info(f"{label} completed: {summary[:200]}")
+    add_debug_message_to_queue(f"**{label.upper()}: completed**\n{summary}")
+
+
+async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
+    """Run idle-triggered self-reflection. Acquires COMPLEX_CHAT_LOCK."""
     if COMPLEX_CHAT_LOCK.locked():
         logger.info("Auto-reflect: skipping, complex chat lock is held")
         return
 
     async with COMPLEX_CHAT_LOCK:
-        logger.info("Auto-reflect: starting")
-        add_debug_message_to_queue("**AUTO-REFLECT: starting**")
-
-        # 1. Load messages (same as normal invocation)
-        rendering_config = agent_config.rendering
-        max_history_length_turns = rendering_config.max_history_length_turns
-        db_messages = get_messages(
-            curr, chat_id=chat_id, limit=max_history_length_turns
-        )
-
-        # 2. Create the reflection trigger as a system message
-        reflect_msg = DbMessage(
-            chat_id=chat_id,
-            created_at=now,
-            user_id=SYSTEM_USER_ID,
-            message=AUTO_REFLECT_PROMPT,
-        )
-        db_messages = [*db_messages, reflect_msg][-max_history_length_turns:]
-
-        # 3. Build Claude input (same pipeline = cache hit)
-        scheduled_invocations = get_schedules(curr, chat_id)
-        system, message_params = build_claude_input(
-            db_messages,
-            rendering_config,
-            invocation=Invocation(invocation_type="schedule"),
-            scheduled_invocations=scheduled_invocations,
-            forced_now_date=now,
-        )
-
-        # 4. Call process_query with full tool access
-        scope = InterruptionScope(chat_id=chat_id, message_id=None)
-        all_tools = get_tools_for_agent_config(agent_config, curr, chat_id, bot)
-        hooks = NoOpHooks()
-        result = await process_query(
-            system=system,
-            messages=message_params,
-            agent_config=agent_config,
-            tools=all_tools,
-            hooks=hooks,
-            job_queue=application.job_queue,
-            scope=scope,
-        )
-        result_params = result.message_params
-
-        # 5. Save trigger + bot response under agent
-        agent_id = create_agent(
-            curr,
-            chat_id,
-            meta=AgentMeta(type="auto_reflect").model_dump(),
-            slug=None,
-        )
-
-        save_message(
-            curr,
-            DbMessage(
-                created_at=now,
-                chat_id=chat_id,
-                user_id=SYSTEM_USER_ID,
-                message=AUTO_REFLECT_PROMPT,
-                agent_id=agent_id,
-            ),
-        )
-        save_message(
-            curr,
-            DbMessage(
-                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-                chat_id=chat_id,
-                user_id=BOT_USER_ID,
-                message="USE_CONTENT_FROM_META",
-                meta={"message_params": result_params},
-                agent_id=agent_id,
-            ),
-        )
-
-        # 6. Save a system message to main history noting that reflection happened
-        # NOTE: We intentionally do NOT save a bot/assistant placeholder here.
-        # Previously we saved an assistant message with placeholder text like
-        # "[Self-reflection completed; output omitted from history]", but Claude
-        # would see that in conversation history and mimic it instead of actually
-        # reflecting, producing the placeholder text as its real output.
-        save_message_and_update_index(
-            curr,
-            DbMessage(
-                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-                chat_id=chat_id,
-                user_id=SYSTEM_USER_ID,
-                message="Auto-reflection completed. Full output saved separately.",
-                meta={"is_reflection": True},
-            ),
-        )
-
-        # 7. Commit memory changes
-        commit_memory()
-
-        summary = render_claude_response_short(result_params)
-        logger.info(f"Auto-reflect completed: {summary[:200]}")
-        add_debug_message_to_queue(f"**AUTO-REFLECT: completed**\n{summary}")
+        await _run_reflect_inner(curr, chat_id, application, bot, label="Auto-reflect")
