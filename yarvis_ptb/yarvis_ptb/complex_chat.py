@@ -439,6 +439,7 @@ async def _process_multi_message_claude_invocation_inner(
         invocation=invocation,
         scheduled_invocations=scheduled_invocations,
         forced_now_date=now_date,
+        agent_slug="ROOT",
     )
 
     context_message = build_context_info(
@@ -446,6 +447,7 @@ async def _process_multi_message_claude_invocation_inner(
         scheduled_invocations=scheduled_invocations,
         rendering_config=rendering_config,
         forced_now_date=now_date,
+        agent_slug="ROOT",
     )
     add_debug_message_to_queue(f"**CONTEXT:**:\n```\n{context_message}\n```")
 

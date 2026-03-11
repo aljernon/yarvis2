@@ -127,7 +127,11 @@ class _SubagentBase(LocalTool):
 
         # 4. Build system prompt + conversation history
         db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
-        system, messages = build_claude_input(db_msgs, agent_config.rendering)
+        system, messages = build_claude_input(
+            db_msgs,
+            agent_config.rendering,
+            agent_slug=agent_slug,
+        )
 
         # 5. Append new user message
         messages.append({"role": "user", "content": message})
@@ -139,6 +143,7 @@ class _SubagentBase(LocalTool):
                 messages=messages,
                 agent_config=agent_config,
                 agent_id=agent_id,
+                agent_slug=agent_slug,
             )
         except Exception as e:
             return ToolResult.error(
@@ -162,6 +167,7 @@ class _SubagentBase(LocalTool):
         messages: list[MessageParam],
         agent_config: AgentConfig,
         agent_id: int,
+        agent_slug: str,
     ) -> tuple[SamplingResult, str]:
         """Run the agent query. Returns (SamplingResult, model_id)."""
         # Deferred import: circular dependency (tool_sampler imports subagent_tool)
@@ -180,7 +186,11 @@ class _SubagentBase(LocalTool):
             parent_scope = InterruptionScope(chat_id=self._chat_id, message_id=None)
 
         tools = get_tools_for_agent_config(
-            agent_config, self._curr, self._chat_id, self._bot
+            agent_config,
+            self._curr,
+            self._chat_id,
+            self._bot,
+            agent_slug=agent_slug,
         )
 
         try:

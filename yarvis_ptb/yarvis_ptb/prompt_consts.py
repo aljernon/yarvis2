@@ -32,6 +32,7 @@ Each message will be preceded by dynamic context info; it's in <context> tags co
 - <invocation>type and details of current invocation</invocation>
 - <constants>system configuration values</constants>
 - <scheduled_invocations>list of pending scheduled tasks</scheduled_invocations>
+- <todos>your current todo list (if any). Use `todo_read`/`todo_write` tools to manage. Todos are per-agent (not shared between agents) and persist across invocations.</todos>
 
 ## Core Knowledge Repository (CKR)
 Location: `core_knowledge/`. Files with `autoload: true` are in the system prompt every invocation. Files with `autoload: false` are loaded on-demand via `read_memory` tool.

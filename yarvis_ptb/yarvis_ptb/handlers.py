@@ -266,6 +266,7 @@ async def handler_show_context(update: Update, context: CallbackContext):
         rendering_config=DEFAULT_AGENT_CONFIG.rendering,
         scheduled_invocations=scheduled_invocations,
         invocation=Invocation(invocation_type="reply"),
+        agent_slug="ROOT",
     )
     await send_text_as_file(ensure(update.message), "context", context_info)
 

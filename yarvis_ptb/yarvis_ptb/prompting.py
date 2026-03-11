@@ -39,6 +39,7 @@ from yarvis_ptb.storage import (
     MemoryType,
 )
 from yarvis_ptb.timezones import get_timezone
+from yarvis_ptb.tools.todo_tools import read_todos
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,7 @@ def build_context_info(
     scheduled_invocations: list[DbSchedule] | None,
     rendering_config: RenderingConfig,
     forced_now_date: datetime.datetime | None = None,
+    agent_slug: str | None = None,
 ) -> str:
     # Build Dynamic Context information that changes with each message
     system_parts = []
@@ -147,6 +149,16 @@ def build_context_info(
         system_parts.append(
             f"<scheduled_invocations>\n{scheduled_invocations_str}\n</scheduled_invocations>"
         )
+
+    # Include persistent todos if agent_slug is provided
+    if agent_slug and (todos := read_todos(agent_slug)):
+        todos_lines = []
+        for t in todos:
+            status = t.get("status", "pending")
+            priority = t.get("priority", "medium")
+            todos_lines.append(f"- [{status}] (p:{priority}) {t.get('content', '')}")
+        system_parts.append(f"<todos>\n" + "\n".join(todos_lines) + "\n</todos>")
+
     return "<context>\n%s\n</context>" % "\n".join(system_parts)
 
 
@@ -345,6 +357,7 @@ def build_claude_input(
     invocation: Invocation | None = None,
     scheduled_invocations: list[DbSchedule] | None = None,
     forced_now_date: datetime.datetime | None = None,
+    agent_slug: str | None = None,
 ) -> tuple[str, list[MessageParam]]:
     """Build system prompt and message history for a Claude API call.
 
@@ -356,6 +369,7 @@ def build_claude_input(
         scheduled_invocations=scheduled_invocations,
         rendering_config=rendering_config,
         forced_now_date=forced_now_date,
+        agent_slug=agent_slug,
     )
     # Context always goes at the end as a system message
     context_message = DbMessage(

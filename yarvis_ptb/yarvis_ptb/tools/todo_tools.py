@@ -1,30 +1,73 @@
-"""TodoWrite tool — tracks progress on multi-step tasks within a single invocation."""
+"""Todo tools — persistent per-agent todo list, stored in CKR."""
 
 import json
 import logging
+import pathlib
 
+from yarvis_ptb.on_disk_memory import MEMORY_PATH
 from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult, ToolSpec
 
 logger = logging.getLogger(__name__)
 
+TODOS_DIR = MEMORY_PATH / "todos"
+
+
+def _todos_path(agent_slug: str) -> pathlib.Path:
+    return TODOS_DIR / f"{agent_slug}.json"
+
+
+def read_todos(agent_slug: str) -> list[dict]:
+    """Read todos for a given agent. Public for use in context rendering."""
+    try:
+        data = json.loads(_todos_path(agent_slug).read_text())
+        if not isinstance(data, list):
+            logger.warning("todos/%s.json is not a list, ignoring", agent_slug)
+            return []
+        return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _write_todos(agent_slug: str, todos: list[dict]) -> None:
+    TODOS_DIR.mkdir(exist_ok=True)
+    _todos_path(agent_slug).write_text(json.dumps(todos, indent=2) + "\n")
+
+
+class TodoReadTool(LocalTool):
+    """Read the current todo list."""
+
+    def __init__(self, agent_slug: str):
+        self._agent_slug = agent_slug
+
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="todo_read",
+            description="Read the current todo list. Returns all todos with their id, content, status, and priority.",
+            args={
+                "type": "object",
+                "properties": {},
+            },
+        )
+
+    async def _execute(self, **kwargs) -> ToolResult:
+        todos = read_todos(self._agent_slug)
+        if not todos:
+            return ToolResult.success("No todos.")
+        return ToolResult.success(json.dumps({"todos": todos}, indent=2))
+
 
 class TodoWriteTool(LocalTool):
-    """In-memory todo list for tracking progress on complex, multi-step tasks.
+    """Write/replace the entire todo list. Persisted to CKR across invocations."""
 
-    State persists across tool calls within a single invocation (process_query loop),
-    matching the Claude Code TodoWrite semantics.
-    """
-
-    def __init__(self):
-        self._todos: list[dict] = []
+    def __init__(self, agent_slug: str):
+        self._agent_slug = agent_slug
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="todo_write",
             description=(
-                "Use this tool to create and manage a todo list for tracking "
-                "progress on multi-step tasks. Each call replaces the entire "
-                "todo list with the provided items.\n\n"
+                "Create and manage a todo list for tracking progress on multi-step tasks. "
+                "Each call replaces the entire todo list. Persists across invocations.\n\n"
                 "Best practices:\n"
                 "- Use for complex tasks with 3+ steps\n"
                 "- Exactly ONE task should be in_progress at any time\n"
@@ -41,17 +84,26 @@ class TodoWriteTool(LocalTool):
                         "items": {
                             "type": "object",
                             "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Unique identifier for the task (e.g. '1', 'auth-fix')",
+                                },
                                 "content": {
                                     "type": "string",
-                                    "description": "Imperative description of the task (e.g. 'Fix authentication bug')",
+                                    "description": "Imperative description of the task",
                                 },
                                 "status": {
                                     "type": "string",
                                     "enum": ["pending", "in_progress", "completed"],
                                     "description": "Current status of the task",
                                 },
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["high", "medium", "low"],
+                                    "description": "Priority level",
+                                },
                             },
-                            "required": ["content", "status"],
+                            "required": ["id", "content", "status", "priority"],
                         },
                     }
                 },
@@ -63,15 +115,13 @@ class TodoWriteTool(LocalTool):
         todos: list[dict] = kwargs.pop("todos")
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
 
-        old_todos = self._todos
-        self._todos = todos
+        old_todos = read_todos(self._agent_slug)
+        _write_todos(self._agent_slug, todos)
 
-        result = {
-            "oldTodos": old_todos,
-            "newTodos": todos,
-        }
-        return ToolResult.success(json.dumps(result))
+        return ToolResult.success(
+            json.dumps({"oldTodos": old_todos, "newTodos": todos})
+        )
 
 
-def build_todo_tools() -> list[LocalTool]:
-    return [TodoWriteTool()]
+def build_todo_tools(agent_slug: str) -> list[LocalTool]:
+    return [TodoReadTool(agent_slug), TodoWriteTool(agent_slug)]

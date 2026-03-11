@@ -195,12 +195,13 @@ class PartialSample:
 
 
 def get_tools_for_agent_config(
-    agent_config: AgentConfig, curr, chat_id, bot
+    agent_config: AgentConfig, curr, chat_id, bot, *, agent_slug: str = "ROOT"
 ) -> list[LocalTool]:
     """Build tools based on AgentConfig.
 
     Uses sampling.tool_subset as base, then adds tools implied by
     rendering/sampling config (memory, tool_output, messaging).
+    agent_slug identifies which agent's todo list to use (default "ROOT" for main).
     """
     tool_subset = agent_config.sampling.tool_subset
 
@@ -231,7 +232,9 @@ def get_tools_for_agent_config(
         else:
             tool_classes.append("messaging")
 
-    return _build_tools_from_classes(tool_classes, curr, chat_id, bot)
+    return _build_tools_from_classes(
+        tool_classes, curr, chat_id, bot, agent_slug=agent_slug
+    )
 
 
 def _build_tools_from_classes(
@@ -239,6 +242,8 @@ def _build_tools_from_classes(
     curr,
     chat_id: int,
     bot,
+    *,
+    agent_slug: str = "ROOT",
 ) -> list[LocalTool]:
     """Build tool objects from a list of tool class names."""
     all_local_tool_objects = []
@@ -266,7 +271,7 @@ def _build_tools_from_classes(
         elif tool_class == "subagent":
             all_local_tool_objects.extend(build_subagent_tools(curr, chat_id, bot))
         elif tool_class == "todo":
-            all_local_tool_objects.extend(build_todo_tools())
+            all_local_tool_objects.extend(build_todo_tools(agent_slug))
         elif tool_class == "tool_output":
             all_local_tool_objects.append(GetToolOutputTool(curr))
         else:
@@ -777,7 +782,6 @@ def _get_tools_by_names(
         "telegram",
         "image_editing",
         "memory",
-        "todo",
         "tool_output",
     ]
     all_tools = _build_tools_from_classes(all_classes, curr, chat_id, bot)
