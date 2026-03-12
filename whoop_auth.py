@@ -35,6 +35,31 @@ SCOPES = "offline read:recovery read:sleep read:workout read:cycles read:profile
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 
+DB_VAR_NAME = "whoop_refresh_token"
+
+
+def _save_refresh_token_to_db(refresh_token: str) -> None:
+    """Save the Whoop refresh token to the database."""
+    import psycopg2
+
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        print("WARNING: DATABASE_URL not set, cannot save refresh token to DB")
+        return
+    conn = psycopg2.connect(database_url)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO chat_variables (chat_id, name, value, datatype)
+            VALUES (NULL, %s, %s, 'str')
+            ON CONFLICT (chat_id, name)
+            DO UPDATE SET value = EXCLUDED.value, datatype = EXCLUDED.datatype
+            """,
+            (DB_VAR_NAME, refresh_token),
+        )
+    conn.close()
+
 
 def main():
     if not CLIENT_ID or not CLIENT_SECRET:
@@ -115,13 +140,12 @@ def main():
         json.dump(config, f, indent=2)
     print(f"Config saved to {CONFIG_PATH}")
 
-    # Save token file in whoopy's TokenInfo format
+    # Save token file (access token only — no refresh token on disk)
     from datetime import datetime, timezone
 
     token_save = {
         "access_token": token_data["access_token"],
         "expires_in": token_data.get("expires_in", 3600),
-        "refresh_token": token_data.get("refresh_token"),
         "scopes": token_data.get("scope", SCOPES).split(),
         "token_type": token_data.get("token_type", "Bearer"),
         "created_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -129,6 +153,14 @@ def main():
     with open(TOKEN_PATH, "w") as f:
         json.dump(token_save, f, indent=2)
     print(f"Token saved to {TOKEN_PATH}")
+
+    # Save refresh token to database
+    refresh_token = token_data.get("refresh_token")
+    assert (
+        refresh_token
+    ), "No refresh token in OAuth response — check scopes include 'offline'"
+    _save_refresh_token_to_db(refresh_token)
+    print("Refresh token saved to database")
 
     print("Done! Whoop tools are now enabled.")
 
