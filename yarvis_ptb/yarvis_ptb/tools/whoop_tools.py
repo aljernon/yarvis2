@@ -12,11 +12,14 @@ from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 logger = logging.getLogger(__name__)
 
 WHOOP_CONFIG_PATH = PROJECT_ROOT / "whoop_config.json"
-WHOOP_TOKEN_PATH = PROJECT_ROOT / "whoop_token.json"
 
 WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v2"
 
 DB_VAR_NAME = "whoop_refresh_token"
+
+# In-memory access token cache
+_cached_access_token: str | None = None
+_cached_token_expiry: datetime | None = None
 
 
 def _get_refresh_token_from_db() -> str | None:
@@ -64,20 +67,21 @@ def _save_refresh_token_to_db(refresh_token: str) -> None:
         logger.exception("Failed to save Whoop refresh token to DB")
 
 
-def _load_whoop_token() -> dict:
-    """Load and return the token data, refreshing if expired."""
-    with open(WHOOP_TOKEN_PATH) as f:
-        token_data = json.load(f)
+def _get_access_token() -> str:
+    """Get a valid access token, refreshing if needed. Cached in memory."""
+    global _cached_access_token, _cached_token_expiry
 
-    # Check expiry and refresh if needed
-    created_at = token_data.get("created_at")
-    expires_in = token_data.get("expires_in", 3600)
-    if created_at:
-        created = datetime.fromisoformat(created_at)
-        if datetime.now(timezone.utc) >= created + timedelta(seconds=expires_in - 60):
-            token_data = _refresh_token()
+    now = datetime.now(timezone.utc)
+    if _cached_access_token and _cached_token_expiry and now < _cached_token_expiry:
+        return _cached_access_token
 
-    return token_data
+    token_data = _refresh_token()
+    access_token: str = token_data["access_token"]
+    _cached_access_token = access_token
+    _cached_token_expiry = now + timedelta(
+        seconds=token_data.get("expires_in", 3600) - 60
+    )
+    return access_token
 
 
 def _refresh_token() -> dict:
@@ -113,23 +117,13 @@ def _refresh_token() -> dict:
     if new_refresh:
         _save_refresh_token_to_db(new_refresh)
 
-    # Save access token to disk (no refresh token in file)
-    save_data = {
-        "access_token": new_token["access_token"],
-        "expires_in": new_token.get("expires_in", 3600),
-        "scopes": new_token.get("scope", "").split(),
-        "token_type": new_token.get("token_type", "bearer"),
-        "created_at": datetime.now(tz=timezone.utc).isoformat(),
-    }
-    with open(WHOOP_TOKEN_PATH, "w") as f:
-        json.dump(save_data, f, indent=2)
-    return save_data
+    return new_token
 
 
 def _whoop_api_get(path: str, params: dict | None = None) -> requests.Response:
     """Make an authenticated GET request to the Whoop API."""
-    token_data = _load_whoop_token()
-    headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+    access_token = _get_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
     return requests.get(f"{WHOOP_API_BASE}{path}", headers=headers, params=params)
 
 
@@ -198,60 +192,52 @@ class WhoopDataTool(LocalTool):
                 )
 
             return ToolResult.success(json.dumps(records, indent=2))
-        except FileNotFoundError:
-            return ToolResult.error(
-                "Whoop token files not found. Run whoop_auth.py to authenticate."
-            )
         except Exception as e:
             return ToolResult.error(f"Failed to fetch {data_type} data: {e}")
 
 
 WHOOP_REFRESH_INTERVAL = timedelta(minutes=45)
 _REFRESH_BACKOFF_INTERVAL = timedelta(hours=1)
+_last_refresh: datetime | None = None
 _last_refresh_failure: datetime | None = None
 
 
 def maybe_refresh_whoop_token() -> None:
-    """Proactively refresh the Whoop token if it's older than WHOOP_REFRESH_INTERVAL.
+    """Proactively refresh the Whoop token to keep the refresh token alive.
 
-    Called periodically from callback_minute to prevent token expiry.
+    Called periodically from callback_minute. Whoop rotates refresh tokens
+    on every use, and they expire quickly, so we refresh every 45 minutes.
     Backs off for 1 hour after a failure to avoid spamming.
     """
-    global _last_refresh_failure
+    global _last_refresh, _last_refresh_failure
 
-    if not WHOOP_TOKEN_PATH.exists():
+    if not _get_refresh_token_from_db():
         return
+
+    now = datetime.now(timezone.utc)
 
     # Back off after failure
     last_fail = _last_refresh_failure
-    if last_fail is not None:
-        since_failure = datetime.now(timezone.utc) - last_fail
-        if since_failure < _REFRESH_BACKOFF_INTERVAL:
-            return
+    if last_fail is not None and (now - last_fail) < _REFRESH_BACKOFF_INTERVAL:
+        return
+
+    # Skip if refreshed recently
+    if _last_refresh is not None and (now - _last_refresh) < WHOOP_REFRESH_INTERVAL:
+        return
 
     try:
-        with open(WHOOP_TOKEN_PATH) as f:
-            token_data = json.load(f)
-        created_at = token_data.get("created_at")
-        if not created_at:
-            return
-        created = datetime.fromisoformat(created_at)
-        age = datetime.now(tz=created.tzinfo) - created
-        if age >= WHOOP_REFRESH_INTERVAL:
-            logger.info(f"Whoop token is {age} old, refreshing proactively")
-            _refresh_token()
-            _last_refresh_failure = None
-            logger.info("Whoop token refreshed successfully")
+        logger.info("Refreshing Whoop token proactively")
+        _refresh_token()
+        _last_refresh = now
+        _last_refresh_failure = None
+        logger.info("Whoop token refreshed successfully")
     except Exception:
-        _last_refresh_failure = datetime.now(timezone.utc)
+        _last_refresh_failure = now
         logger.exception("Whoop proactive token refresh failed")
 
 
 def get_whoop_tools() -> list[LocalTool]:
-    if not WHOOP_TOKEN_PATH.exists():
-        logger.info(
-            "Whoop token file not found at %s. Disabling Whoop tools.",
-            WHOOP_TOKEN_PATH,
-        )
+    if not _get_refresh_token_from_db():
+        logger.info("No Whoop refresh token in DB. Disabling Whoop tools.")
         return []
     return [WhoopDataTool()]

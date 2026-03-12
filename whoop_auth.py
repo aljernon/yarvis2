@@ -29,7 +29,6 @@ CLIENT_ID = os.environ.get("WHOOP_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("WHOOP_CLIENT_SECRET")
 REDIRECT_URI = "http://localhost:8765/callback"
 CONFIG_PATH = PROJECT_ROOT / "whoop_config.json"
-TOKEN_PATH = PROJECT_ROOT / "whoop_token.json"
 
 SCOPES = "offline read:recovery read:sleep read:workout read:cycles read:profile read:body_measurement"
 AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
@@ -130,7 +129,7 @@ def main():
     resp.raise_for_status()
     token_data = resp.json()
 
-    # Save config file (client credentials for whoopy's from_config)
+    # Save config file (client credentials)
     config = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -139,20 +138,6 @@ def main():
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
     print(f"Config saved to {CONFIG_PATH}")
-
-    # Save token file (access token only — no refresh token on disk)
-    from datetime import datetime, timezone
-
-    token_save = {
-        "access_token": token_data["access_token"],
-        "expires_in": token_data.get("expires_in", 3600),
-        "scopes": token_data.get("scope", SCOPES).split(),
-        "token_type": token_data.get("token_type", "Bearer"),
-        "created_at": datetime.now(tz=timezone.utc).isoformat(),
-    }
-    with open(TOKEN_PATH, "w") as f:
-        json.dump(token_save, f, indent=2)
-    print(f"Token saved to {TOKEN_PATH}")
 
     # Save refresh token to database
     refresh_token = token_data.get("refresh_token")
