@@ -196,7 +196,7 @@ class WhoopDataTool(LocalTool):
             return ToolResult.error(f"Failed to fetch {data_type} data: {e}")
 
 
-WHOOP_REFRESH_INTERVAL = timedelta(minutes=45)
+WHOOP_REFRESH_INTERVAL = timedelta(hours=6)
 _REFRESH_BACKOFF_INTERVAL = timedelta(hours=1)
 _last_refresh: datetime | None = None
 _last_refresh_failure: datetime | None = None
