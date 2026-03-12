@@ -31,14 +31,10 @@ END $$;
 
 INIT_VARIABLES_QUERY = """
 CREATE TABLE  IF NOT EXISTS  chat_variables(
-    chat_id INTEGER,
-    name VARCHAR(255) NOT NULL,
+    name VARCHAR(255) PRIMARY KEY,
     value TEXT NULL,
     datatype VARCHAR(50) NOT NULL
 );
-
-
-CREATE INDEX IF NOT EXISTS idx_chat_variables_chat_name ON chat_variables (chat_id, name);
 
 """
 

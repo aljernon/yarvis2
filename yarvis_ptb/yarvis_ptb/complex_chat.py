@@ -200,7 +200,7 @@ async def handle_message_root_user_assistant(
         chat_id = update.message.chat_id
     agent_config = DEFAULT_AGENT_CONFIG
 
-    chat_vars = VariablesForChat(curr=curr, chat_id=chat_id)
+    chat_vars = VariablesForChat(curr=curr)
     logger.info(f"{chat_vars.variables=}")
 
     if chat_vars.get(chat_vars.KILL_SWITCH):

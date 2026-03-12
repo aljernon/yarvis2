@@ -229,12 +229,10 @@ def main():
 
 
 def _is_kill_switch_on() -> bool:
-    """Check the global KILL_SWITCH row directly (ignores per-chat overrides)."""
+    """Check the KILL_SWITCH variable."""
     with connect() as conn:
         with conn.cursor() as curr:
-            curr.execute(
-                "SELECT value FROM chat_variables WHERE chat_id IS NULL AND name = 'KILL_SWITCH'"
-            )
+            curr.execute("SELECT value FROM chat_variables WHERE name = 'KILL_SWITCH'")
             row = curr.fetchone()
             return row is not None and row[0] == "true"
 

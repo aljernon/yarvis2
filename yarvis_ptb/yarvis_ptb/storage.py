@@ -103,21 +103,15 @@ class InvokeUpdateRequest:
 class VariablesForChat:
     KILL_SWITCH = "KILL_SWITCH"
 
-    def __init__(self, curr, chat_id: int):
-        self.chat_id = chat_id
+    def __init__(self, curr):
         self.curr = curr
         self._read_all()
 
     def _read_all(self):
         self.variables = {}
         self.curr.execute(
-            """
-            SELECT name, value, datatype
-            FROM chat_variables
-            WHERE (chat_id = %s OR chat_id IS NULL) and datatype != %s
-            ORDER BY chat_id NULLS FIRST
-            """,
-            (self.chat_id, "none"),
+            "SELECT name, value, datatype FROM chat_variables WHERE datatype != %s",
+            ("none",),
         )
         for row in self.curr.fetchall():
             name, value, type_str = row
@@ -158,34 +152,19 @@ class VariablesForChat:
     def get(self, variable_name: str, default_value: Any = None):
         return self.variables.get(variable_name, default_value)
 
-    def set(self, variable_name: str, value: Any):
+    def put(self, variable_name: str, value: Any):
         type_str, db_value = self._prepare_value_for_set(value)
         self.curr.execute(
             """
-            INSERT INTO chat_variables (chat_id, name, value, datatype)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (chat_id, name)
+            INSERT INTO chat_variables (name, value, datatype)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (name)
             DO UPDATE SET value = EXCLUDED.value,
                            datatype = EXCLUDED.datatype
         """,
-            (self.chat_id, variable_name, db_value, type_str),
-        )
-        self.variables[variable_name] = value
-
-    def set_global(self, variable_name: str, value: Any):
-        type_str, db_value = self._prepare_value_for_set(value)
-        self.curr.execute(
-            """
-            INSERT INTO chat_variables (chat_id, name, value, datatype)
-            VALUES (NULL, %s, %s, %s)
-            ON CONFLICT (chat_id, name)
-            DO UPDATE SET value = EXCLUDED.value,
-                       datatype = EXCLUDED.datatype
-        """,
             (variable_name, db_value, type_str),
         )
-        # Just re-read as we don't know about priorities local vs NULL.'
-        self._read_all()
+        self.variables[variable_name] = value
 
 
 @contextlib.contextmanager
@@ -660,33 +639,26 @@ def test_memories():
 
 
 def test_variables():
-    fake_chat_id = 12345
     fake_var_name = "qwerty"
     with connect() as conn, conn.cursor() as curr:
         try:
-            # Test setting variable value and getting by default.
-            variables = VariablesForChat(curr, fake_chat_id)
+            variables = VariablesForChat(curr)
             print("VARS", variables.variables)
             assert variables.get(fake_var_name) is None
 
-            # Test global value
-            variables.set_global(fake_var_name, "global")
-            assert variables.get(fake_var_name) == "global"
-
-            variables.set(fake_var_name, "test1")
-            # Overwrites global value
+            variables.put(fake_var_name, "test1")
             assert variables.get(fake_var_name) == "test1"
             assert variables.get("nonexistent", "default") == "default"
 
             # Test boolean type
-            variables.set(fake_var_name, True)
+            variables.put(fake_var_name, True)
             assert variables.get(fake_var_name) is True
 
             # Test datetime type
             now = datetime.datetime.now(DEFAULT_TIMEZONE)
-            variables.set(fake_var_name, now)
+            variables.put(fake_var_name, now)
             assert variables.get(fake_var_name) == now
-            variables = VariablesForChat(curr, fake_chat_id)
+            variables = VariablesForChat(curr)
             assert variables.get(fake_var_name) == now
             assert (variables.get(fake_var_name) - now).total_seconds() == 0
             variables._read_all()

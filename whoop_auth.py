@@ -51,9 +51,9 @@ def _save_refresh_token_to_db(refresh_token: str) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO chat_variables (chat_id, name, value, datatype)
-            VALUES (NULL, %s, %s, 'str')
-            ON CONFLICT (chat_id, name)
+            INSERT INTO chat_variables (name, value, datatype)
+            VALUES (%s, %s, 'str')
+            ON CONFLICT (name)
             DO UPDATE SET value = EXCLUDED.value, datatype = EXCLUDED.datatype
             """,
             (DB_VAR_NAME, refresh_token),

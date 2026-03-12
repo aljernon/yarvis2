@@ -29,7 +29,7 @@ def _get_refresh_token_from_db() -> str | None:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT value FROM chat_variables WHERE chat_id IS NULL AND name = %s",
+                "SELECT value FROM chat_variables WHERE name = %s",
                 (DB_VAR_NAME,),
             )
             row = cur.fetchone()
@@ -52,9 +52,9 @@ def _save_refresh_token_to_db(refresh_token: str) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO chat_variables (chat_id, name, value, datatype)
-                VALUES (NULL, %s, %s, 'str')
-                ON CONFLICT (chat_id, name)
+                INSERT INTO chat_variables (name, value, datatype)
+                VALUES (%s, %s, 'str')
+                ON CONFLICT (name)
                 DO UPDATE SET value = EXCLUDED.value, datatype = EXCLUDED.datatype
                 """,
                 (DB_VAR_NAME, refresh_token),
@@ -206,7 +206,7 @@ class WhoopDataTool(LocalTool):
             return ToolResult.error(f"Failed to fetch {data_type} data: {e}")
 
 
-WHOOP_REFRESH_INTERVAL = timedelta(hours=12)
+WHOOP_REFRESH_INTERVAL = timedelta(minutes=45)
 _REFRESH_BACKOFF_INTERVAL = timedelta(hours=1)
 _last_refresh_failure: datetime | None = None
 
