@@ -1,5 +1,4 @@
 import json
-import os
 import subprocess
 import tempfile
 from inspect import cleandoc
@@ -30,19 +29,12 @@ class BashSingleCommandRunner:
             - stderr: captured standard error
             - had_error: True if an exception was raised
         """
-        # Inject SOCKS5 proxy env so curl/wget can reach Tailscale IPs
-        # (userspace-networking mode has no tailscale0 interface).
-        env = None
-        socks_proxy = os.environ.get("TAILSCALE_SOCKS5_PROXY")
-        if socks_proxy:
-            env = {**os.environ, "ALL_PROXY": socks_proxy}
         process = subprocess.Popen(
             cmd,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=CWD,
-            env=env,
         )
         try:
             stdout, stderr = process.communicate(timeout=timeout)

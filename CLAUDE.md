@@ -114,7 +114,7 @@ Heroku runs Tailscale in **userspace-networking** mode — there is no `tailscal
 - `TAILSCALE_SOCKS5_PROXY=socks5://localhost:1055` is set in `launch.sh`
 - **httpx**: pass `proxy=os.environ.get("TAILSCALE_SOCKS5_PROXY")` to `AsyncClient`/`Client` (requires `socksio` package)
 - **requests**: pass `proxies={"http": proxy_url, "https": proxy_url}` (requires `pysocks` package)
-- **curl** (bash tool): `ALL_PROXY` is injected into the subprocess env automatically by `bash_repl.py`
+- **curl** (bash tool): use `--proxy "$TAILSCALE_SOCKS5_PROXY"` explicitly — do NOT set `ALL_PROXY` globally as it would proxy all traffic
 - **Locally** (no Tailscale): `TAILSCALE_SOCKS5_PROXY` is unset, so proxy is `None` — direct connections work fine
 
 ### Services on the VM
