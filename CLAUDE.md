@@ -112,6 +112,21 @@ A GCP VM runs message accumulator services as Docker containers, accessible via 
 - **Signal combined** (`signal_accumulator/`): signal-cli-rest-api + accumulator in one container (ports 8080+8081). See `signal_accumulator/CLAUDE.md`.
 - **SMS accumulator** (`sms_accumulator/`): Go service, port 8082. See `sms_accumulator/CLAUDE.md`.
 
+### VM Watchdog
+Auto-restarts the VM when health checks fail. Runs in `callback_minute` on Heroku (`vm_watchdog.py`). After 3 consecutive failures (3 minutes), resets the VM via the GCP Compute API. 10-minute cooldown between resets.
+
+**Service account setup** (already done, for reference):
+```bash
+gcloud iam service-accounts create vm-restarter \
+  --project=signal-api-project --display-name="VM auto-restarter"
+gcloud projects add-iam-policy-binding signal-api-project \
+  --member="serviceAccount:vm-restarter@signal-api-project.iam.gserviceaccount.com" \
+  --role="roles/compute.instanceAdmin.v1"
+gcloud iam service-accounts keys create gcp_vm_key.json \
+  --iam-account=vm-restarter@signal-api-project.iam.gserviceaccount.com
+heroku config:set -a claude-telegram-v2 GCP_VM_KEY="$(cat gcp_vm_key.json)"
+```
+
 ## Development
 To work on this project locally:
 1. Activate the conda environment: `conda activate clam`

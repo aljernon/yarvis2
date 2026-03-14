@@ -80,6 +80,7 @@ from yarvis_ptb.storage import (
 from yarvis_ptb.tools.scheduling_tools import compute_next_run
 from yarvis_ptb.tools.whoop_tools import maybe_refresh_whoop_token
 from yarvis_ptb.util import ensure
+from yarvis_ptb.vm_watchdog import maybe_reset_vm
 from yarvis_ptb.whisper_transcription import transcribe_voice_message
 
 logger = logging.getLogger(__name__)
@@ -801,8 +802,21 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
             )
             await maybe_send_messages_to_debug_chat(context.application)
 
-        # Proactive Whoop token refresh (every 12h)
+        # Proactive Whoop token refresh
         try:
             maybe_refresh_whoop_token()
         except Exception:
             logger.exception("Whoop token refresh failed")
+
+        # GCP VM health watchdog
+        try:
+            vm_msg = await maybe_reset_vm()
+            if vm_msg:
+                add_debug_message_to_queue(vm_msg)
+                await maybe_send_messages_to_debug_chat(context.application)
+        except Exception:
+            logger.exception("VM watchdog failed")
+            add_debug_message_to_queue(
+                f"**VM WATCHDOG ERROR**\n```\n{traceback.format_exc()}\n```"
+            )
+            await maybe_send_messages_to_debug_chat(context.application)
