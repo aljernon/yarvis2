@@ -106,7 +106,16 @@ A GCP VM runs message accumulator services as Docker containers, accessible via 
 - **Tailscale IP**: `100.108.7.78`
 - **Local gcloud**: `/opt/homebrew/share/google-cloud-sdk/bin/gcloud`
 - **SSH**: `gcloud compute ssh signal-api --zone us-central1-a --tunnel-through-iap`
-- **Heroku ↔ GCP**: Tailscale buildpack (`mvisonneau/heroku-buildpack-tailscale`), env vars: `TAILSCALE_AUTH_KEY`, `SIGNAL_API_URL`
+- **Heroku ↔ GCP**: Tailscale in userspace-networking mode (no `/dev/net/tun` on Heroku), started in `launch.sh`. Env vars: `TAILSCALE_AUTH_KEY`, `TAILSCALE_SOCKS5_PROXY`
+
+### Tailscale SOCKS5 Proxy (IMPORTANT)
+Heroku runs Tailscale in **userspace-networking** mode — there is no `tailscale0` network interface. Direct TCP connections to Tailscale IPs (`100.108.7.78`) bypass the tunnel entirely and time out. All traffic to Tailscale IPs **must** go through the SOCKS5 proxy at `localhost:1055`.
+
+- `TAILSCALE_SOCKS5_PROXY=socks5://localhost:1055` is set in `launch.sh`
+- **httpx**: pass `proxy=os.environ.get("TAILSCALE_SOCKS5_PROXY")` to `AsyncClient`/`Client` (requires `socksio` package)
+- **requests**: pass `proxies={"http": proxy_url, "https": proxy_url}` (requires `pysocks` package)
+- **curl** (bash tool): `ALL_PROXY` is injected into the subprocess env automatically by `bash_repl.py`
+- **Locally** (no Tailscale): `TAILSCALE_SOCKS5_PROXY` is unset, so proxy is `None` — direct connections work fine
 
 ### Services on the VM
 - **Signal combined** (`signal_accumulator/`): signal-cli-rest-api + accumulator in one container (ports 8080+8081). See `signal_accumulator/CLAUDE.md`.
@@ -146,6 +155,13 @@ Use `cli_prompt.py` to test changes end-to-end. It loads full conversation histo
 SETTINGS_NAME=anton conda run -n clam python cli_prompt.py "Your test prompt here"
 SETTINGS_NAME=anton conda run -n clam python cli_prompt.py -v "Compute 2+2 in python"  # verbose: shows tool call details
 ```
+
+### Sending messages to the live bot
+Use `send_to_yarvis.py` to send a message to the deployed Yarvis bot on Telegram as the user (via Telethon). Useful for triggering the bot end-to-end from the command line, then checking the response in DB with `dump_messages.py`.
+```
+SETTINGS_NAME=anton conda run -n clam python send_to_yarvis.py "is sms up?"
+```
+Note: `cli_prompt.py` runs Claude **locally** — it does not talk to the deployed Heroku bot. Use `send_to_yarvis.py` when you need to test the live deployment.
 
 ### Dumping messages
 Use `dump_messages.py` to dump recent conversation messages from the database to stdout in Claude MessageParam format. Useful for debugging message storage and rendering.

@@ -40,9 +40,15 @@ def _get_compute_client():
     return build("compute", "v1", credentials=credentials)
 
 
+def _get_socks_proxy() -> str | None:
+    """Return the Tailscale SOCKS5 proxy URL if configured."""
+    return os.environ.get("TAILSCALE_SOCKS5_PROXY") or os.environ.get("ALL_PROXY")
+
+
 async def _check_health() -> bool:
     """Return True if at least one health endpoint responds."""
-    async with httpx.AsyncClient(timeout=HEALTH_TIMEOUT) as client:
+    proxy = _get_socks_proxy()
+    async with httpx.AsyncClient(timeout=HEALTH_TIMEOUT, proxy=proxy) as client:
         for url in HEALTH_ENDPOINTS:
             try:
                 resp = await client.get(url)
