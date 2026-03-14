@@ -24,6 +24,20 @@ COOLDOWN_AFTER_RESET = timedelta(minutes=10)
 
 _consecutive_failures = 0
 _last_reset: datetime | None = None
+_gave_up = False
+
+
+def _get_compute_client():
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    key_json = os.environ.get("GCP_VM_KEY")
+    assert key_json, "GCP_VM_KEY not set"
+    credentials = service_account.Credentials.from_service_account_info(
+        json.loads(key_json),
+        scopes=["https://www.googleapis.com/auth/compute"],
+    )
+    return build("compute", "v1", credentials=credentials)
 
 
 async def _check_health() -> bool:
@@ -39,21 +53,24 @@ async def _check_health() -> bool:
     return False
 
 
+def _is_vm_running() -> bool:
+    """Check if the VM is in RUNNING state via GCP API."""
+    try:
+        compute = _get_compute_client()
+        result = (
+            compute.instances()
+            .get(project=GCP_PROJECT, zone=GCP_ZONE, instance=GCP_INSTANCE)
+            .execute()
+        )
+        return result.get("status") == "RUNNING"
+    except Exception:
+        logger.exception("Failed to check VM status")
+        return False
+
+
 def _reset_vm() -> None:
-    """Reset the GCP VM using the Compute API (sync — called via to_thread)."""
-    key_json = os.environ.get("GCP_VM_KEY")
-    if not key_json:
-        logger.error("GCP_VM_KEY not set, cannot reset VM")
-        return
-
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-
-    credentials = service_account.Credentials.from_service_account_info(
-        json.loads(key_json),
-        scopes=["https://www.googleapis.com/auth/compute"],
-    )
-    compute = build("compute", "v1", credentials=credentials)
+    """Reset the GCP VM using the Compute API."""
+    compute = _get_compute_client()
     compute.instances().reset(
         project=GCP_PROJECT, zone=GCP_ZONE, instance=GCP_INSTANCE
     ).execute()
@@ -65,8 +82,10 @@ async def maybe_reset_vm() -> str | None:
 
     Called every minute from callback_minute.
     Resets after CONSECUTIVE_FAILURES_BEFORE_RESET consecutive failures.
+    If the VM is RUNNING after a reset but still unreachable, assumes
+    a network issue and stops resetting.
     """
-    global _consecutive_failures, _last_reset
+    global _consecutive_failures, _last_reset, _gave_up
 
     if not os.environ.get("GCP_VM_KEY"):
         return None
@@ -77,14 +96,21 @@ async def maybe_reset_vm() -> str | None:
         return None
 
     if await _check_health():
-        if _consecutive_failures > 0:
+        if _consecutive_failures > 0 or _gave_up:
             msg = (
                 f"VM health restored after {_consecutive_failures} consecutive failures"
             )
+            if _gave_up:
+                msg += " (was in network-issue mode)"
             logger.info(msg)
             _consecutive_failures = 0
+            _gave_up = False
             return msg
         _consecutive_failures = 0
+        return None
+
+    # Already gave up — just wait for health to recover
+    if _gave_up:
         return None
 
     _consecutive_failures += 1
@@ -95,6 +121,16 @@ async def maybe_reset_vm() -> str | None:
     )
 
     if _consecutive_failures >= CONSECUTIVE_FAILURES_BEFORE_RESET:
+        # Before resetting, check if VM is already running (= network issue)
+        if _last_reset and _is_vm_running():
+            _gave_up = True
+            msg = (
+                f"**VM {GCP_INSTANCE} is RUNNING but unreachable — "
+                f"likely a network issue, not resetting**"
+            )
+            logger.warning(msg)
+            return msg
+
         try:
             _reset_vm()
             _last_reset = now
