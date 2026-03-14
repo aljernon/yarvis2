@@ -191,21 +191,39 @@ def cleanup_old_messages():
         time.sleep(3600)  # run every hour
 
 
+WS_PING_INTERVAL = 30  # seconds between pings
+WS_PING_TIMEOUT = 10  # seconds to wait for pong
+
+
 def ws_listener():
     global ws_connected, ws_last_connected_at, ws_last_error
     url = f"{SIGNAL_WS_URL}/v1/receive/{SIGNAL_PHONE}"
+    reconnect_delay = 1
     while True:
         try:
             print(f"Connecting to {url}")
             ws_connected = False
             ws = websocket.create_connection(url, timeout=30)
-            ws.settimeout(None)  # block indefinitely on recv
+            ws.settimeout(WS_PING_INTERVAL + WS_PING_TIMEOUT)
             ws_connected = True
             ws_last_connected_at = datetime.now(timezone.utc)
             ws_last_error = None
+            reconnect_delay = 1  # reset on successful connection
+            last_ping = time.monotonic()
             print("Connected, listening for messages...")
             while True:
-                raw = ws.recv()
+                try:
+                    raw = ws.recv()
+                except websocket.WebSocketTimeoutException:
+                    raw = None
+                now = time.monotonic()
+                # Send periodic pings to detect dead connections
+                if now - last_ping >= WS_PING_INTERVAL:
+                    try:
+                        ws.ping()
+                    except Exception:
+                        break  # connection dead, reconnect
+                    last_ping = now
                 if raw:
                     data = json.loads(raw)
                     envelope = data.get("envelope", {})
@@ -213,8 +231,9 @@ def ws_listener():
         except Exception as e:
             ws_connected = False
             ws_last_error = str(e)
-            print(f"Websocket error: {e}, reconnecting in 5s...")
-            time.sleep(5)
+            print(f"Websocket error: {e}, reconnecting in {reconnect_delay}s...")
+            time.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, 30)
 
 
 @app.route("/messages")
