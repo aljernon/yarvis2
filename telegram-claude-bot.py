@@ -63,8 +63,6 @@ async def log_all_updates(update: Update, context):
 CHATS_WITH_COMMANDS = [
     ROOT_USER_ID,
     FULL_LOG_CHAT_ID,
-    -4666161502,  # yarvis_simple_nomem
-    -4767217828,  # yarvis_simple
 ]
 
 
