@@ -136,7 +136,7 @@ class TelegramHooks:
                 )
                 self._num_messages_sent_to_debug_chat += new_complete_debug_messages
                 ensure(self._application.job_queue).run_once(
-                    maybe_send_messages_to_debug_chat, when=1
+                    maybe_send_messages_to_debug_chat, when=0
                 )
 
     @property
@@ -460,7 +460,7 @@ async def _process_multi_message_claude_invocation_inner(
                 file_suffix=".json",
             )
         )
-    ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=1)
+    ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=0)
 
     sizes = compute_token_counts(
         client,
@@ -610,7 +610,7 @@ async def _process_multi_message_claude_invocation_inner(
     add_debug_message_to_queue(
         message_params, skip_first_n=hooks.num_messages_sent_to_debug_chat
     )
-    ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=1)
+    ensure(application.job_queue).run_once(maybe_send_messages_to_debug_chat, when=0)
 
 
 def compute_token_counts(

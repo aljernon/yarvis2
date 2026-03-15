@@ -29,7 +29,7 @@ RENDERED_MESSAGES_QUEUE: "list[str | MessageAsFile]" = []
 
 LOCK = asyncio.Lock()
 
-RATE_CONTROLLER = RateController(wait_between_events_secs=3.0)
+RATE_CONTROLLER = RateController(wait_between_events_secs=1.0)
 
 
 def add_debug_message_to_queue(
