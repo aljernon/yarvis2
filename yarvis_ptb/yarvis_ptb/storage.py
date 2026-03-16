@@ -8,20 +8,6 @@ from typing import Any, Literal, TypedDict
 
 import psycopg2
 
-logger = logging.getLogger(__name__)
-
-
-def _ensure_json_serializable(obj: Any) -> Any:
-    """Recursively convert non-list iterables (e.g. ValidatorIterator) to lists."""
-    if isinstance(obj, dict):
-        return {k: _ensure_json_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_ensure_json_serializable(v) for v in obj]
-    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
-        return [_ensure_json_serializable(v) for v in obj]
-    return obj
-
-
 from yarvis_ptb.queries import (
     INIT_AGENTS_QUERY,
     INIT_MEMORY_QUERY,
@@ -39,6 +25,18 @@ from yarvis_ptb.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_json_serializable(obj: Any) -> Any:
+    """Recursively convert non-list iterables (e.g. ValidatorIterator) to lists."""
+    if isinstance(obj, dict):
+        return {k: _ensure_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_ensure_json_serializable(v) for v in obj]
+    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
+        return [_ensure_json_serializable(v) for v in obj]
+    return obj
+
 
 # read database connection url from the enivron variable we just set.
 DATABASE_URL = os.environ.get("DATABASE_URL")
