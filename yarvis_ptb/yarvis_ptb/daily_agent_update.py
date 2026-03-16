@@ -154,7 +154,6 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
             ),
             type="dau_session",
             status="frozen",
-            date=str(yesterday),
         )
         agent_id = create_agent(
             curr,

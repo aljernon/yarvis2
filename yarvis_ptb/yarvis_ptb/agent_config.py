@@ -45,7 +45,6 @@ class AgentMeta(BaseModel):
     agent_config: AgentConfig = Field(default_factory=AgentConfig)
     type: str | None = None  # "dau_session", "auto_reflect"
     status: Literal["frozen"] | None = None
-    date: str | None = None  # DAU: "2026-03-04"
     summary: str | None = None
     last_prompt_tokens: int | None = None
 
