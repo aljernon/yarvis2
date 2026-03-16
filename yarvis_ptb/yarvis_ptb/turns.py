@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BaseTurn(abc.ABC):
     created_at: datetime.datetime
-    marked_for_archive: bool = False
+    marked_for_archive: bool
 
     @abc.abstractmethod
     def render(self) -> list[MessageParam]: ...
@@ -33,7 +33,7 @@ class BaseTurn(abc.ABC):
 
 @dataclass
 class SystemTurn(BaseTurn):
-    message: str = ""
+    message: str
 
     def render(self) -> list[MessageParam]:
         text = f"<system>System message created at {self.created_at.isoformat()}: {self.message}</system>"
@@ -54,21 +54,10 @@ class SystemTurn(BaseTurn):
 
 @dataclass
 class BotTurn(BaseTurn):
-    message_params: list[MessageParam] | None = None
-    plain_text: str | None = None
-
-    def __post_init__(self):
-        assert (self.message_params is None) != (
-            self.plain_text is None
-        ), "BotTurn requires exactly one of message_params or plain_text"
+    message_params: list[MessageParam]
 
     def render(self) -> list[MessageParam]:
-        if self.message_params is not None:
-            role_messages: list[MessageParam] = copy.deepcopy(self.message_params)
-        else:
-            role_messages = [
-                MessageParam(role="assistant", content=self.plain_text or "")
-            ]
+        role_messages: list[MessageParam] = copy.deepcopy(self.message_params)
 
         # Drop empty trailing assistant message
         if (
@@ -91,32 +80,23 @@ class BotTurn(BaseTurn):
         agent_id: int | None = None,
         usage: dict | None = None,
     ) -> DbMessage:
-        if self.message_params is not None:
-            meta: dict = {"message_params": self.message_params}
-            if usage:
-                meta["usage"] = usage
-            return DbMessage(
-                created_at=self.created_at,
-                chat_id=chat_id,
-                user_id=BOT_USER_ID,
-                message="USE_CONTENT_FROM_META",
-                meta=meta,
-                agent_id=agent_id,
-            )
-        assert self.plain_text is not None
+        meta: dict = {"message_params": self.message_params}
+        if usage:
+            meta["usage"] = usage
         return DbMessage(
             created_at=self.created_at,
             chat_id=chat_id,
             user_id=BOT_USER_ID,
-            message=self.plain_text,
+            message="USE_CONTENT_FROM_META",
+            meta=meta,
             agent_id=agent_id,
         )
 
 
 @dataclass
 class UserTurn(BaseTurn):
-    message: str = ""
-    user_id: int = 0
+    message: str
+    user_id: int
 
     is_voice: bool = False
     image_b64: str | None = None
@@ -190,16 +170,20 @@ Turn = SystemTurn | BotTurn | UserTurn
 
 def db_message_to_turn(msg: DbMessage) -> Turn:
     if msg.user_id == BOT_USER_ID:
-        message_params = None
-        plain_text = None
         if msg.meta and "message_params" in msg.meta:
             message_params = msg.meta["message_params"]
         else:
-            plain_text = msg.message
+            # Legacy plain-text bot message (pre-migration).
+            # Wrap into message_params on the fly.
+            message_params = [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": msg.message}],
+                }
+            ]
         return BotTurn(
             created_at=msg.created_at,
             message_params=message_params,
-            plain_text=plain_text,
             marked_for_archive=msg.marked_for_archive,
         )
     if msg.user_id == SYSTEM_USER_ID:

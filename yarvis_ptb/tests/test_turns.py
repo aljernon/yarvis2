@@ -20,7 +20,9 @@ CHAT_ID = 100
 
 class TestSystemTurn(unittest.TestCase):
     def test_render(self):
-        turn = SystemTurn(created_at=NOW, message="bot restarted")
+        turn = SystemTurn(
+            created_at=NOW, marked_for_archive=False, message="bot restarted"
+        )
         msgs = turn.render()
         assert len(msgs) == 1
         assert msgs[0]["role"] == "user"
@@ -28,7 +30,9 @@ class TestSystemTurn(unittest.TestCase):
         assert "<system>" in msgs[0]["content"]
 
     def test_to_db_message(self):
-        turn = SystemTurn(created_at=NOW, message="bot restarted")
+        turn = SystemTurn(
+            created_at=NOW, marked_for_archive=False, message="bot restarted"
+        )
         db = turn.to_db_message(CHAT_ID)
         assert db.user_id == SYSTEM_USER_ID
         assert db.chat_id == CHAT_ID
@@ -37,12 +41,12 @@ class TestSystemTurn(unittest.TestCase):
         assert db.agent_id is None
 
     def test_to_db_message_with_agent(self):
-        turn = SystemTurn(created_at=NOW, message="freeze")
+        turn = SystemTurn(created_at=NOW, marked_for_archive=False, message="freeze")
         db = turn.to_db_message(CHAT_ID, agent_id=5)
         assert db.agent_id == 5
 
     def test_roundtrip(self):
-        turn = SystemTurn(created_at=NOW, message="hello")
+        turn = SystemTurn(created_at=NOW, marked_for_archive=False, message="hello")
         db = turn.to_db_message(CHAT_ID)
         turn2 = db_message_to_turn(db)
         assert isinstance(turn2, SystemTurn)
@@ -53,20 +57,14 @@ class TestSystemTurn(unittest.TestCase):
 class TestBotTurn(unittest.TestCase):
     def test_render_message_params(self):
         params = [{"role": "assistant", "content": [{"type": "text", "text": "hi"}]}]
-        turn = BotTurn(created_at=NOW, message_params=params)
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
         msgs = turn.render()
         assert len(msgs) == 1
         assert msgs[0]["role"] == "assistant"
 
-    def test_render_plain_text(self):
-        turn = BotTurn(created_at=NOW, plain_text="hello")
-        msgs = turn.render()
-        assert len(msgs) == 1
-        assert msgs[0] == {"role": "assistant", "content": "hello"}
-
     def test_render_does_not_mutate_original(self):
         params = [{"role": "assistant", "content": [{"type": "text", "text": "hi"}]}]
-        turn = BotTurn(created_at=NOW, message_params=params)
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
         msgs = turn.render()
         msgs[0]["content"][0]["text"] = "mutated"
         assert params[0]["content"][0]["text"] == "hi"
@@ -82,31 +80,23 @@ class TestBotTurn(unittest.TestCase):
             },
             {"role": "assistant", "content": ""},
         ]
-        turn = BotTurn(created_at=NOW, message_params=params)
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
         msgs = turn.render()
         assert len(msgs) == 2
 
     def test_render_marked_for_archive(self):
         params = [{"role": "assistant", "content": [{"type": "text", "text": "hi"}]}]
-        turn = BotTurn(created_at=NOW, message_params=params, marked_for_archive=True)
+        turn = BotTurn(created_at=NOW, marked_for_archive=True, message_params=params)
         msgs = turn.render()
         assert msgs[0]["content"][0]["text"].startswith("[MARKED_FOR_DELETION]")
 
-    def test_post_init_both_set(self):
-        with self.assertRaises(AssertionError):
-            BotTurn(
-                created_at=NOW,
-                message_params=[{"role": "assistant", "content": "x"}],
-                plain_text="x",
-            )
+    def test_requires_message_params(self):
+        with self.assertRaises(TypeError):
+            BotTurn(created_at=NOW, marked_for_archive=False)
 
-    def test_post_init_neither_set(self):
-        with self.assertRaises(AssertionError):
-            BotTurn(created_at=NOW)
-
-    def test_to_db_message_with_params(self):
+    def test_to_db_message(self):
         params = [{"role": "assistant", "content": "hi"}]
-        turn = BotTurn(created_at=NOW, message_params=params)
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
         db = turn.to_db_message(CHAT_ID)
         assert db.user_id == BOT_USER_ID
         assert db.message == "USE_CONTENT_FROM_META"
@@ -115,35 +105,35 @@ class TestBotTurn(unittest.TestCase):
     def test_to_db_message_with_usage(self):
         params = [{"role": "assistant", "content": "hi"}]
         usage = {"calls": [], "estimated_cost_usd": 0.01}
-        turn = BotTurn(created_at=NOW, message_params=params)
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
         db = turn.to_db_message(CHAT_ID, usage=usage)
         assert db.meta["usage"] == usage
 
-    def test_to_db_message_plain_text(self):
-        turn = BotTurn(created_at=NOW, plain_text="hello")
-        db = turn.to_db_message(CHAT_ID)
-        assert db.message == "hello"
-        assert db.meta is None
-
-    def test_roundtrip_message_params(self):
+    def test_roundtrip(self):
         params = [{"role": "assistant", "content": "hi"}]
-        turn = BotTurn(created_at=NOW, message_params=params)
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
         db = turn.to_db_message(CHAT_ID)
         turn2 = db_message_to_turn(db)
         assert isinstance(turn2, BotTurn)
         assert turn2.message_params == params
 
-    def test_roundtrip_plain_text(self):
-        turn = BotTurn(created_at=NOW, plain_text="hello")
-        db = turn.to_db_message(CHAT_ID)
-        turn2 = db_message_to_turn(db)
-        assert isinstance(turn2, BotTurn)
-        assert turn2.plain_text == "hello"
+    def test_legacy_plain_text_db_message(self):
+        """db_message_to_turn wraps legacy plain-text bot messages into message_params."""
+        db = DbMessage(
+            created_at=NOW, chat_id=CHAT_ID, user_id=BOT_USER_ID, message="hello"
+        )
+        turn = db_message_to_turn(db)
+        assert isinstance(turn, BotTurn)
+        assert turn.message_params == [
+            {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}
+        ]
 
 
 class TestUserTurn(unittest.TestCase):
     def test_render_basic(self):
-        turn = UserTurn(message="hi", user_id=123, created_at=NOW)
+        turn = UserTurn(
+            created_at=NOW, marked_for_archive=False, message="hi", user_id=123
+        )
         msgs = turn.render()
         assert len(msgs) == 1
         assert msgs[0]["role"] == "user"
@@ -152,13 +142,25 @@ class TestUserTurn(unittest.TestCase):
         assert "is_voice_message=False" in text
 
     def test_render_voice(self):
-        turn = UserTurn(message="hi", user_id=123, created_at=NOW, is_voice=True)
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="hi",
+            user_id=123,
+            is_voice=True,
+        )
         msgs = turn.render()
         text = msgs[0]["content"][-1]["text"]
         assert "is_voice_message=True" in text
 
     def test_render_image(self):
-        turn = UserTurn(message="look", user_id=123, created_at=NOW, image_b64="abc123")
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="look",
+            user_id=123,
+            image_b64="abc123",
+        )
         msgs = turn.render()
         content = msgs[0]["content"]
         assert len(content) == 2
@@ -168,7 +170,13 @@ class TestUserTurn(unittest.TestCase):
 
     def test_render_reply_to(self):
         reply = {"text": "original msg", "from": "Bob", "date": "2026-03-15T10:00:00"}
-        turn = UserTurn(message="reply", user_id=123, created_at=NOW, reply_to=reply)
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="reply",
+            user_id=123,
+            reply_to=reply,
+        )
         msgs = turn.render()
         text = msgs[0]["content"][-1]["text"]
         assert "[Replying to Bob" in text
@@ -176,21 +184,29 @@ class TestUserTurn(unittest.TestCase):
 
     def test_render_reply_to_long_text_truncated(self):
         reply = {"text": "x" * 300, "from": "Bob"}
-        turn = UserTurn(message="reply", user_id=123, created_at=NOW, reply_to=reply)
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="reply",
+            user_id=123,
+            reply_to=reply,
+        )
         msgs = turn.render()
         text = msgs[0]["content"][-1]["text"]
         assert "..." in text
 
     def test_render_marked_for_archive(self):
         turn = UserTurn(
-            message="hi", user_id=123, created_at=NOW, marked_for_archive=True
+            created_at=NOW, marked_for_archive=True, message="hi", user_id=123
         )
         msgs = turn.render()
         text = msgs[0]["content"][-1]["text"]
         assert text.startswith("[MARKED_FOR_DELETION]")
 
     def test_to_db_message_basic(self):
-        turn = UserTurn(message="hi", user_id=123, created_at=NOW)
+        turn = UserTurn(
+            created_at=NOW, marked_for_archive=False, message="hi", user_id=123
+        )
         db = turn.to_db_message(CHAT_ID)
         assert db.user_id == 123
         assert db.chat_id == CHAT_ID
@@ -198,18 +214,36 @@ class TestUserTurn(unittest.TestCase):
         assert db.meta == {"is_voice": False}
 
     def test_to_db_message_voice(self):
-        turn = UserTurn(message="hi", user_id=123, created_at=NOW, is_voice=True)
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="hi",
+            user_id=123,
+            is_voice=True,
+        )
         db = turn.to_db_message(CHAT_ID)
         assert db.meta["is_voice"] is True
 
     def test_to_db_message_image(self):
-        turn = UserTurn(message="look", user_id=123, created_at=NOW, image_b64="abc")
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="look",
+            user_id=123,
+            image_b64="abc",
+        )
         db = turn.to_db_message(CHAT_ID)
         assert db.meta[IMAGE_B64_META_FIELD] == "abc"
 
     def test_to_db_message_reply_to(self):
         reply = {"text": "orig", "from": "Bob", "date": "2026-03-15"}
-        turn = UserTurn(message="re", user_id=123, created_at=NOW, reply_to=reply)
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="re",
+            user_id=123,
+            reply_to=reply,
+        )
         db = turn.to_db_message(CHAT_ID)
         assert db.meta["reply_to"] == reply
 
@@ -221,7 +255,13 @@ class TestUserTurn(unittest.TestCase):
             "mime_type": "application/pdf",
             "file_type": "document",
         }
-        turn = UserTurn(message="doc", user_id=123, created_at=NOW, uploaded_file=uf)
+        turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
+            message="doc",
+            user_id=123,
+            uploaded_file=uf,
+        )
         db = turn.to_db_message(CHAT_ID)
         assert db.meta["uploaded_file"] == uf
 
@@ -235,9 +275,10 @@ class TestUserTurn(unittest.TestCase):
             "file_type": "document",
         }
         turn = UserTurn(
+            created_at=NOW,
+            marked_for_archive=False,
             message="hi",
             user_id=123,
-            created_at=NOW,
             is_voice=True,
             image_b64="abc",
             reply_to=reply,
@@ -274,16 +315,17 @@ class TestDbMessageToTurn(unittest.TestCase):
         turn = db_message_to_turn(db)
         assert isinstance(turn, BotTurn)
         assert turn.message_params == params
-        assert turn.plain_text is None
 
-    def test_bot_message_plain(self):
+    def test_bot_message_legacy_plain(self):
+        """Legacy plain-text bot messages are wrapped into message_params."""
         db = DbMessage(
             created_at=NOW, chat_id=CHAT_ID, user_id=BOT_USER_ID, message="hello"
         )
         turn = db_message_to_turn(db)
         assert isinstance(turn, BotTurn)
-        assert turn.plain_text == "hello"
-        assert turn.message_params is None
+        assert turn.message_params == [
+            {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}
+        ]
 
     def test_user_message(self):
         db = DbMessage(

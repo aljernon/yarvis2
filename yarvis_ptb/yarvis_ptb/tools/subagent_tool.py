@@ -446,7 +446,20 @@ class CreateSubagentTool(_SubagentBase):
                 created_at=now,
                 chat_id=self._chat_id,
                 user_id=BOT_USER_ID,
-                message="Understood, I've read the main conversation history. What would you like me to do?",
+                message="USE_CONTENT_FROM_META",
+                meta={
+                    "message_params": [
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Understood, I've read the main conversation history. What would you like me to do?",
+                                }
+                            ],
+                        }
+                    ]
+                },
                 agent_id=agent_id,
             ),
         )
@@ -563,7 +576,20 @@ class CreateYarvisSubagentTool(_SubagentBase):
                         created_at=now,
                         chat_id=self._chat_id,
                         user_id=BOT_USER_ID,
-                        message="Understood, I've read the main conversation history.",
+                        message="USE_CONTENT_FROM_META",
+                        meta={
+                            "message_params": [
+                                {
+                                    "role": "assistant",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Understood, I've read the main conversation history.",
+                                        }
+                                    ],
+                                }
+                            ]
+                        },
                         agent_id=agent_id,
                     ),
                 )
