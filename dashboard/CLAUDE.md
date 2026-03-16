@@ -52,7 +52,7 @@ Click "tokens?" on any turn to fetch per-block token counts via the API. Uses An
 
 ## Key constants
 
-- `BOT_USER_ID = -1`, `SYSTEM_USER_ID = -2`, `TOOL_CALL_USER_ID = -3`
+- `BOT_USER_ID = -1`, `SYSTEM_USER_ID = -2`
 - `PER_PAGE = 500`
 - `DEFAULT_CHAT_ID = ROOT_USER_ID` (Anton's Telegram ID)
 - Token counting model: `claude-sonnet-4-20250514`

@@ -53,9 +53,7 @@ Messages in the `messages` table have a `message` text field and a `meta` JSONB 
   ]
   ```
   The list alternates assistant turns (containing `tool_use` and/or `text` blocks) and user turns (containing `tool_result` blocks). The final assistant turn typically has the text response shown to the user. See `render_claude_response_short()` and `render_claude_response_verbose()` in `prompting.py` for rendering logic.
-- **Tool call messages** (user_id=-3): Legacy format, `message` contains text.
-
-Special user_id values: BOT_USER_ID=-1, SYSTEM_USER_ID=-2, TOOL_CALL_USER_ID=-3.
+Special user_id values: BOT_USER_ID=-1, SYSTEM_USER_ID=-2.
 
 ### Memory System
 The Core Knowledge Repository is implemented as a collection of text files that get included in Claude's system prompt. This allows the bot to maintain persistent knowledge across conversations.

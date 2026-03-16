@@ -21,7 +21,6 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "yarvis_ptb"))
 DATABASE_URL = os.environ.get("DATABASE_URL")
 BOT_USER_ID = -1
 SYSTEM_USER_ID = -2
-TOOL_CALL_USER_ID = -3
 
 os.environ.setdefault("SETTINGS_NAME", "anton")
 from yarvis_ptb.agent_config import AgentConfig
@@ -77,8 +76,7 @@ def extract_turn_usages(db_messages: list[DbMessage]) -> list[dict]:
                 api_idx += n
             else:
                 api_idx += 1
-        elif msg.user_id == TOOL_CALL_USER_ID:
-            pass  # 0 API messages
+        # Legacy tool-call messages (user_id=-3) no longer exist
         else:
             api_idx += 1
         end = api_idx
@@ -204,8 +202,6 @@ def get_sender_name(user_id: int) -> str:
         return "Bot"
     if user_id == SYSTEM_USER_ID:
         return "System"
-    if user_id == TOOL_CALL_USER_ID:
-        return "Tool Call"
     return USER_ID_MAP.get(user_id, f"User {user_id}")
 
 

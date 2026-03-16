@@ -28,7 +28,6 @@ from yarvis_ptb.settings import (
     HISTORY_LENGTH_LONG_TOKENS,
     ROOT_AGENT_USER_ID,
     SYSTEM_USER_ID,
-    TOOL_CALL_USER_ID,
     USER_ID_MAP,
 )
 from yarvis_ptb.storage import (
@@ -178,9 +177,6 @@ def convert_db_messages_to_claude_messages(
                 role_messages.extend(msg.meta["message_params"])
             else:
                 role_messages.append({"role": "assistant", "content": msg.message})
-        elif msg.user_id == TOOL_CALL_USER_ID:
-            # OLD, not used anymore
-            pass
         elif msg.user_id == SYSTEM_USER_ID:
             full_message = f"<system>System message created at {msg.created_at.isoformat()}: {msg.message}</system>"
             role_messages.append({"role": "user", "content": full_message})
