@@ -16,8 +16,6 @@ class AgentConfig(BaseModel):
     Used for both top-level agents and subagents.
     """
 
-    description: str = ""
-
     rendering: RenderingConfig = Field(default_factory=RenderingConfig)
 
     sampling: SamplingConfig = Field(default_factory=SamplingConfig)

@@ -393,7 +393,6 @@ class CreateSubagentTool(_SubagentBase):
             tool_subset = [t.strip() for t in tools.split(",") if t.strip()]
 
         agent_config = AgentConfig(
-            description=message[:500],
             rendering=RenderingConfig(
                 prompt_name="subagent",
                 autoload_memory_logic=skill_names,
@@ -516,7 +515,6 @@ class CreateYarvisSubagentTool(_SubagentBase):
             return err
 
         agent_config = AgentConfig(
-            description=message[:500],
             rendering=RenderingConfig(
                 prompt_name="anton_private",
                 autoload_memory_logic="auto",  # load all autoloaded CKR skills

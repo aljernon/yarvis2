@@ -238,7 +238,6 @@ async def run_force_reflect(
     }
 
     reflect_config = AgentConfig(
-        description="force-reflect",
         sampling=SamplingConfig(model="opus", tool_subset="all"),
     )
     agent_id = create_agent(
