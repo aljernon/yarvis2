@@ -9,4 +9,15 @@
 <div id="agent-container">
   <div class="loading" style="display:none" id="agent-loading">Loading agent view...</div>
 </div>
+<div id="chat-response-container"></div>
+<div class="chat-input-area" id="chat-input-area">
+  <textarea id="chat-input" placeholder="Send ephemeral message to agent (Ctrl+Enter to send)..." rows="2"></textarea>
+  <select id="chat-model">
+    <option value="opus">opus</option>
+    <option value="sonnet">sonnet</option>
+    <option value="haiku">haiku</option>
+  </select>
+  <button id="chat-send-btn" onclick="sendAgentChat()">Send</button>
+  <span id="chat-status" class="chat-status"></span>
+</div>
 {% endblock %}

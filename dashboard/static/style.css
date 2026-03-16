@@ -380,3 +380,43 @@ a.badge.agent:hover { background: #b090d0; }
   font-size: 0.8em;
   color: #7a6880;
 }
+
+/* Ephemeral chat input */
+.chat-input-area {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #d4b5c4;
+  color: #3a3040;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 40px;
+}
+
+.chat-input-area textarea:focus {
+  outline: none;
+  border-color: #45b5c4;
+}
+
+.chat-status {
+  font-size: 0.82em;
+  color: #7a6880;
+  align-self: center;
+}
+
+#chat-response-container {
+  margin-bottom: 16px;
+}
+
+#chat-response-container .turn-card {
+  border-left: 3px solid #45b5c4;
+}

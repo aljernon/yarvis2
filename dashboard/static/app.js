@@ -568,6 +568,10 @@ async function loadAgentView() {
     const data = await resp.json();
     if (loading) loading.style.display = "none";
 
+    // Set default model in dropdown
+    const modelSelect = document.getElementById("chat-model");
+    if (modelSelect) modelSelect.value = "opus";
+
     let html = "";
 
     // Stats
@@ -703,6 +707,11 @@ async function loadSubagentView(agentId) {
     }
     const data = await resp.json();
     if (loading) loading.style.display = "none";
+
+    // Set model dropdown from agent config
+    const modelSelect = document.getElementById("chat-model");
+    const agentModel = data.agent_config?.sampling?.model || "opus";
+    if (modelSelect) modelSelect.value = agentModel;
 
     let html = "";
 
@@ -843,6 +852,112 @@ async function loadAgents() {
   }
 }
 
+// ── Ephemeral agent chat ─────────────────────────────────────────────────────
+
+async function sendAgentChat() {
+  const input = document.getElementById("chat-input");
+  const btn = document.getElementById("chat-send-btn");
+  const status = document.getElementById("chat-status");
+  const responseContainer = document.getElementById("chat-response-container");
+  const message = input.value.trim();
+  if (!message) return;
+
+  // Get agent_id from URL if present
+  const params = new URLSearchParams(window.location.search);
+  const agentId = params.get("agent_id");
+
+  btn.disabled = true;
+  btn.textContent = "...";
+  status.textContent = "Sending to Claude...";
+  responseContainer.innerHTML = "";
+
+  try {
+    const body = { message };
+    if (agentId) body.agent_id = parseInt(agentId);
+    const model = document.getElementById("chat-model")?.value;
+    if (model) body.model = model;
+
+    const resp = await fetch("/api/agent-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      status.textContent = "Error: " + data.error;
+      return;
+    }
+
+    // Render usage
+    let usageHtml = "";
+    if (data.usage && data.usage.num_calls) {
+      const u = data.usage;
+      const costStr = u.cost_usd != null ? ` $${u.cost_usd.toFixed(4)}` : "";
+      const model = (u.model || "").replace(/^claude-/, "").replace(/-\d{8}$/, "");
+      usageHtml = `<span class="badge usage">${u.num_calls} call(s) | ${u.prompt_tokens} prompt | ${u.cached_tokens} cached | ${u.output_tokens} out${costStr} ${model}</span>`;
+    }
+    status.innerHTML = usageHtml || "Done";
+
+    let html = "";
+
+    // Render response message_params — group assistant + tool_result pairs
+    const msgs = data.message_params || [];
+    if (msgs.length > 0) {
+      let i = 0;
+      while (i < msgs.length) {
+        const startIdx = i;
+        const firstRole = msgs[i].role;
+        let endIdx = i + 1;
+        if (firstRole === "assistant") {
+          while (endIdx < msgs.length) {
+            const m = msgs[endIdx];
+            if (m.role === "user") {
+              const c = m.content;
+              const isToolResult = Array.isArray(c) && c.length > 0 && c.every(b => b.type === "tool_result");
+              if (isToolResult) { endIdx++; continue; }
+            }
+            if (m.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }
+            break;
+          }
+        }
+
+        let bodyHtml = "";
+        for (let j = startIdx; j < endIdx; j++) {
+          const m = msgs[j];
+          let msgBody = "";
+          if (typeof m.content === "string") {
+            if (m.content.trim()) {
+              const id = "txt-" + uid();
+              msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(m.content)}</div></div>`;
+            }
+          } else if (Array.isArray(m.content)) {
+            msgBody = renderContentBlocks(m.content);
+          }
+          if (msgBody) bodyHtml += `<div class="api-message">${msgBody}</div>`;
+        }
+
+        if (bodyHtml) {
+          const sc = firstRole === "assistant" ? "bot" : "";
+          html += `<div class="turn-card"><div class="turn-header"><span class="sender ${sc}">${escapeHtml(firstRole)}</span></div><div class="turn-body">${bodyHtml}</div></div>`;
+        }
+        i = endIdx;
+      }
+    } else {
+      html += `<div class="turn-card"><div class="turn-body"><em>(no response)</em></div></div>`;
+    }
+
+    responseContainer.innerHTML = html;
+    input.value = "";
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+    console.error("Agent chat failed:", e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Send";
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -877,6 +992,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       loadSubagentView(parseInt(agentId));
     } else {
       loadAgentView();
+    }
+
+    // Ctrl+Enter or Cmd+Enter to send
+    const chatInput = document.getElementById("chat-input");
+    if (chatInput) {
+      chatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          sendAgentChat();
+        }
+      });
     }
   }
 });
