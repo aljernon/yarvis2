@@ -6,34 +6,41 @@ Local-only Flask app for inspecting Yarvis conversation history and the full age
 
 ```bash
 SETTINGS_NAME=anton conda run -n clam python dashboard/app.py
+# or: ./launch_dashboard.sh
 # Runs on http://localhost:5001
 ```
 
 ## Architecture
 
-- **Backend**: `app.py` — Flask app with JSON API endpoints, uses the same DB and `yarvis_ptb` modules as the bot
+- **Backend**: Flask app with Blueprint-based route organization
 - **Frontend**: Vanilla JS (`static/app.js`) + CSS (`static/style.css`) + Jinja templates (`templates/`)
 - No build step, no npm, no bundler
+
+### Backend structure
+
+| File | Purpose |
+|------|---------|
+| `app.py` | Flask app creation, HTML routes, blueprint registration |
+| `helpers.py` | Shared utilities: DB connection, turn conversion, image truncation, usage extraction |
+| `token_counting.py` | Anthropic `count_tokens` with on-disk SHA-256 cache |
+| `routes/messages.py` | `/api/chats`, `/api/messages`, `/api/turn/<id>/tokens`, `/api/stats` |
+| `routes/agents.py` | `/api/agents`, `/api/subagent/<id>` |
+| `routes/agent_view.py` | `/api/agent-view`, `/api/agent-view/tokens` |
+| `routes/chat.py` | `/api/agent-chat` — ephemeral Claude execution (no DB save) |
+| `routes/schedules.py` | `/api/schedules` |
 
 ## Pages
 
 | Route | Template | Description |
 |-------|----------|-------------|
 | `/` / `/messages` | `messages.html` | Browse conversation history, paginated, with search and byte-size filters |
-| `/agent` | `agent.html` | POV: Full agent context window: system prompt + message history as Claude sees it |
+| `/agent` | `agent.html` | POV: Full agent context window + ephemeral chat input |
 | `/agents` | `agents.html` | List all agents with their fields, type, and message counts |
+| `/schedules` | `schedules.html` | Scheduled invocations |
 
-## API Endpoints
+## Ephemeral Chat
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/chats` | List chats with message counts |
-| `GET /api/messages?page=&chat_id=&search=&min_bytes=` | Paginated messages for a chat |
-| `GET /api/turn/<id>/tokens` | Token count breakdown for a single DB turn |
-| `GET /api/agents` | List all agents with metadata and message counts |
-| `GET /api/agent-view` | Full agent context (system prompt + history) |
-| `GET /api/agent-view/tokens` | Token counts for the full agent context |
-| `GET /api/stats` | Summary stats shown in nav bar |
+The agent view (`/agent`) has a message input at the bottom that sends a prompt to Claude with full tool access and renders the response inline. No messages are saved to the database. Model is selectable via dropdown (opus/sonnet/haiku).
 
 ## Frontend Rendering (`app.js`)
 
