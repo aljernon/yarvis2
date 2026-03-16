@@ -10,7 +10,6 @@ At 2am local time:
 """
 
 import datetime
-import json
 import logging
 
 from yarvis_ptb.agent_config import AgentConfig, AgentMeta
@@ -218,13 +217,8 @@ async def invoke_new_session(
 def build_new_session_message(curr, chat_id: int, yesterday, slug: str) -> DbMessage:
     """Build the new-session system message."""
     sessions = get_dau_sessions(curr, chat_id)
-    session_entries = []
-    for s in sessions[:5]:
-        s_summary = s["meta"].get("summary", "no summary")
-        session_entries.append(
-            json.dumps({"agent": s["slug"], "description": s_summary})
-        )
-    sessions_text = "\n".join(session_entries) if session_entries else "(none)"
+    session_entries = [s["slug"] for s in sessions[:5]]
+    sessions_text = ", ".join(session_entries) if session_entries else "(none)"
 
     new_session_msg = _load_boot_template().format(
         yesterday=yesterday, slug=slug, sessions_text=sessions_text
