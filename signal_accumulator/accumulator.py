@@ -111,6 +111,14 @@ def store_message(envelope):
     # Sync message (sent by account owner from another device)
     sync = envelope.get("syncMessage", {}).get("sentMessage", {})
 
+    # Skip messages with disappearing messages enabled
+    msg_obj = sync if sync.get("message") else dm
+    if msg_obj.get("expiresInSeconds", 0) > 0:
+        print(
+            f"Skipping expiring message from {source_name or source} (expires in {msg_obj['expiresInSeconds']}s)"
+        )
+        return
+
     text = dm.get("message") or sync.get("message")
     if not text:
         return
