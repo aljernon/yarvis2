@@ -50,3 +50,21 @@ sudo docker logs --tail 20 signal-combined
 
 Note: this replaces BOTH the old `signal-connection-server` and `signal-accumulator` containers.
 The signal-cli data volume (`signal-cli-data`) is reused from the old setup.
+
+## Important: signal-cli flags
+
+**NEVER use `--send-read-receipts`** with signal-cli. It causes signal-cli to ACK sync messages, which tells the primary device (phone) to stop syncing outgoing messages to this linked device. The damage persists server-side even after removing the flag — the only fix is re-linking the device. This broke sync messages in March 2026 and required a full re-link.
+
+## Re-linking the device
+
+If sync (outgoing) messages stop arriving, the device may need re-linking:
+
+```bash
+# From the VM — generates a QR code PNG
+sudo docker exec signal-combined curl -s 'http://localhost:8080/v1/qrcodelink?device_name=signal-accumulator' -o /tmp/qr.png
+sudo docker cp signal-combined:/tmp/qr.png /tmp/qr.png
+# Copy to local machine
+gcloud compute scp signal-api:/tmp/qr.png /tmp/signal-link-qr.png --zone us-central1-a --tunnel-through-iap
+```
+
+Then scan from Signal app > Settings > Linked Devices > Link New Device.

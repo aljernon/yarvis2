@@ -106,6 +106,16 @@ def store_message(envelope):
     source_name = envelope.get("sourceName", "")
     ts = envelope.get("timestamp", 0)
 
+    # Log envelope keys for debugging sync message issues
+    top_keys = sorted(envelope.keys())
+    sync_keys = (
+        sorted(envelope.get("syncMessage", {}).keys())
+        if "syncMessage" in envelope
+        else []
+    )
+    extra = f" syncMessage.keys={sync_keys}" if sync_keys else ""
+    print(f"Envelope from {source_name or source}: keys={top_keys}{extra}")
+
     # Direct incoming message
     dm = envelope.get("dataMessage", {})
     # Sync message (sent by account owner from another device)
