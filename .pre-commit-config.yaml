@@ -28,6 +28,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: pytest
+        name: pytest
+        entry: env SETTINGS_NAME=anton conda run -n clam python -m pytest yarvis_ptb/tests/ -x -q
+        language: system
+        types: [python]
+        pass_filenames: false
       - id: pyre
         name: pyre
         entry: conda run -n clam pyre

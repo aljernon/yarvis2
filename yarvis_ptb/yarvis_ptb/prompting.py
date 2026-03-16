@@ -23,15 +23,11 @@ from yarvis_ptb.on_disk_memory import render_memory_catalogue, resolve_memory_pr
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
 from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.settings import (
-    BOT_USER_ID,
     DEFAULT_TIMEZONE,
     HISTORY_LENGTH_LONG_TOKENS,
-    ROOT_AGENT_USER_ID,
     SYSTEM_USER_ID,
-    USER_ID_MAP,
 )
 from yarvis_ptb.storage import (
-    IMAGE_B64_META_FIELD,
     DbMessage,
     DbSchedule,
     Invocation,
@@ -39,6 +35,7 @@ from yarvis_ptb.storage import (
 )
 from yarvis_ptb.timezones import get_timezone
 from yarvis_ptb.tools.todo_tools import read_todos
+from yarvis_ptb.turns import db_message_to_turn
 
 logger = logging.getLogger(__name__)
 
@@ -168,68 +165,9 @@ def convert_db_messages_to_claude_messages(
     all_role_messages: list[MessageParam] = []
     api_msg_annotations: list[ApiMsgAnnotation] = []
 
-    messages = copy.deepcopy(messages)
-
     for turn_idx, msg in enumerate(messages):
-        role_messages: list[MessageParam] = []
-        if msg.user_id == BOT_USER_ID:
-            if msg.meta and "message_params" in msg.meta:
-                role_messages.extend(msg.meta["message_params"])
-            else:
-                role_messages.append({"role": "assistant", "content": msg.message})
-        elif msg.user_id == SYSTEM_USER_ID:
-            full_message = f"<system>System message created at {msg.created_at.isoformat()}: {msg.message}</system>"
-            role_messages.append({"role": "user", "content": full_message})
-        else:
-            meta = msg.meta or {}
-            content_chunks = []
-
-            if b64_image := meta.get(IMAGE_B64_META_FIELD):
-                content_chunks.append(
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": b64_image,
-                        },
-                    }
-                )
-
-            is_voice_message = meta.get("is_voice", False)
-            reply_prefix = ""
-            if reply_to := meta.get("reply_to"):
-                text = reply_to["text"]
-                display_text = text[:200] + "..." if len(text) > 200 else text
-                reply_prefix = f"[Replying to {reply_to['from']} at {reply_to.get('date', '?')}: \"{display_text}\"]\n"
-            sender = USER_ID_MAP.get(
-                msg.user_id,
-                "root agent"
-                if msg.user_id == ROOT_AGENT_USER_ID
-                else f"unknown user ({msg.user_id})",
-            )
-            full_message = f"<system>Sent by {sender} at {msg.created_at.isoformat()} {is_voice_message=}</system>\n{reply_prefix}{msg.message}"
-            content_chunks.append({"type": "text", "text": full_message})
-
-            role_messages.append({"role": "user", "content": content_chunks})
-        if (
-            role_messages
-            and not role_messages[-1]["content"]
-            and role_messages[-1]["role"] == "assistant"
-        ):
-            logger.debug(f"Empty message: {role_messages[-2:]}")
-            del role_messages[-1]
-
-        if msg.marked_for_archive:
-            for rm in role_messages:
-                if isinstance(rm["content"], str):
-                    rm["content"] = "[MARKED_FOR_DELETION] " + rm["content"]
-                else:
-                    assert isinstance(role_messages[0]["content"], list)
-                    if rm["content"] and rm["content"][0]["type"] == "text":
-                        rm["content"][0]["text"] = (
-                            "[MARKED_FOR_DELETION] " + rm["content"][0]["text"]
-                        )
+        turn = db_message_to_turn(msg)
+        role_messages = turn.render()
 
         for _ in role_messages:
             api_msg_annotations.append(
