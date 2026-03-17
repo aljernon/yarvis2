@@ -1,11 +1,14 @@
 """Agent POV: full context window view and token counting."""
 
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import psycopg2.extras
 from flask import Blueprint, jsonify
 
 from dashboard.helpers import (
     extract_api_msg_db_ids,
+    extract_api_msg_db_times,
     extract_turn_usages,
     get_db,
     get_tool_specs_for_agent_config,
@@ -18,9 +21,12 @@ from dashboard.token_counting import (
     strip_thinking_blocks,
 )
 from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
-from yarvis_ptb.prompting import build_claude_input
+from yarvis_ptb.prompting import (
+    build_claude_input,
+    convert_db_messages_to_claude_messages,
+)
 from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS
-from yarvis_ptb.storage import get_messages, get_schedules
+from yarvis_ptb.storage import DbMessage, get_messages, get_schedules
 
 bp = Blueprint("agent_view", __name__)
 
@@ -53,6 +59,73 @@ def _load_agent_context():
         conn.close()
 
 
+def _load_subagent_groups(chat_id: int, min_time, max_time) -> list[dict]:
+    """Fetch subagent messages between min_time and max_time, grouped by agent."""
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT m.id, m.created_at, m.chat_id, m.user_id, m.message, m.meta,
+                       m.marked_for_archive, m.agent_id,
+                       a.slug as agent_slug
+                FROM messages m
+                JOIN agents a ON m.agent_id = a.id
+                WHERE m.chat_id = %s
+                  AND m.agent_id IS NOT NULL
+                  AND m.is_visible = true
+                  AND m.created_at >= %s
+                  AND m.created_at <= %s
+                ORDER BY m.agent_id, m.created_at ASC, m.id ASC
+                """,
+                (chat_id, min_time, max_time),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    from yarvis_ptb.settings import DEFAULT_TIMEZONE
+
+    # Group by agent_id
+    agents: dict[int, dict] = {}
+    agent_messages: dict[int, list[DbMessage]] = defaultdict(list)
+    for row in rows:
+        aid = row["agent_id"]
+        if aid not in agents:
+            agents[aid] = {"agent_id": aid, "agent_slug": row["agent_slug"]}
+        agent_messages[aid].append(
+            DbMessage(
+                created_at=row["created_at"].astimezone(DEFAULT_TIMEZONE),
+                chat_id=row["chat_id"],
+                user_id=row["user_id"],
+                message=row["message"],
+                meta=row["meta"],
+                message_id=row["id"],
+                marked_for_archive=row["marked_for_archive"],
+                agent_id=row["agent_id"],
+            )
+        )
+
+    groups = []
+    for aid, info in agents.items():
+        db_msgs = agent_messages[aid]
+        api_msgs = convert_db_messages_to_claude_messages(db_msgs)
+        truncate_base64_images(api_msgs)
+        first_time = db_msgs[0].created_at.isoformat()
+        last_time = db_msgs[-1].created_at.isoformat()
+        groups.append(
+            {
+                **info,
+                "first_time": first_time,
+                "last_time": last_time,
+                "num_messages": len(api_msgs),
+                "num_db_turns": len(db_msgs),
+                "history": api_msgs,
+            }
+        )
+    return groups
+
+
 @bp.route("/api/agent-view")
 def api_agent_view():
     """Return the full agent view: system prompt + message history as Claude sees it."""
@@ -61,15 +134,25 @@ def api_agent_view():
     tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
     tool_names = [t["name"] for t in tool_specs]
 
+    # Fetch subagent messages in the same time range
+    subagent_groups = []
+    if messages:
+        chat_id = _get_default_chat_id()
+        min_time = messages[0].created_at
+        max_time = messages[-1].created_at
+        subagent_groups = _load_subagent_groups(chat_id, min_time, max_time)
+
     return jsonify(
         {
             "system_prompt": system_prompt,
             "history": history,
             "turn_usages": extract_turn_usages(messages),
             "db_ids": extract_api_msg_db_ids(messages),
+            "db_times": extract_api_msg_db_times(messages),
             "num_messages": len(history),
             "num_db_turns": len(messages),
             "tools": tool_names,
+            "subagent_groups": subagent_groups,
         }
     )
 

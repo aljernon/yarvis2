@@ -86,6 +86,30 @@ def extract_api_msg_db_ids(db_messages: list[DbMessage]) -> list[int | None]:
     return db_ids
 
 
+def extract_api_msg_db_times(db_messages: list[DbMessage]) -> list[str | None]:
+    """Map each API message index to its source DB message timestamp (ISO format)."""
+    db_times: list[str | None] = []
+    for msg in db_messages:
+        ts = msg.created_at.isoformat()
+        if msg.user_id == BOT_USER_ID:
+            if msg.meta and "message_params" in msg.meta:
+                params = msg.meta["message_params"]
+                n = len(params)
+                if (
+                    n > 0
+                    and not params[-1].get("content")
+                    and params[-1].get("role") == "assistant"
+                ):
+                    n -= 1
+                for _ in range(n):
+                    db_times.append(ts)
+            else:
+                db_times.append(ts)
+        else:
+            db_times.append(ts)
+    return db_times
+
+
 def extract_turn_usages(db_messages: list[DbMessage]) -> list[dict]:
     """Extract usage data from bot DB messages with their API message index ranges."""
     usages = []

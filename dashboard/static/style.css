@@ -135,6 +135,27 @@ a.badge.agent:hover { background: #b090d0; }
   border-left: 3px solid #a078c0;
 }
 
+/* Subagent group in agent POV */
+.subagent-group {
+  margin: 6px 0;
+  margin-left: 30px;
+  border-left: 3px solid #a078c0;
+  border-radius: 4px;
+  background: #f8f4fb;
+}
+.subagent-group-header {
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 0.88em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.subagent-group-header:hover { background: #f0e8f5; }
+.subagent-time { color: #777; font-size: 0.9em; }
+.subagent-group .turn-card { margin: 0; border-radius: 0; }
+.subagent-group .collapsible-content { padding-left: 8px; }
+
 .turn-body {
   padding: 4px 12px;
   font-size: 0.88em;

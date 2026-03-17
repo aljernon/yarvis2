@@ -21,29 +21,11 @@ from yarvis_ptb.settings import DEFAULT_TIMEZONE, ROOT_AGENT_USER_ID, ROOT_USER_
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import DbMessage, Invocation, get_messages, get_schedules
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
-from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult
+from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
+from yarvis_ptb.tools.tool_spec import LocalTool
 from yarvis_ptb.turns import UserTurn
 
 bp = Blueprint("chat", __name__)
-
-
-class _CliSendMessageTool(LocalTool):
-    """Intercepts send_message: captures text instead of sending to Telegram."""
-
-    def __init__(self):
-        self._original_spec = None
-
-    def set_original_spec(self, spec):
-        self._original_spec = spec
-
-    def spec(self):
-        return self._original_spec
-
-    async def _execute(self, **kwargs) -> ToolResult:
-        return ToolResult.success(
-            "Message sent successfully.",
-            stop_after=bool(kwargs.get("final", False)),
-        )
 
 
 async def _run_ephemeral_chat(
@@ -117,9 +99,7 @@ async def _run_ephemeral_chat(
             tool_map: dict[str, LocalTool] = {}
             for t in all_local_tool_objects:
                 if t.name == "send_message":
-                    cli_tool = _CliSendMessageTool()
-                    cli_tool.set_original_spec(t.spec())
-                    tool_map[t.name] = cli_tool
+                    tool_map[t.name] = NoOpSendMessageTool(t.spec())
                 else:
                     tool_map[t.name] = t
 

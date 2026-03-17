@@ -145,6 +145,54 @@ function renderMessageParams(meta, turnId) {
   return html;
 }
 
+function renderSubagentGroup(group) {
+  const collapseId = "subagent-" + uid();
+  const slug = escapeHtml(group.agent_slug || `Agent #${group.agent_id}`);
+  const timeRange = `${formatTimestamp(group.first_time)} – ${formatTimestamp(group.last_time)}`;
+
+  let bodyHtml = "";
+  // Group subagent messages into turn cards (same logic as main view)
+  let si = 0;
+  while (si < group.history.length) {
+    const startIdx = si;
+    const firstRole = group.history[si].role;
+    let endIdx = si + 1;
+    if (firstRole === "assistant") {
+      while (endIdx < group.history.length) {
+        const msg = group.history[endIdx];
+        if (msg.role === "user") {
+          const content = msg.content;
+          const isToolResult = Array.isArray(content) && content.length > 0 &&
+            content.every(b => b.type === "tool_result");
+          if (isToolResult) { endIdx++; continue; }
+        }
+        if (msg.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }
+        break;
+      }
+    }
+    const sc = firstRole === "assistant" ? "bot" : "";
+    let turnBody = "";
+    for (let j = startIdx; j < endIdx; j++) {
+      const msg = group.history[j];
+      let msgBody = "";
+      if (typeof msg.content === "string") {
+        const id = "txt-" + uid();
+        msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.content)}</div></div>`;
+      } else if (Array.isArray(msg.content)) {
+        msgBody = renderContentBlocks(msg.content);
+      }
+      if (msgBody) turnBody += `<div class="api-message">${msgBody}</div>`;
+    }
+    if (turnBody) {
+      const roleLabel = firstRole;
+      bodyHtml += `<div class="turn-card"><div class="turn-header"><span class="sender ${sc}">${escapeHtml(roleLabel)}</span></div><div class="turn-body">${turnBody}</div></div>`;
+    }
+    si = endIdx;
+  }
+
+  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow" id="arrow-${collapseId}">&#9654;</span> <span class="badge agent">${slug}</span> <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span></div><div class="collapsible-content" id="${collapseId}">${bodyHtml}</div></div>`;
+}
+
 function shortModelName(model) {
   return (model || "").replace(/^claude-/, "").replace(/-\d{8}$/, "");
 }
@@ -627,6 +675,23 @@ async function loadAgentView() {
       html += toolsHtml;
     }
 
+    // Prepare subagent groups sorted by first_time for chronological interleaving
+    const subagentGroups = (data.subagent_groups || []).slice().sort((a, b) =>
+      a.first_time.localeCompare(b.first_time)
+    );
+    let nextSubagentIdx = 0;
+
+    // Helper: render all subagent groups whose first_time <= given timestamp
+    function flushSubagents(beforeTime) {
+      let out = "";
+      while (nextSubagentIdx < subagentGroups.length &&
+             (!beforeTime || subagentGroups[nextSubagentIdx].first_time <= beforeTime)) {
+        out += renderSubagentGroup(subagentGroups[nextSubagentIdx]);
+        nextSubagentIdx++;
+      }
+      return out;
+    }
+
     // Message history — group into turn-cards like messages page
     // Each turn-card contains consecutive messages of compatible roles
     // (assistant messages until a user message, then user message)
@@ -653,6 +718,10 @@ async function loadAgentView() {
       } else {
         endIdx = i + 1;
       }
+
+      // Insert any subagent groups that occurred before this turn
+      const turnTime = data.db_times ? data.db_times[startIdx] : null;
+      if (turnTime) html += flushSubagents(turnTime);
 
       const isSystemMsg = firstRole === "user" && typeof data.history[startIdx].content === "string" && data.history[startIdx].content.startsWith("<system>System message");
       const sc = firstRole === "assistant" ? "bot" : (isSystemMsg ? "system" : "");
@@ -697,6 +766,9 @@ async function loadAgentView() {
       }
       i = endIdx;
     }
+
+    // Flush any remaining subagent groups after all main turns
+    html += flushSubagents(null);
 
     container.innerHTML = html;
   } catch (e) {
