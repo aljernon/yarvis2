@@ -32,31 +32,10 @@ from yarvis_ptb.storage import (
     get_schedules,
 )
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
-from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult
+from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
 from yarvis_ptb.yarvis_ptb.logging import setup_logging
 
 app = typer.Typer()
-
-
-class _CliSendMessageTool(LocalTool):
-    """Intercepts send_message: prints to terminal instead of sending to Telegram."""
-
-    def __init__(self):
-        self._original_spec = None
-
-    def set_original_spec(self, spec):
-        self._original_spec = spec
-
-    def spec(self):
-        return self._original_spec
-
-    async def _execute(self, **kwargs) -> ToolResult:
-        message = kwargs["message"]
-        print(f"\n{'='*60}\n[send_message]\n{message}\n{'='*60}\n")
-        return ToolResult.success(
-            "Message sent successfully.",
-            stop_after=bool(kwargs.get("final", False)),
-        )
 
 
 @app.command()
@@ -142,9 +121,7 @@ async def main(prompt: str, verbose: bool, agent: str | None = None):
             tool_map = {}
             for t in all_local_tool_objects:
                 if t.name == "send_message":
-                    cli_tool = _CliSendMessageTool()
-                    cli_tool.set_original_spec(t.spec())
-                    tool_map[t.name] = cli_tool
+                    tool_map[t.name] = NoOpSendMessageTool(t.spec())
                 else:
                     tool_map[t.name] = t
 

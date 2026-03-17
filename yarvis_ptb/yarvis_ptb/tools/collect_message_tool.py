@@ -1,8 +1,8 @@
-"""No-op send_message tool for frozen agents.
+"""Non-Telegram send_message variants.
 
-Same interface as SendMessageTool, but doesn't actually send to Telegram.
-The message content is captured in message_params as tool_use blocks,
-which _extract_agent_messages() already knows how to extract.
+CollectMessageTool — for subagents: own spec with "return info to caller" wording.
+NoOpSendMessageTool — for CLI/dashboard replay: keeps the real send_message spec
+but doesn't send to Telegram.
 """
 
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
@@ -37,5 +37,25 @@ class CollectMessageTool(LocalTool):
     async def _execute(self, **kwargs) -> ToolResult:
         return ToolResult.success(
             "Message collected.",
+            stop_after=bool(kwargs.get("final", False)),
+        )
+
+
+class NoOpSendMessageTool(LocalTool):
+    """Keeps the real send_message spec but doesn't send to Telegram.
+
+    Use for CLI tools and dashboard replay where you want the model to see
+    the exact same tool definition as production.
+    """
+
+    def __init__(self, original_spec: ToolSpec):
+        self._spec = original_spec
+
+    def spec(self) -> ToolSpec:
+        return self._spec
+
+    async def _execute(self, **kwargs) -> ToolResult:
+        return ToolResult.success(
+            "Message sent successfully.",
             stop_after=bool(kwargs.get("final", False)),
         )

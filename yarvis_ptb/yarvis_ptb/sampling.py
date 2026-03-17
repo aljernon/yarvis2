@@ -22,8 +22,8 @@ class SamplingConfig(BaseModel):
     max_tokens: int = 16000
     """Max output tokens per API call."""
 
-    thinking: Literal["adaptive", "none"] = "adaptive"
-    """Thinking mode for the model."""
+    thinking: str = "adaptive"
+    """Thinking mode: "adaptive", "none", or an int for budget_tokens."""
 
     output_mode: Literal["text", "tool_message"] = "text"
     """How the agent communicates its response.

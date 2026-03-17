@@ -478,8 +478,11 @@ async def _process_query_with_tools(
             ),
             # betas=["token-efficient-tools-2025-02-19"],
         )
-        if thinking == "adaptive" and model_name in ADAPTIVE_THINKING_MODELS:
-            kwargs["thinking"] = {"type": "adaptive"}
+        if thinking != "none" and model_name in ADAPTIVE_THINKING_MODELS:
+            if thinking == "adaptive":
+                kwargs["thinking"] = {"type": "adaptive"}
+            else:
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": int(thinking)}
 
         count = -2
         num_cached_tokens = -2

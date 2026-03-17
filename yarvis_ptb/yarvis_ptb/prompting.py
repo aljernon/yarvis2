@@ -349,9 +349,7 @@ def render_mesage_param_exact(rec: MessageParam) -> list[str]:
     return formatted
 
 
-def render_claude_response_short(
-    mesages: list[MessageParam], remove_thinking: bool = True
-) -> str:
+def render_claude_response_short(mesages: list[MessageParam]) -> str:
     tool_calls = []
     tool_results = []
     chunks = []
@@ -369,19 +367,15 @@ def render_claude_response_short(
                     tool_results.append(content)
                     err_tag = "[E]" if tool_results[-1]["is_error"] else "[S]"
                     chunks.append(f"{err_tag}{tool_calls[-1]['name']}")
-                elif content["type"] in ("thinking", "redacted_thinking"):
-                    pass
+                elif content["type"] == "thinking":
+                    text = content.get("thinking", "")
+                    preview = text[:200] + "..." if len(text) > 200 else text
+                    chunks.append(f"[thinking] {preview}")
+                elif content["type"] == "redacted_thinking":
+                    chunks.append("[redacted_thinking]")
                 else:
                     logger.error(f"Unknown content type: {content}")
                     chunks.append(content)
-    if remove_thinking:
-        text = "\n".join(chunks)
-        chunks = re.split(r"(<thinking>.*?</thinking>)", text, flags=re.DOTALL)
-        chunks = [
-            x.strip()
-            for x in chunks
-            if not x.startswith("<thinking>") or not x.endswith("</thinking>")
-        ]
     text = "\n".join(chunks)
     text = re.sub("\n\n+", "\n\n", text)
     return text
@@ -430,8 +424,11 @@ def render_claude_response_verbose(
 
                     chunks.append(f"{status}\n```\n{result_str}\n```")
 
-                elif content["type"] in ("thinking", "redacted_thinking"):
-                    pass
+                elif content["type"] == "thinking":
+                    text = content.get("thinking", "")
+                    chunks.append(f"**[thinking]**\n{text}")
+                elif content["type"] == "redacted_thinking":
+                    chunks.append("**[redacted_thinking]**")
                 else:
                     logger.error(f"Unknown content type: {content}")
                     chunks.append(content)
