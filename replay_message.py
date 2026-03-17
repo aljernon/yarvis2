@@ -1,11 +1,11 @@
 """Replay a specific message: load history up to a given message ID, invoke the model, print response.
 
 Usage:
-    conda run -n clam python replay_message.py 16956
-    conda run -n clam python replay_message.py 16956 --thinking=none
-    conda run -n clam python replay_message.py 16956 --model=sonnet
-    conda run -n clam python replay_message.py 16956 --system-suffix="Always verify claims with tools before responding."
-    conda run -n clam python replay_message.py 16957 --append-message="You don't remember?"
+    SETTINGS_NAME=anton conda run -n clam python replay_message.py 16956
+    SETTINGS_NAME=anton conda run -n clam python replay_message.py 16956 --thinking=none
+    SETTINGS_NAME=anton conda run -n clam python replay_message.py 16956 --model=sonnet
+    SETTINGS_NAME=anton conda run -n clam python replay_message.py 16956 --system-suffix="Always verify claims with tools before responding."
+    SETTINGS_NAME=anton conda run -n clam python replay_message.py 16957 --append-message="You don't remember?"
 
 Nothing is saved to DB — connection is rolled back on exit.
 send_message is replaced with CollectMessageTool (no Telegram send).
