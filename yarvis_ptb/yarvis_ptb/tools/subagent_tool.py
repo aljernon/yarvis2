@@ -46,11 +46,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 YARVIS_SUBAGENT_SYSTEM_MESSAGE = (
-    "<system>\n"
     "You are running as a Yarvis subagent — a separate agent invoked by the main Yarvis agent. "
     "You have the full Yarvis identity and tools, but your `send_message` calls return "
-    "messages to the parent agent, NOT to Anton directly. The parent decides what to show the user.\n"
-    "</system>"
+    "messages to the parent agent, NOT to Anton directly. The parent decides what to show the user."
 )
 
 

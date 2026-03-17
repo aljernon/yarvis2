@@ -36,7 +36,7 @@ class SystemTurn(BaseTurn):
     message: str
 
     def render(self) -> list[MessageParam]:
-        text = f"<system>System message created at {self.created_at.isoformat()}: {self.message}</system>"
+        text = f"<meta>System message created at {self.created_at.isoformat()}</meta>\n<system>{self.message}</system>"
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]
         if self.marked_for_archive:
             _apply_archive_prefix(role_messages)
