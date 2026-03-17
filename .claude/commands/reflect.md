@@ -21,7 +21,28 @@ ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -1
 ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -6 | tail -5
 ```
 
-Read each session file. Sessions can be large — for files over 200KB, read the first 500 and last 500 lines to capture the start and end of the conversation.
+Read each session file. Sessions are very large JSONL with noisy metadata (base64 signatures, tool IDs, etc.). **Always preprocess with jq first** to extract just the useful content:
+
+```bash
+# Extract user messages and assistant text from a session JSONL
+jq -r '
+  select(.type == "user" and .message.role == "user") |
+    .message.content |
+    if type == "string" then "USER: " + .
+    elif type == "array" then
+      [.[] | select(.type == "text") | .text] | join("\n") | "USER: " + .
+    else empty end
+' "$SESSION_FILE"
+
+jq -r '
+  select(.type == "assistant") |
+    .message.content[]? |
+    select(.type == "text") |
+    "ASSISTANT: " + .text
+' "$SESSION_FILE"
+```
+
+Combine both outputs and read the result. For very long sessions, pipe through `head -500` and `tail -500`.
 
 ## Step 2: Analyze sessions for improvement signals
 

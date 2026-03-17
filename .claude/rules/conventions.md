@@ -8,3 +8,5 @@
 - After making functional changes, test with `cli_prompt.py` before declaring done
 - Use `client.messages.count_tokens()` for token budget enforcement, not character-count heuristics
 - Never pass pytz timezones to datetime constructor; always use `tz.localize(dt)`. Prefer `America/Los_Angeles` over `US/Pacific`
+- When referencing code locations, use relative paths from project root (e.g. `yarvis_ptb/yarvis_ptb/file.py:42`), not bare filenames. Never put punctuation (`.`, `,`) immediately after a `file:line` reference — it breaks clickability
+- For DB access, use `from yarvis_ptb.storage import connect` — don't re-search for the pattern. `connect()` returns a psycopg2 connection context manager

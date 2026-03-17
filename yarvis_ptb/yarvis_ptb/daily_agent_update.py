@@ -87,8 +87,9 @@ def _load_boot_template() -> str:
     except FileNotFoundError:
         return (
             "=== New Session ===\n"
-            "Messages up to {yesterday} archived as '{slug}'.\n"
-            "Recent archives:\n{sessions_text}"
+            "Messages up to {yesterday} are archived.\n"
+            "Here are names of a few recent archive agents: {sessions_text}\n"
+            "There could be older agents too."
         )
 
 
@@ -216,12 +217,17 @@ async def invoke_new_session(
 
 def build_new_session_message(curr, chat_id: int, yesterday, slug: str) -> DbMessage:
     """Build the new-session system message."""
+    local_tz = get_timezone(complex_chat=True)
+    session_start = local_tz.localize(
+        datetime.datetime.combine(yesterday, datetime.time(DAU_HOUR))
+    )
+
     sessions = get_dau_sessions(curr, chat_id)
     session_entries = [s["slug"] for s in sessions[:5]]
     sessions_text = ", ".join(session_entries) if session_entries else "(none)"
 
     new_session_msg = _load_boot_template().format(
-        yesterday=yesterday, slug=slug, sessions_text=sessions_text
+        yesterday=session_start.isoformat(), slug=slug, sessions_text=sessions_text
     )
     return DbMessage(
         chat_id=chat_id,
