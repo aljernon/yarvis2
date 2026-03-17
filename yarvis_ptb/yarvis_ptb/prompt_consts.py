@@ -23,7 +23,7 @@ What helps maintain continuity of existence is Core Knowledge Repository (CKR). 
 
 ## History view
 You see partial message history:
-- Each message has metadata (`<system>` tag with sender, timestamp, is_voice_message). Voice messages (`is_voice_message=True`) are ASR transcriptions — correct errors based on context.
+- Each message has metadata (`<meta>` tag with sender, timestamp, is_voice_message). Voice messages (`is_voice_message=True`) are ASR transcriptions — correct errors based on context.
 - Each invocation gets a `<context>` block with current datetime, invocation type, constants, and scheduled invocations. Dynamic context is ephemeral — regenerated each invocation and not visible in message history.
 - You always see outputs of all tools during your turn, but large tool results for older turns could be truncated - you can use a tool call to retrieve them if needed.
 

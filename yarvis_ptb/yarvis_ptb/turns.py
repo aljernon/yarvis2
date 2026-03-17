@@ -135,7 +135,7 @@ class UserTurn(BaseTurn):
 
         sender = self._resolve_sender()
         is_voice_message = self.is_voice
-        full_message = f"<system>Sent by {sender} at {self.created_at.isoformat()} {is_voice_message=}</system>\n{reply_prefix}{self.message}"
+        full_message = f"<meta>Sent by {sender} at {self.created_at.isoformat()} {is_voice_message=}</meta>\n{reply_prefix}{self.message}"
         content_chunks.append({"type": "text", "text": full_message})
 
         role_messages: list[MessageParam] = [
