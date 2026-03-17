@@ -4,6 +4,7 @@ import psycopg2.extras
 from flask import Blueprint, jsonify
 
 from dashboard.helpers import (
+    extract_api_msg_db_ids,
     extract_turn_usages,
     get_db,
     truncate_base64_images,
@@ -101,6 +102,7 @@ def api_subagent(agent_id: int):
                 "system_prompt": system_prompt,
                 "history": api_messages,
                 "turn_usages": extract_turn_usages(db_messages),
+                "db_ids": extract_api_msg_db_ids(db_messages),
                 "num_messages": len(api_messages),
                 "num_db_turns": len(db_messages),
             }
