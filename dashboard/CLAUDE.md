@@ -5,7 +5,7 @@ Local-only Flask app for inspecting Yarvis conversation history and the full age
 ## Running
 
 ```bash
-SETTINGS_NAME=anton conda run -n clam python dashboard/app.py
+conda run -n clam python dashboard/app.py
 # or: ./launch_dashboard.sh
 # Runs on http://localhost:5001
 ```

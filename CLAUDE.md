@@ -144,30 +144,30 @@ To work on this project locally:
 ### Running Python
 `activate.zsh` is the ground truth for environment setup. Source it or replicate its variables before running anything. Currently this means:
 ```
-SETTINGS_NAME=anton conda run -n clam python -c "..."
+conda run -n clam python -c "..."
 ```
 
 ### Testing changes
 Use `cli_prompt.py` to test changes end-to-end. It loads full conversation history from DB, runs Claude with all tools, and prints the response to terminal — without saving anything back to DB or involving Telegram.
 ```
-SETTINGS_NAME=anton conda run -n clam python cli_prompt.py "Your test prompt here"
-SETTINGS_NAME=anton conda run -n clam python cli_prompt.py -v "Compute 2+2 in python"  # verbose: shows tool call details
+conda run -n clam python cli_prompt.py "Your test prompt here"
+conda run -n clam python cli_prompt.py -v "Compute 2+2 in python"  # verbose: shows tool call details
 ```
 
 ### Sending messages to the live bot
 Use `send_to_yarvis.py` to send a message to the deployed Yarvis bot on Telegram as the user (via Telethon). Useful for triggering the bot end-to-end from the command line, then checking the response in DB with `dump_messages.py`.
 ```
-SETTINGS_NAME=anton conda run -n clam python send_to_yarvis.py "is sms up?"
+conda run -n clam python send_to_yarvis.py "is sms up?"
 ```
 Note: `cli_prompt.py` runs Claude **locally** — it does not talk to the deployed Heroku bot. Use `send_to_yarvis.py` when you need to test the live deployment.
 
 ### Dumping messages
 Use `dump_messages.py` to dump recent conversation messages from the database to stdout in Claude MessageParam format. Useful for debugging message storage and rendering.
 ```
-SETTINGS_NAME=anton conda run -n clam python dump_messages.py              # last 24h, up to 200 messages
-SETTINGS_NAME=anton conda run -n clam python dump_messages.py -s 2026-02-27  # since a specific date
-SETTINGS_NAME=anton conda run -n clam python dump_messages.py -n 50          # limit to 50 messages
-SETTINGS_NAME=anton conda run -n clam python dump_messages.py --max-line-length 0  # no line truncation (default: 200 chars)
+conda run -n clam python dump_messages.py              # last 24h, up to 200 messages
+conda run -n clam python dump_messages.py -s 2026-02-27  # since a specific date
+conda run -n clam python dump_messages.py -n 50          # limit to 50 messages
+conda run -n clam python dump_messages.py --max-line-length 0  # no line truncation (default: 200 chars)
 ```
 
 # Style guide

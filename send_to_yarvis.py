@@ -2,7 +2,7 @@
 """Send a message to Yarvis bot on Telegram as the user (via Telethon).
 
 Usage:
-    SETTINGS_NAME=anton conda run -n clam python send_to_yarvis.py "is sms up?"
+    conda run -n clam python send_to_yarvis.py "is sms up?"
 """
 
 import asyncio

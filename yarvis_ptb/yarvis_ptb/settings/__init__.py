@@ -5,10 +5,7 @@ from typing import cast
 from yarvis_ptb.local_settings import LocalSettings
 from yarvis_ptb.settings.main import *
 
-if not os.environ.get("SETTINGS_NAME"):
-    raise ValueError("SETTINGS_NAME environment variable must be set")
-
-SETTINGS_NAME = os.environ["SETTINGS_NAME"]
+SETTINGS_NAME = os.environ.get("SETTINGS_NAME", "anton")
 
 
 # Dynamically import the settings module
