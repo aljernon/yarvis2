@@ -63,6 +63,29 @@ def truncate_base64_images(api_messages: list[dict]) -> None:
                         source["data"] = "[truncated]"
 
 
+def extract_api_msg_db_ids(db_messages: list[DbMessage]) -> list[int | None]:
+    """Map each API message index to its source DB message ID."""
+    db_ids: list[int | None] = []
+    for msg in db_messages:
+        if msg.user_id == BOT_USER_ID:
+            if msg.meta and "message_params" in msg.meta:
+                params = msg.meta["message_params"]
+                n = len(params)
+                if (
+                    n > 0
+                    and not params[-1].get("content")
+                    and params[-1].get("role") == "assistant"
+                ):
+                    n -= 1
+                for _ in range(n):
+                    db_ids.append(msg.message_id)
+            else:
+                db_ids.append(msg.message_id)
+        else:
+            db_ids.append(msg.message_id)
+    return db_ids
+
+
 def extract_turn_usages(db_messages: list[DbMessage]) -> list[dict]:
     """Extract usage data from bot DB messages with their API message index ranges."""
     usages = []

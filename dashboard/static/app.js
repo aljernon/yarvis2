@@ -668,10 +668,22 @@ async function loadAgentView() {
 
       if (bodyHtml) {
         const rangeLabel = startIdx === endIdx - 1 ? `#${startIdx}` : `#${startIdx}-${endIdx - 1}`;
+        // Show absolute DB message IDs if available
+        let dbIdLabel = "";
+        if (data.db_ids) {
+          const dbIdsInRange = new Set();
+          for (let j = startIdx; j < endIdx && j < data.db_ids.length; j++) {
+            if (data.db_ids[j] != null) dbIdsInRange.add(data.db_ids[j]);
+          }
+          if (dbIdsInRange.size > 0) {
+            const ids = [...dbIdsInRange];
+            dbIdLabel = ids.length === 1 ? `db:${ids[0]}` : `db:${ids.join(",")}`;
+          }
+        }
         const roleLabel = isSystemMsg ? "system" : firstRole;
         const turnUsage = findUsageForRange(data.turn_usages, startIdx, endIdx);
         const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
-        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span><span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
+        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
       }
       i = endIdx;
     }

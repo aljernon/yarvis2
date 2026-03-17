@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Blueprint, jsonify
 
 from dashboard.helpers import (
+    extract_api_msg_db_ids,
     extract_turn_usages,
     get_db,
     get_tool_specs_for_agent_config,
@@ -65,6 +66,7 @@ def api_agent_view():
             "system_prompt": system_prompt,
             "history": history,
             "turn_usages": extract_turn_usages(messages),
+            "db_ids": extract_api_msg_db_ids(messages),
             "num_messages": len(history),
             "num_db_turns": len(messages),
             "tools": tool_names,
