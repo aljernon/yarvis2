@@ -1,9 +1,10 @@
 """Message browsing and turn token counting routes."""
 
+import base64
 import math
 
 import psycopg2.extras
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from dashboard.helpers import (
     PER_PAGE,
@@ -249,5 +250,25 @@ def api_stats():
                 "unique_chats": unique_chats,
             }
         )
+    finally:
+        conn.close()
+
+
+@bp.route("/api/message/<int:msg_id>/image")
+def api_message_image(msg_id: int):
+    """Serve the raw image bytes for a message that has image_b64 in meta."""
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT meta FROM messages WHERE id = %s", (msg_id,))
+            row = cur.fetchone()
+            if not row:
+                return Response("not found", status=404)
+        meta = row["meta"] or {}
+        image_b64 = meta.get("image_b64")
+        if not image_b64:
+            return Response("no image", status=404)
+        image_bytes = base64.b64decode(image_b64)
+        return Response(image_bytes, content_type="image/jpeg")
     finally:
         conn.close()

@@ -57,9 +57,17 @@ async function loadStats() {
 let currentPage = 1;
 let currentChatId = null;
 
-function renderContentBlocks(blocks) {
+function renderContentBlocks(blocks, dbMsgId) {
   let html = "";
   for (const block of blocks) {
+    if (block.type === "image") {
+      if (dbMsgId) {
+        html += `<div class="image-block"><a href="/api/message/${dbMsgId}/image" target="_blank"><img src="/api/message/${dbMsgId}/image" alt="Image" loading="lazy"></a></div>`;
+      } else {
+        html += `<div class="image-block" style="color:red;font-weight:bold">[BUG: image block without dbMsgId]</div>`;
+      }
+      continue;
+    }
     if (block.type === "text") {
       if (!block.text || !block.text.trim()) continue;
       const id = "txt-" + uid();
@@ -269,7 +277,8 @@ async function loadMessages(page) {
     } else {
       // Non-bot messages: wrap in a single api-message block
       const id = "txt-" + uid();
-      rendered = `<div class="api-message" data-turn-id="${turnId}" data-msg-idx="0"><div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.message)}</div></div></div>`;
+      const imageHtml = msg.has_image ? `<div class="image-block"><img src="/api/message/${msg.id}/image" alt="User image" loading="lazy"></div>` : "";
+      rendered = `<div class="api-message" data-turn-id="${turnId}" data-msg-idx="0">${imageHtml}<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.message)}</div></div></div>`;
     }
     const rawJson = escapeHtml(JSON.stringify(msg.api_messages, null, 2));
 
@@ -656,7 +665,8 @@ async function loadAgentView() {
           const bytes = new Blob([msg.content]).size;
           msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.content)}</div></div>`;
         } else if (Array.isArray(msg.content)) {
-          msgBody = renderContentBlocks(msg.content);
+          const dbId = data.db_ids ? data.db_ids[j] : null;
+          msgBody = renderContentBlocks(msg.content, dbId);
           if (!msgBody && msg.content.length === 0) {
             msgBody = `<div class="text-block"><em>(empty content)</em></div>`;
           }
