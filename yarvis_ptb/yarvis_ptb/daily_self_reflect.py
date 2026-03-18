@@ -490,6 +490,36 @@ async def _run_reflect_inner(
     add_debug_message_to_queue(f"**{label.upper()}: completed**\n{summary}")
 
 
+async def should_midnight_reflect(curr, chat_id: int) -> bool:
+    """Check if a midnight end-of-day reflection should run.
+
+    Runs once at midnight if there are user messages since the last reflection.
+    """
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    local_hour = now.astimezone(get_timezone(complex_chat=True)).hour
+    if local_hour != 0:
+        return False
+
+    # Check if we already reflected since the last user message
+    last_reflect = _get_last_reflect_time(curr, chat_id)
+    recent_messages = get_messages(curr, chat_id, limit=50)
+
+    last_user_msg = None
+    for msg in reversed(recent_messages):
+        if msg.user_id > 0:
+            last_user_msg = msg
+            break
+
+    if last_user_msg is None:
+        return False
+
+    # Already reflected after last user message — skip
+    if last_reflect is not None and last_reflect > last_user_msg.created_at:
+        return False
+
+    return True
+
+
 async def run_auto_reflect(curr, chat_id: int, application, bot) -> None:
     """Run idle-triggered self-reflection. Acquires COMPLEX_CHAT_LOCK."""
     if COMPLEX_CHAT_LOCK.locked():
