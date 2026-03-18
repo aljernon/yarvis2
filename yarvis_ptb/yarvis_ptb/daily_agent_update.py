@@ -48,7 +48,7 @@ FREEZE_MSG_TEMPLATE = (
     "Do not ask follow-up questions or make "
     "conversational small talk. Just provide the facts. "
     "You may use tools if needed, but do not use them to look up current "
-    "state (e.g., reading CKR) — the caller can do that itself. "
+    "state (e.g., reading workspace files) — the caller can do that itself. "
     "Your value is the knowledge in your conversation history."
 )
 
@@ -73,7 +73,7 @@ SUMMARY_PROMPT_TEMPLATE = (
 
 
 def _load_boot_template() -> str:
-    """Load BOOT.md from CKR, fall back to a minimal default."""
+    """Load BOOT.md from workspace, fall back to a minimal default."""
     boot_path = MEMORY_PATH / "BOOT.md"
     try:
         return boot_path.read_text()

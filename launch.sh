@@ -39,14 +39,14 @@ git clone -o origin git@github.com:aljernon/yarvis.git ~/repo
 echo "$(date) DONE clone yarvis"
 
 echo "$(date) START clone memory"
-git clone -o origin git@github.com:aljernon/memory.git ~/core_knowledge
+git clone -o origin git@github.com:aljernon/memory.git ~/workspace
 echo "$(date) DONE clone memory"
 
 # Setup repository and pre-commit hooks
 echo "$(date) START repo setup"
 (
     cd ~/repo
-    ln -s /app/core_knowledge
+    ln -s /app/workspace
     # Install and setup pre-commit properly
     pip install pre-commit
     pre-commit install
@@ -64,12 +64,12 @@ updater_logseq() {
 
 updater_logseq &
 
-updater_core_knowledge() {
-	( cd ~/core_knowledge && git pull )
+updater_workspace() {
+	( cd ~/workspace && git pull )
 	sleep $(( 5 * 60 ))
 }
 
-updater_core_knowledge &
+updater_workspace &
 
 # location_logger.py was a Flask proxy that bound to $PORT (for Heroku health check)
 # and forwarded to the bot on CUSTOM_TELEGRAM_BOT_PORT. Without it, the bot must

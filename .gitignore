@@ -2,7 +2,7 @@
 node_modules
 Debug.ipynb
 memory/
-core_knowledge
+workspace
 __pycache__
 .token_cache
 .ipynb_checkpoints/

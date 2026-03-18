@@ -4,16 +4,27 @@ import subprocess
 
 from yarvis_ptb.settings import PROJECT_ROOT
 
-SYSTEM_CORE = "system-core"
-
 
 def is_local() -> bool:
     return socket.gethostname() == "AL.local"
 
 
-MEMORY_PATH = (
-    PROJECT_ROOT / ("../core_knowledge" if is_local() else "core_knowledge")
-).resolve()
+WORKSPACE_PATH = (PROJECT_ROOT / "workspace").resolve()
+
+# Back-compat alias used by timezones.py, todo_tools.py, daily_agent_update.py, etc.
+MEMORY_PATH = WORKSPACE_PATH
+
+SKILLS_PATH = WORKSPACE_PATH / "skills"
+MEMORY_DATA_PATH = WORKSPACE_PATH / "memory"
+
+# Root files that are always loaded into the system prompt (in this order).
+ROOT_FILES = [
+    "CORE_VALUES.md",
+    "BEHAVIOR.md",
+    "TOOLS.md",
+    "MEMORY.md",
+    "current-status.md",
+]
 
 
 def parse_skill_frontmatter(content: str) -> dict[str, str | bool]:
@@ -45,128 +56,149 @@ def parse_skill_frontmatter(content: str) -> dict[str, str | bool]:
     return metadata
 
 
-def read_autoload_memory() -> dict[str, str]:
-    """Reads all SKILL.md files marked with autoload: true"""
-    memories = {}
-    assert MEMORY_PATH.exists(), f"{MEMORY_PATH} does not exist"
-
-    for skill_path in MEMORY_PATH.glob("*/SKILL.md"):
-        content = skill_path.read_text()
-        metadata = parse_skill_frontmatter(content)
-
-        if metadata.get("autoload", False):
-            memories[str(skill_path)] = content
-
-    return memories
-
-
-def list_memory_with_descriptions() -> list[dict[str, str]]:
-    """List all SKILL.md files with their metadata"""
-    memories = []
-    assert MEMORY_PATH.exists(), f"{MEMORY_PATH} does not exist"
-
-    for skill_path in sorted(MEMORY_PATH.glob("*/SKILL.md")):
-        content = skill_path.read_text()
-        metadata = parse_skill_frontmatter(content)
-
-        memories.append(
-            {
-                "path": str(skill_path),
-                "name": metadata.get("name", skill_path.parent.name),
-                "description": metadata.get("description", "No description"),
-                "autoload": metadata.get("autoload", False),
-            }
-        )
-
-    return memories
+def _render_root_file(name: str, content: str) -> list[str]:
+    """Render a root workspace file for inclusion in a prompt."""
+    return [f"=== {name} ===", content, ""]
 
 
 def _render_skill(path: str, content: str) -> list[str]:
-    """Render a single skill file for inclusion in a prompt."""
-    skill_name = path.strip("/").split("/")[-2]
-    return [f"Content of skill {skill_name} - read from {path}", content, ""]
+    """Render a single skill/data file for inclusion in a prompt."""
+    # Extract a readable name from the path
+    name = path.strip("/").split("/")[-1]
+    if name == "SKILL.md":
+        name = path.strip("/").split("/")[-2]
+    return [f"Content of {name} - read from {path}", content, ""]
 
 
-def load_skills_by_name(names: list[str]) -> tuple[str, list[str]]:
-    """Load specific skills by folder name. Returns (combined content, missing names)."""
-    lines = []
-    missing = []
-    for name in names:
-        skill_path = MEMORY_PATH / name / "SKILL.md"
-        if skill_path.exists():
-            lines.extend(_render_skill(str(skill_path), skill_path.read_text()))
-        else:
-            missing.append(name)
-    return "\n".join(lines), missing
+def read_root_files() -> dict[str, str]:
+    """Read all root workspace files."""
+    result = {}
+    for name in ROOT_FILES:
+        path = WORKSPACE_PATH / name
+        if path.exists():
+            result[name] = path.read_text()
+    return result
 
 
-def resolve_memory_preload(spec: "list[str] | str") -> str:
-    """Resolve memory spec into rendered content for the system prompt.
+def resolve_file_path(name: str):
+    """Resolve a file name to its path on disk.
 
-    - ``"auto"`` — all files with ``autoload: true`` in frontmatter
-    - ``["logseq", "whoop"]`` — specific skills by folder name
-    - ``[]`` — empty string
+    Search order:
+    1. skills/<name>/SKILL.md
+    2. memory/<name>.md
+    3. Root <name> (exact filename or <name>.md)
+
+    Returns (path, None) on success, (None, error_msg) on failure.
     """
-    if spec == "auto":
-        lines: list[str] = []
-        autoload_memories = read_autoload_memory()
-        if autoload_memories:
-            lines.append("=== Preloaded Skills ===\n")
-            for path, content in sorted(
-                autoload_memories.items(),
-                key=lambda x: (SYSTEM_CORE not in x[0], x[0]),
-            ):
-                lines.extend(_render_skill(path, content))
-        return "\n".join(lines)
+    # 1. Skills
+    skill_path = SKILLS_PATH / name / "SKILL.md"
+    if skill_path.exists():
+        return skill_path, None
 
-    if not spec:
-        return ""
-    assert isinstance(spec, list)
-    skill_content, _missing = load_skills_by_name(spec)
-    if not skill_content:
-        return ""
-    return (
-        "=== Reference Knowledge ===\n"
-        "The following skill files were provided to help you with this task.\n\n"
-        + skill_content
-    )
+    # 2. Data files in memory/
+    data_path = MEMORY_DATA_PATH / f"{name}.md"
+    if data_path.exists():
+        return data_path, None
+    # Also try without .md extension
+    data_path2 = MEMORY_DATA_PATH / name
+    if data_path2.exists():
+        return data_path2, None
+
+    # 3. Root files
+    root_path = WORKSPACE_PATH / name
+    if root_path.exists():
+        return root_path, None
+    root_path_md = WORKSPACE_PATH / f"{name}.md"
+    if root_path_md.exists():
+        return root_path_md, None
+
+    return None, f"'{name}' not found in workspace"
 
 
-def render_memory_catalogue() -> str:
-    """Render the full CKR skill catalogue with paths and descriptions."""
-    all_memories = list_memory_with_descriptions()
-    if not all_memories:
+def resolve_memory_preload(load: bool) -> str:
+    """Resolve memory preload into rendered content for the system prompt.
+
+    True = load all root workspace files.
+    False = nothing.
+    """
+    if not load:
         return ""
-    lines = [
-        "=== Core Knowledge Repository ===",
-        "All skill files are on disk and can be read or modified using tools.",
-        f"Each skill is located at {MEMORY_PATH}/<name>/SKILL.md\n",
-    ]
-    for memory in all_memories:
-        autoload_marker = " [preloaded]" if memory["autoload"] else ""
-        lines.append(
-            f"- **{memory['name']}**: {memory['description']}{autoload_marker}"
-        )
+    root_files = read_root_files()
+    if not root_files:
+        return ""
+    lines: list[str] = ["=== Workspace ===\n"]
+    for name, content in root_files.items():
+        lines.extend(_render_root_file(name, content))
     return "\n".join(lines)
 
 
-def render_memory_content() -> str:
-    """Render full CKR content for system prompt (catalogue + preloaded)."""
-    parts = []
-    catalogue = render_memory_catalogue()
-    if catalogue:
-        parts.append(catalogue)
-    preloaded = resolve_memory_preload("auto")
-    if preloaded:
-        parts.append(preloaded)
-    return "\n\n".join(parts)
+def render_workspace_content() -> str:
+    """Render full workspace content for system prompt (root files only).
+
+    Used by daily self-reflect to provide full workspace context.
+    """
+    return resolve_memory_preload(load=True)
+
+
+# Keep old name for back-compat
+render_memory_content = render_workspace_content
+
+
+def list_all_workspace_files() -> list[str]:
+    """List all readable files in the workspace (for validation / discovery)."""
+    files = []
+    # Root .md files
+    for p in sorted(WORKSPACE_PATH.glob("*.md")):
+        files.append(p.name)
+    # Data files in memory/
+    if MEMORY_DATA_PATH.exists():
+        for p in sorted(MEMORY_DATA_PATH.glob("*.md")):
+            files.append(f"memory/{p.name}")
+    # Skills
+    if SKILLS_PATH.exists():
+        for p in sorted(SKILLS_PATH.glob("*/SKILL.md")):
+            files.append(f"skills/{p.parent.name}")
+    return files
+
+
+def render_skill_listing() -> str:
+    """Render a dynamic listing of available skills and data files.
+
+    Used when list_skills=True to show the agent what's available via read_memory.
+    """
+    lines = [
+        "=== Available Skills & Data Files ===",
+        "Use `read_memory(name)` to load any of these.\n",
+    ]
+
+    # Skills
+    if SKILLS_PATH.exists():
+        for skill_dir in sorted(SKILLS_PATH.iterdir()):
+            if not skill_dir.is_dir() or skill_dir.name.startswith("."):
+                continue
+            skill_md = skill_dir / "SKILL.md"
+            if not skill_md.exists():
+                continue
+            metadata = parse_skill_frontmatter(skill_md.read_text())
+            desc = metadata.get("description", "")
+            lines.append(f"- **{skill_dir.name}** (skill): {desc}")
+
+    # Data files in memory/
+    if MEMORY_DATA_PATH.exists():
+        for data_file in sorted(MEMORY_DATA_PATH.glob("*.md")):
+            name = data_file.stem
+            # Read first heading as description
+            first_line = data_file.read_text().split("\n", 1)[0].strip("# ").strip()
+            lines.append(f"- **{name}** (data): {first_line}")
+
+    return "\n".join(lines)
 
 
 def commit_memory() -> None:
     if not is_local():
         subprocess.check_call(
             "git add .; if [[ -n $(git status --porcelain) ]]; then git commit -a -m 'update memory'; fi; git push --force",
-            cwd=MEMORY_PATH,
+            cwd=WORKSPACE_PATH,
             executable="/bin/bash",
             shell=True,
         )

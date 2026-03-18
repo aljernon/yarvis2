@@ -22,8 +22,8 @@ class AgentConfig(BaseModel):
 
     @property
     def requires_memory_tools(self) -> bool:
-        """Agent has the full CKR catalogue -> needs read/write_memory tools."""
-        return self.rendering.list_all_memories
+        """Agent has skill listing -> needs read_memory tools."""
+        return self.rendering.list_skills
 
     @property
     def requires_tool_output_tool(self) -> bool:

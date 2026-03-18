@@ -252,7 +252,7 @@ class ScheduleTool(SchedulingTool):
                 ArgSpec(
                     name="run_in_subagent",
                     type=bool,
-                    description="If true, the invocation runs in a yarvis subagent with full tools and CKR. Only a short summary is saved to main history, not the full tool call trace. Use for heavy background tasks that shouldn't bloat conversation history.",
+                    description="If true, the invocation runs in a yarvis subagent with full tools and workspace. Only a short summary is saved to main history, not the full tool call trace. Use for heavy background tasks that shouldn't bloat conversation history.",
                     is_required=False,
                 ),
             ],

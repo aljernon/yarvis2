@@ -9,7 +9,7 @@ Usage:
 
 Nothing is saved to DB — connection is rolled back on exit.
 send_message is replaced with CollectMessageTool (no Telegram send).
-CKR (core_knowledge/) is reset to CKR_RESET_COMMIT after each run.
+Workspace (workspace/) is reset to WORKSPACE_RESET_COMMIT after each run.
 """
 
 import asyncio
@@ -41,7 +41,7 @@ from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
 from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
 from yarvis_ptb.yarvis_ptb.logging import setup_logging
 
-CKR_PATH = os.path.join(os.path.dirname(__file__), "core_knowledge")
+WORKSPACE_DIR = os.path.join(os.path.dirname(__file__), "workspace")
 
 
 def _is_context_message(msg: dict) -> bool:
@@ -95,7 +95,7 @@ def _get_ckr_commit_before(dt: datetime.datetime) -> str:
     iso = dt.isoformat()
     result = subprocess.run(
         ["git", "log", "main", f"--before={iso}", "--format=%H", "-1"],
-        cwd=CKR_PATH,
+        cwd=WORKSPACE_DIR,
         capture_output=True,
         text=True,
         check=True,
@@ -109,13 +109,13 @@ def _get_ckr_commit_before(dt: datetime.datetime) -> str:
 def _ckr_checkout(commit: str):
     """Check out a specific CKR commit, discarding any local changes."""
     subprocess.run(
-        ["git", "checkout", "."], cwd=CKR_PATH, check=True, capture_output=True
+        ["git", "checkout", "."], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     subprocess.run(
-        ["git", "clean", "-fd"], cwd=CKR_PATH, check=True, capture_output=True
+        ["git", "clean", "-fd"], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     subprocess.run(
-        ["git", "checkout", commit], cwd=CKR_PATH, check=True, capture_output=True
+        ["git", "checkout", commit], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     short = commit[:7]
     print(f"[CKR checked out to {short}]", file=sys.stderr)
@@ -124,13 +124,13 @@ def _ckr_checkout(commit: str):
 def _ckr_restore_main():
     """Restore CKR to main HEAD, discarding any changes."""
     subprocess.run(
-        ["git", "checkout", "."], cwd=CKR_PATH, check=True, capture_output=True
+        ["git", "checkout", "."], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     subprocess.run(
-        ["git", "clean", "-fd"], cwd=CKR_PATH, check=True, capture_output=True
+        ["git", "clean", "-fd"], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     subprocess.run(
-        ["git", "checkout", "main"], cwd=CKR_PATH, check=True, capture_output=True
+        ["git", "checkout", "main"], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     print("[CKR restored to main]", file=sys.stderr)
 

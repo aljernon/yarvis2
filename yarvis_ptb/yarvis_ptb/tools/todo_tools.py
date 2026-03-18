@@ -1,4 +1,4 @@
-"""Todo tools — persistent per-agent todo list, stored in CKR."""
+"""Todo tools — persistent per-agent todo list, stored in workspace."""
 
 import json
 import logging
@@ -57,7 +57,7 @@ class TodoReadTool(LocalTool):
 
 
 class TodoWriteTool(LocalTool):
-    """Write/replace the entire todo list. Persisted to CKR across invocations."""
+    """Write/replace the entire todo list. Persisted to workspace across invocations."""
 
     def __init__(self, agent_slug: str):
         self._agent_slug = agent_slug

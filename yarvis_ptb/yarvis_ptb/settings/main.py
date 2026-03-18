@@ -26,7 +26,7 @@ HISTORY_LENGTH_LONG_TOKENS = 80_000
 BOT_USER_ID = -1
 SYSTEM_USER_ID = -2
 ROOT_AGENT_USER_ID = 1
-ROOT_AGENT_SLUG = "ROOT"  # also determines CKR todo filename: todos/{slug}.json
+ROOT_AGENT_SLUG = "ROOT"  # also determines workspace todo filename: todos/{slug}.json
 
 KNOWN_USER_PRIVATE_CHAT_CONFIGS: dict[int, Any] = {}
 

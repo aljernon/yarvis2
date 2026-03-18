@@ -1,6 +1,4 @@
-from typing import Literal
-
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS
 
@@ -14,19 +12,33 @@ class RenderingConfig(BaseModel):
     prompt_name: str = "anton_private"
     """Which system prompt to use (key into SYSTEM_PROMPTS)."""
 
-    autoload_memory_logic: list[str] | Literal["auto"] = "auto"
-    """Which CKR skill files to preload into the system prompt.
+    load_memory: bool = True
+    """Load root workspace files into the system prompt.
 
-    - ``"auto"`` — all files with ``autoload: true`` in frontmatter (default)
-    - ``["logseq", "whoop"]`` — specific skills by folder name
-    - ``[]`` — none
+    True = load all root files (CORE_VALUES, BEHAVIOR, TOOLS, MEMORY, current-status).
+    False = don't load any workspace files.
     """
 
-    list_all_memories: bool = True
-    """Show catalogue of all available CKR skills and enable read_memory tool."""
+    list_skills: bool = True
+    """Show available skills listing and enable read_memory tool."""
 
     max_history_length_turns: int = HISTORY_LENGTH_LONG_TURNS
     """How many DB message turns to fetch for context."""
 
     tool_result_truncation_after_n_turns: int | None = None
     """Truncate large (>=10KB) tool results in turns older than N from the end."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_old_fields(cls, data):
+        """Backward compat: rename old field names from archive agents in DB."""
+        if not isinstance(data, dict):
+            return data
+        # autoload_memory_logic: "auto" | ["skill1"] | [] → bool
+        if "autoload_memory_logic" in data:
+            old = data.pop("autoload_memory_logic")
+            data.setdefault("load_memory", bool(old))
+        # list_all_memories → list_skills
+        if "list_all_memories" in data:
+            data.setdefault("list_skills", data.pop("list_all_memories"))
+        return data

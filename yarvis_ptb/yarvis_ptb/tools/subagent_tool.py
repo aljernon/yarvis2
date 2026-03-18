@@ -9,7 +9,6 @@ from yarvis_ptb.agent_config import DEFAULT_SUBAGENT_TOOL_SUBSET, AgentConfig, A
 from yarvis_ptb.agent_slugs import generate_agent_slug
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
 from yarvis_ptb.interruption_scope_internal import INTERRUPTABLES
-from yarvis_ptb.on_disk_memory import load_skills_by_name
 from yarvis_ptb.prompting import (
     build_claude_input,
     convert_db_messages_to_claude_messages,
@@ -349,12 +348,6 @@ class CreateSubagentTool(_SubagentBase):
                     is_required=False,
                 ),
                 ArgSpec(
-                    name="skills",
-                    type=str,
-                    description="Comma-separated CKR skill names to include in the agent's system prompt.",
-                    is_required=False,
-                ),
-                ArgSpec(
                     name="include_message_history",
                     type=bool,
                     description="If true, the agent sees the main conversation as a rendered text block.",
@@ -370,21 +363,12 @@ class CreateSubagentTool(_SubagentBase):
         message: str,
         tools: str | None = None,
         model: str | None = None,
-        skills: str | None = None,
         include_message_history: bool = False,
         **kwargs: object,
     ) -> ToolResult:
         model_short, err = _validate_model(model)
         if err:
             return err
-
-        skill_names: list[str] = []
-        if skills:
-            skill_names = [s.strip() for s in skills.split(",") if s.strip()]
-        if skill_names:
-            _, missing = load_skills_by_name(skill_names)
-            if missing:
-                return ToolResult.error(f"Unknown skill(s): {', '.join(missing)}")
 
         tool_subset: list[str] = list(DEFAULT_SUBAGENT_TOOL_SUBSET)
         if tools:
@@ -393,8 +377,8 @@ class CreateSubagentTool(_SubagentBase):
         agent_config = AgentConfig(
             rendering=RenderingConfig(
                 prompt_name="subagent",
-                autoload_memory_logic=skill_names,
-                list_all_memories=False,
+                load_memory=False,
+                list_skills=False,
                 tool_result_truncation_after_n_turns=0,
             ),
             sampling=SamplingConfig(
@@ -463,18 +447,18 @@ class CreateSubagentTool(_SubagentBase):
 
 
 class CreateYarvisSubagentTool(_SubagentBase):
-    """Creates a new Yarvis-identity subagent with full tools and CKR."""
+    """Creates a new Yarvis-identity subagent with full tools and workspace."""
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="create_yarvis_subagent",
             description=cleandoc("""
                 Creates a new subagent with the full Yarvis identity — same system
-                prompt, all autoloaded CKR skills, and full tool access. The agent's
+                prompt, all workspace root files, and full tool access. The agent's
                 send_message calls return messages to you (the parent), not to Anton.
 
                 Use for complex tasks requiring full Yarvis capabilities: calendar
-                analysis, multi-source research with context awareness, CKR updates
+                analysis, multi-source research with context awareness, workspace updates
                 that need deep understanding of Anton's life.
                 """),
             args=[
@@ -515,8 +499,8 @@ class CreateYarvisSubagentTool(_SubagentBase):
         agent_config = AgentConfig(
             rendering=RenderingConfig(
                 prompt_name="anton_private",
-                autoload_memory_logic="auto",  # load all autoloaded CKR skills
-                list_all_memories=True,
+                load_memory=True,
+                list_skills=True,
                 tool_result_truncation_after_n_turns=0,
             ),
             sampling=SamplingConfig(

@@ -10,7 +10,7 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 - **Telegram Bot Framework**: Built on Python-Telegram-Bot (PTB) library for Telegram integration
 - **PostgreSQL Database**: Stores conversation history, memories, and scheduled invocations
 - **Tool Access**: Claude has access to various tools including Python execution, file access, and more
-- **Memory System**: Persistent memory (Core Knowledge Repository) included in system prompts
+- **Workspace**: Persistent knowledge files (root files, skills, data) included in system prompts
 - **Scheduling System**: Allows the bot to schedule future invocations for reminders and recurring tasks
 
 ### Conventions
@@ -27,8 +27,13 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 - `yarvis_ptb/yarvis_ptb/daily_agent_update.py`: DAU (Disjoint Agent Union) — daily session rotation
 - `yarvis_ptb/yarvis_ptb/tools/`: Directory containing tool implementations
 
-### Memory / Core knowledge repository
-`core_knowledge` folder is a link to a separate memory repository. It contains .md files with info about both the user and the environment. Some of them are loaded into context all the time and some are loaded contextually
+### Workspace
+`workspace/` is a symlink to `../memory` (separate git repo). Structure:
+- **Root files** (always loaded): `CORE_VALUES.md`, `BEHAVIOR.md`, `TOOLS.md`, `MEMORY.md`, `current-status.md`
+- **Data files** (`memory/`): on-demand data like `health-info.md`, `mom-trip-2026.md`
+- **Skills** (`skills/<name>/SKILL.md`): procedural knowledge loaded via `read_memory` tool
+- **BOOT.md**: daily session boot template
+- **todos/**: per-agent persistent todo lists
 
 ## Data Structure
 
@@ -55,8 +60,8 @@ Messages in the `messages` table have a `message` text field and a `meta` JSONB 
   The list alternates assistant turns (containing `tool_use` and/or `text` blocks) and user turns (containing `tool_result` blocks). The final assistant turn typically has the text response shown to the user. See `render_claude_response_short()` and `render_claude_response_verbose()` in `prompting.py` for rendering logic.
 Special user_id values: BOT_USER_ID=-1, SYSTEM_USER_ID=-2.
 
-### Memory System
-The Core Knowledge Repository is implemented as a collection of text files that get included in Claude's system prompt. This allows the bot to maintain persistent knowledge across conversations.
+### Workspace System
+The workspace is a collection of files that get included in Claude's system prompt. Root files are always loaded; skills and data files are loaded on demand via the `read_memory` tool. See `on_disk_memory.py` for loading logic.
 
 ## Message Processing Flow
 1. User sends message to Telegram

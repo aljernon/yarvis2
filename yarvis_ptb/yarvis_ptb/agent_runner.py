@@ -61,8 +61,8 @@ async def create_and_run_agent(
         agent_config = AgentConfig(
             rendering=RenderingConfig(
                 prompt_name="anton_private",
-                autoload_memory_logic="auto",
-                list_all_memories=True,
+                load_memory=True,
+                list_skills=True,
                 tool_result_truncation_after_n_turns=0,
             ),
             sampling=SamplingConfig(

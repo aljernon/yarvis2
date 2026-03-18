@@ -6,11 +6,11 @@ import pytz
 
 from yarvis_ptb.settings import DEFAULT_TIMEZONE_STR, PROJECT_ROOT
 
-SETTINGS_MEMORY_PATH = PROJECT_ROOT / "core_knowledge/settings.json"
+SETTINGS_MEMORY_PATH = PROJECT_ROOT / "workspace/settings.json"
 
 
 def get_complex_chat_timezone_str() -> str:
-    """Get custom timezone string from settings in Core Knowledge Repository if set."""
+    """Get custom timezone string from workspace settings.json if set."""
     try:
         with open(SETTINGS_MEMORY_PATH) as f:
             settings = json.load(f)

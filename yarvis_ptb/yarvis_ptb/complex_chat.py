@@ -570,7 +570,7 @@ async def _process_multi_message_claude_invocation_inner(
                 reaction=constants.ReactionEmoji.SHRUG,
             )  # type: ignore
 
-    if rendering_config.list_all_memories and any(
+    if rendering_config.list_skills and any(
         x["type"] == "tool_use"
         for mp in message_params
         if isinstance(mp["content"], list)

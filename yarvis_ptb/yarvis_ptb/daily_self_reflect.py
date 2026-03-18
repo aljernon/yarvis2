@@ -51,7 +51,7 @@ You are performing a periodic self-reflection. Below is your recent conversation
 Your task:
 1. Read through the conversation carefully
 2. Identify any new information worth remembering — facts about Anton, preferences, patterns, decisions, or anything that should persist across conversations
-3. Update the Core Knowledge Repository files accordingly using the str_replace_editor tool
+3. Update the workspace files accordingly using the str_replace_editor tool
 4. Review the scheduled invocations below. Cancel any that are no longer needed (e.g., reminders for things already addressed). Add new ones if follow-ups are needed.
 5. Summarize what you reflected on and what changes (if any) you made
 
@@ -216,9 +216,9 @@ async def run_force_reflect(
     # Build system prompt with memory
     system = SYSTEM_PROMPTS["anton_private"]
     system += (
-        "\n=== Core Knowledge Repository content:\n\n"
-        "The following is the current content of the Core Knowledge Repository. "
-        "All repository files are on disk and can be modified using str_replace tool or directly via bash.\n\n"
+        "\n=== Workspace content:\n\n"
+        "The following is the current content of the workspace. "
+        "All files are on disk and can be modified using str_replace tool or directly via bash.\n\n"
         + render_memory_content()
     )
 

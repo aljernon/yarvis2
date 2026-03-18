@@ -19,7 +19,7 @@ from anthropic.types import (
 )
 from typing_extensions import Required
 
-from yarvis_ptb.on_disk_memory import render_memory_catalogue, resolve_memory_preload
+from yarvis_ptb.on_disk_memory import render_skill_listing, resolve_memory_preload
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
 from yarvis_ptb.rendering_config import RenderingConfig
 from yarvis_ptb.settings import (
@@ -72,7 +72,7 @@ def normalize_message_param(message: MessageParam) -> NormalizedMessageParam:
 
 
 def build_memory_str(memories: list[MemoryType]) -> str:
-    # Build Core Knowledge Repository string from memory items
+    # Build memory string from memory items (legacy DB-stored memories)
     memories_copy = [dict(m) for m in memories]
     for m in memories_copy:
         m.pop("chat_id", None)
@@ -270,15 +270,15 @@ def apply_tool_call_compactification(
 def build_system_prompt(rendering_config: RenderingConfig) -> str:
     """Build the system prompt string from rendering config.
 
-    Order: base prompt → skill catalogue → preloaded skill content.
+    Order: base prompt → skill listing → preloaded workspace content.
     """
     system = SYSTEM_PROMPTS[rendering_config.prompt_name]
-    if rendering_config.list_all_memories:
-        catalogue = render_memory_catalogue()
-        if catalogue:
-            system = f"{system}\n\n{catalogue}"
-    if rendering_config.autoload_memory_logic:
-        memory_content = resolve_memory_preload(rendering_config.autoload_memory_logic)
+    if rendering_config.list_skills:
+        listing = render_skill_listing()
+        if listing:
+            system = f"{system}\n\n{listing}"
+    if rendering_config.load_memory:
+        memory_content = resolve_memory_preload(rendering_config.load_memory)
         if memory_content:
             system = f"{system}\n\n{memory_content}"
     return system

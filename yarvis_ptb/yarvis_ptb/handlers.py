@@ -36,7 +36,7 @@ from yarvis_ptb.debug_chat import (
     add_debug_message_to_queue,
     maybe_send_messages_to_debug_chat,
 )
-from yarvis_ptb.on_disk_memory import read_autoload_memory
+from yarvis_ptb.on_disk_memory import read_root_files
 from yarvis_ptb.prompting import (
     build_claude_input,
     build_context_info,
@@ -318,7 +318,7 @@ async def handler_compress_history(update: Update, context: CallbackContext):
 )
 @auth_decorator_complex_chat
 async def handler_memory(update: Update, context: CallbackContext):
-    memories = list(read_autoload_memory().items())
+    memories = list(read_root_files().items())
 
     try:
         limit = int(ensure(ensure(update.message).text).split()[-1])
@@ -335,14 +335,12 @@ async def handler_memory(update: Update, context: CallbackContext):
         await asyncio.sleep(1.0)
 
 
-@RegisteredCommandHandler.register(
-    description="Try Sync Core Knowledge Repository and logseq"
-)
+@RegisteredCommandHandler.register(description="Try Sync workspace and logseq")
 @auth_decorator_complex_chat
 async def handler_sync(update: Update, context: CallbackContext):
     try:
         subprocess.check_call(["git", "pull"], cwd="/app/repo")
-        subprocess.check_call(["git", "pull"], cwd="/app/core_knowledge")
+        subprocess.check_call(["git", "pull"], cwd="/app/workspace")
     except Exception as e:
         # Get full traceback
         error_traceback = "".join(
@@ -365,7 +363,7 @@ async def handler_sync(update: Update, context: CallbackContext):
         await reply_maybe_markdown(
             context.bot,
             ensure(update.message).chat_id,
-            "Core Knowledge Repository and repo synced",
+            "Workspace and repo synced",
         )
 
 
