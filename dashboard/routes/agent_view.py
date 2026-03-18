@@ -25,7 +25,7 @@ from yarvis_ptb.prompting import (
     build_claude_input,
     convert_db_messages_to_claude_messages,
 )
-from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS
+from yarvis_ptb.settings.main import HISTORY_LENGTH_LONG_TURNS, ROOT_AGENT_SLUG
 from yarvis_ptb.storage import DbMessage, get_messages, get_schedules
 
 bp = Blueprint("agent_view", __name__)
@@ -52,6 +52,7 @@ def _load_agent_context():
             messages,
             DEFAULT_AGENT_CONFIG.rendering,
             scheduled_invocations=scheduled_invocations,
+            agent_slug=ROOT_AGENT_SLUG,
         )
         truncate_base64_images(history)
         return messages, system_prompt, history

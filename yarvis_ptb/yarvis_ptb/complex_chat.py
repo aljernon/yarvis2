@@ -52,6 +52,7 @@ from yarvis_ptb.settings import (
     SYSTEM_USER_ID,
     USER_ID_MAP,
 )
+from yarvis_ptb.settings.main import ROOT_AGENT_SLUG
 from yarvis_ptb.storage import (
     IMAGE_B64_META_FIELD,
     DbMessage,
@@ -439,7 +440,7 @@ async def _process_multi_message_claude_invocation_inner(
         invocation=invocation,
         scheduled_invocations=scheduled_invocations,
         forced_now_date=now_date,
-        agent_slug="ROOT",
+        agent_slug=ROOT_AGENT_SLUG,
     )
 
     context_message = build_context_info(
@@ -447,7 +448,7 @@ async def _process_multi_message_claude_invocation_inner(
         scheduled_invocations=scheduled_invocations,
         rendering_config=rendering_config,
         forced_now_date=now_date,
-        agent_slug="ROOT",
+        agent_slug=ROOT_AGENT_SLUG,
     )
     add_debug_message_to_queue(f"**CONTEXT:**:\n```\n{context_message}\n```")
 

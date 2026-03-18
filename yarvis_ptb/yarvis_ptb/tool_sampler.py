@@ -38,6 +38,7 @@ from yarvis_ptb.ptb_util import (
 from yarvis_ptb.sampling import SamplingHooks, SamplingResult
 from yarvis_ptb.settings.main import (
     CLAUDE_MODEL_NAME,
+    ROOT_AGENT_SLUG,
 )
 from yarvis_ptb.tools.bash_repl import BashRunTool
 from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
@@ -195,13 +196,13 @@ class PartialSample:
 
 
 def get_tools_for_agent_config(
-    agent_config: AgentConfig, curr, chat_id, bot, *, agent_slug: str = "ROOT"
+    agent_config: AgentConfig, curr, chat_id, bot, *, agent_slug: str = ROOT_AGENT_SLUG
 ) -> list[LocalTool]:
     """Build tools based on AgentConfig.
 
     Uses sampling.tool_subset as base, then adds tools implied by
     rendering/sampling config (memory, tool_output, messaging).
-    agent_slug identifies which agent's todo list to use (default "ROOT" for main).
+    agent_slug identifies which agent's todo list to use (default ROOT_AGENT_SLUG for main).
     """
     tool_subset = agent_config.sampling.tool_subset
 
@@ -243,7 +244,7 @@ def _build_tools_from_classes(
     chat_id: int,
     bot,
     *,
-    agent_slug: str = "ROOT",
+    agent_slug: str = ROOT_AGENT_SLUG,
 ) -> list[LocalTool]:
     """Build tool objects from a list of tool class names."""
     all_local_tool_objects = []

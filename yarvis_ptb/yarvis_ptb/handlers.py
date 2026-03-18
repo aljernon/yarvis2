@@ -64,6 +64,7 @@ from yarvis_ptb.settings.main import (
     CONFIGURED_CHATS,
     HISTORY_LENGTH_LONG_TURNS,
     KNOWN_USER_PRIVATE_CHAT_CONFIGS,
+    ROOT_AGENT_SLUG,
 )
 from yarvis_ptb.storage import (
     DbMessage,
@@ -269,7 +270,7 @@ async def handler_show_context(update: Update, context: CallbackContext):
         rendering_config=DEFAULT_AGENT_CONFIG.rendering,
         scheduled_invocations=scheduled_invocations,
         invocation=Invocation(invocation_type="reply"),
-        agent_slug="ROOT",
+        agent_slug=ROOT_AGENT_SLUG,
     )
     await send_text_as_file(ensure(update.message), "context", context_info)
 
