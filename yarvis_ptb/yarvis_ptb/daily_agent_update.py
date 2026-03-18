@@ -185,23 +185,10 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
             ),
         )
 
-    # 5-6. Build new-session message and trigger invocation
-    await invoke_new_session(curr, chat_id, yesterday, slug, application, bot)
-    logger.info(f"DAU: new session invocation complete for {slug}")
-
-
-async def invoke_new_session(
-    curr, chat_id: int, yesterday, slug: str, *_args, **_kwargs
-) -> None:
-    """Save the new-session system message (no Claude invocation).
-
-    The message stays in history as a session marker and gets archived
-    with the next DAU. Boot work (CKR updates, channel scans) runs
-    separately via scheduled invocations, not the main agent.
-    """
+    # 5. Save new-session marker message (no Claude invocation)
     db_msg = build_new_session_message(curr, chat_id, yesterday, slug)
     save_message(curr, db_msg)
-    logger.info(f"DAU: saved new-session message for {slug} (no invocation)")
+    logger.info(f"DAU: saved new-session message for {slug}")
 
 
 def build_new_session_message(curr, chat_id: int, yesterday, slug: str) -> DbMessage:

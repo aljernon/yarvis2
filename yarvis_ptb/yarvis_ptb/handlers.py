@@ -22,7 +22,7 @@ from yarvis_ptb.complex_chat import (
     process_multi_message_claude_invocation,
 )
 from yarvis_ptb.daily_agent_update import (
-    invoke_new_session,
+    build_new_session_message,
     run_daily_agent_update,
     should_run_dau,
 )
@@ -565,11 +565,10 @@ async def handler_invoke_dau(update: Update, context: CallbackContext):
         datetime.datetime.now(DEFAULT_TIMEZONE) - datetime.timedelta(days=1)
     ).date()
     slug = f"archive-{yesterday}"
-    await message.reply_text(f"Triggering new-session invocation for {slug}...")
+    await message.reply_text(f"Saving new-session marker for {slug}...")
     with context.bot_data["conn"].cursor() as curr:
-        await invoke_new_session(
-            curr, message.chat_id, yesterday, slug, context.application, context.bot
-        )
+        db_msg = build_new_session_message(curr, message.chat_id, yesterday, slug)
+        save_message(curr, db_msg)
 
 
 @RegisteredCommandHandler.register()
