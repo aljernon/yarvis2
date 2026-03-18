@@ -533,15 +533,26 @@ async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackConte
         if sched is None or not sched.is_active:
             await message.reply_text(f"No active schedule with id {schedule_id}")
             return
-        await message.reply_text(f"Triggering schedule {schedule_id}: {sched.title}")
-        await process_multi_message_claude_invocation(
-            curr,
-            application=context.application,
-            bot=context.bot,
-            chat_id=sched.chat_id,
-            agent_config=DEFAULT_AGENT_CONFIG,
-            invocation=Invocation(invocation_type="schedule", db_invocation=sched),
+        mode = "🧵 subagent" if sched.run_in_subagent else "⚡ inline"
+        await message.reply_text(
+            f"Triggering schedule {schedule_id} ({mode}): {sched.title}"
         )
+        if sched.run_in_subagent:
+            invocation_details = f"Scheduled invocation: {sched.title}"
+            if sched.context:
+                invocation_details += f"\nContext: {sched.context}"
+            await _run_schedule_in_subagent(
+                curr, sched, invocation_details, context.application, context.bot
+            )
+        else:
+            await process_multi_message_claude_invocation(
+                curr,
+                application=context.application,
+                bot=context.bot,
+                chat_id=sched.chat_id,
+                agent_config=DEFAULT_AGENT_CONFIG,
+                invocation=Invocation(invocation_type="schedule", db_invocation=sched),
+            )
 
 
 @RegisteredCommandHandler.register(description="Trigger DAU new-session invocation")
