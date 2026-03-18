@@ -83,7 +83,7 @@ class DbSchedule:
 
 @dataclass
 class Invocation:
-    invocation_type: Literal["reply", "schedule", "context_overflow"]
+    invocation_type: Literal["reply", "automatic", "context_overflow"]
     db_invocation: DbSchedule | None = None
     reply_to_message_id: int | None = None
 

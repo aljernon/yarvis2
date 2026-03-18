@@ -551,7 +551,7 @@ async def handler_trigger(auth: AuthInfo, update: Update, context: CallbackConte
                 bot=context.bot,
                 chat_id=sched.chat_id,
                 agent_config=DEFAULT_AGENT_CONFIG,
-                invocation=Invocation(invocation_type="schedule", db_invocation=sched),
+                invocation=Invocation(invocation_type="automatic", db_invocation=sched),
             )
 
 
@@ -832,7 +832,7 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                         chat_id=sched.chat_id,
                         agent_config=DEFAULT_AGENT_CONFIG,
                         invocation=Invocation(
-                            invocation_type="schedule", db_invocation=sched
+                            invocation_type="automatic", db_invocation=sched
                         ),
                         initial_db_message=invocation_system_message,
                     )

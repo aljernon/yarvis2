@@ -403,7 +403,7 @@ async def _process_multi_message_claude_invocation_inner(
     output_mode = sampling_config.output_mode
     model_name = sampling_config.resolve_model_name()
 
-    is_background = invocation.invocation_type in ("schedule",)
+    is_background = invocation.invocation_type in ("automatic",)
     do_streaming = not is_background and output_mode != "tool_message"
     if not is_background and invocation.reply_to_message_id:
         await bot.set_message_reaction(

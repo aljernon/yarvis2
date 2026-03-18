@@ -415,7 +415,7 @@ async def _run_reflect_inner(
     system, message_params = build_claude_input(
         db_messages,
         rendering_config,
-        invocation=Invocation(invocation_type="schedule"),
+        invocation=Invocation(invocation_type="automatic"),
         scheduled_invocations=scheduled_invocations,
         forced_now_date=now,
     )
