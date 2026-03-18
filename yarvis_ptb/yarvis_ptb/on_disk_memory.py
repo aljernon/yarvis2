@@ -164,11 +164,11 @@ def list_all_workspace_files() -> list[str]:
 def render_skill_listing() -> str:
     """Render a dynamic listing of available skills and data files.
 
-    Used when list_skills=True to show the agent what's available via read_memory.
+    Used when list_skills=True to show the agent what's available via read_skill.
     """
     lines = [
         "=== Available Skills & Data Files ===",
-        "Use `read_memory(name)` to load any of these.\n",
+        "Use `read_skill(name)` to load any of these.\n",
     ]
 
     # Skills

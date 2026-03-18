@@ -19,7 +19,7 @@ class ReadMemoryTool(LocalTool):
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="read_memory",
+            name="read_skill",
             description=(
                 "Load a workspace file by name. Searches skills, data files (memory/), "
                 "and root files. Use this to access detailed knowledge when needed. "

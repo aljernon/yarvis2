@@ -20,7 +20,7 @@ class RenderingConfig(BaseModel):
     """
 
     list_skills: bool = True
-    """Show available skills listing and enable read_memory tool."""
+    """Show available skills listing and enable read_skill tool."""
 
     max_history_length_turns: int = HISTORY_LENGTH_LONG_TURNS
     """How many DB message turns to fetch for context."""

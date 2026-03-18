@@ -22,7 +22,7 @@ class AgentConfig(BaseModel):
 
     @property
     def requires_memory_tools(self) -> bool:
-        """Agent has skill listing -> needs read_memory tools."""
+        """Agent has skill listing -> needs read_skill tools."""
         return self.rendering.list_skills
 
     @property

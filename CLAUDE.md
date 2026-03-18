@@ -31,7 +31,7 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 `workspace/` is a symlink to `../memory` (separate git repo). Structure:
 - **Root files** (always loaded): `CORE_VALUES.md`, `BEHAVIOR.md`, `TOOLS.md`, `MEMORY.md`, `current-status.md`
 - **Data files** (`memory/`): on-demand data like `health-info.md`, `mom-trip-2026.md`
-- **Skills** (`skills/<name>/SKILL.md`): procedural knowledge loaded via `read_memory` tool
+- **Skills** (`skills/<name>/SKILL.md`): procedural knowledge loaded via `read_skill` tool
 - **BOOT.md**: daily session boot template
 - **todos/**: per-agent persistent todo lists
 
@@ -61,7 +61,7 @@ Messages in the `messages` table have a `message` text field and a `meta` JSONB 
 Special user_id values: BOT_USER_ID=-1, SYSTEM_USER_ID=-2.
 
 ### Workspace System
-The workspace is a collection of files that get included in Claude's system prompt. Root files are always loaded; skills and data files are loaded on demand via the `read_memory` tool. See `on_disk_memory.py` for loading logic.
+The workspace is a collection of files that get included in Claude's system prompt. Root files are always loaded; skills and data files are loaded on demand via the `read_skill` tool. See `on_disk_memory.py` for loading logic.
 
 ## Message Processing Flow
 1. User sends message to Telegram

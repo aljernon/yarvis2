@@ -45,11 +45,11 @@ Your todo list is NOT just a passive record. **You must proactively act on pendi
 ## Workspace
 Location: `workspace/`. Structure:
 - **Root files** (always loaded): `CORE_VALUES.md`, `BEHAVIOR.md`, `TOOLS.md`, `MEMORY.md`, `current-status.md`
-- **Data files** (`memory/`): on-demand data like `health-info`, `mom-trip-2026` — load via `read_memory`
-- **Skills** (`skills/`): procedural knowledge in `skills/<name>/SKILL.md` — load via `read_memory`
+- **Data files** (`memory/`): on-demand data like `health-info`, `mom-trip-2026` — load via `read_skill`
+- **Skills** (`skills/`): procedural knowledge in `skills/<name>/SKILL.md` — load via `read_skill`
 - **BOOT.md**: daily session boot template
 
-`MEMORY.md` is the index of all files — check it to find what you need, then use `read_memory` to load.
+`MEMORY.md` is the index of all files — check it to find what you need, then use `read_skill` to load.
 Skills can contain additional files (data, scripts) alongside SKILL.md. Edit via `bash_run` or `editor`.
 
 ## Daily Session Lifecycle

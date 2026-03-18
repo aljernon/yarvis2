@@ -295,7 +295,7 @@ async def run_force_reflect(
 
 AUTO_REFLECT_PROMPT = """\
 This is an automatic self-reflection triggered by the system, not a user message. \
-Please read the auto-reflect skill using read_memory tool (name: "auto-reflect") and follow its instructions."""
+Please read the auto-reflect skill using read_skill tool (name: "auto-reflect") and follow its instructions."""
 
 AUTO_REFLECT_COOLDOWN_SECS = 3600  # 1 hour
 AUTO_REFLECT_IDLE_MIN_SECS = 210  # 3:30
