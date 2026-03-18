@@ -78,6 +78,7 @@ class DbSchedule:
     is_active: bool = True
     meta: dict = field(default_factory=dict)
     schedule_id: int | None = None
+    run_in_subagent: bool = False
 
 
 @dataclass
@@ -435,7 +436,7 @@ def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
     if chat_id is None:
         curr.execute(
             """
-        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context
+        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context, COALESCE(run_in_subagent, false)
         FROM schedules
         WHERE is_active = true
         ORDER BY next_run_at ASC
@@ -444,7 +445,7 @@ def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
     else:
         curr.execute(
             """
-        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context
+        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context, COALESCE(run_in_subagent, false)
         FROM schedules
         WHERE chat_id = %s AND is_active = true
         ORDER BY next_run_at ASC
@@ -465,6 +466,7 @@ def get_schedules(curr, chat_id: int | None = None) -> list[DbSchedule]:
                 schedule_type=row[6],
                 schedule_spec=row[7],
                 context=row[8],
+                run_in_subagent=row[9],
             )
         )
     return schedules
@@ -474,7 +476,7 @@ def get_schedule_by_id(curr, schedule_id: int) -> DbSchedule | None:
     """Gets a schedule by its ID (active or not)"""
     curr.execute(
         """
-        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context
+        SELECT next_run_at, chat_id, is_active, title, meta, id, schedule_type, schedule_spec, context, COALESCE(run_in_subagent, false)
         FROM schedules
         WHERE id = %s
         """,
@@ -493,6 +495,7 @@ def get_schedule_by_id(curr, schedule_id: int) -> DbSchedule | None:
         schedule_type=row[6],
         schedule_spec=row[7],
         context=row[8],
+        run_in_subagent=row[9],
     )
 
 
@@ -502,8 +505,8 @@ def save_schedule(curr, schedule: DbSchedule) -> int:
     assert schedule.is_active, "Only active schedules can be saved"
     curr.execute(
         """
-       INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, title, context, schedule_type, schedule_spec, meta)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+       INSERT INTO schedules (created_at, next_run_at, chat_id, is_active, title, context, schedule_type, schedule_spec, meta, run_in_subagent)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
        """,
         (
             datetime.datetime.now(DEFAULT_TIMEZONE),
@@ -515,6 +518,7 @@ def save_schedule(curr, schedule: DbSchedule) -> int:
             schedule.schedule_type,
             schedule.schedule_spec,
             json.dumps(schedule.meta),
+            schedule.run_in_subagent,
         ),
     )
     return curr.fetchone()[0]

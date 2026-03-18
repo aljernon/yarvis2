@@ -15,6 +15,7 @@ from telegram import Message, Update
 from telegram.ext import Application, CallbackContext, ContextTypes
 from typing_extensions import Callable
 
+from yarvis_ptb.agent_runner import create_and_run_agent, extract_agent_messages
 from yarvis_ptb.complex_chat import (
     DEFAULT_AGENT_CONFIG,
     handle_message_root_user_assistant,
@@ -716,6 +717,49 @@ async def app_start_callback(context: ContextTypes.DEFAULT_TYPE):
         save_message(curr, db_message)
 
 
+async def _run_schedule_in_subagent(
+    curr, sched, invocation_details: str, application, bot
+) -> None:
+    """Run a scheduled invocation inside a subagent, keeping main history clean.
+
+    Main history gets two lightweight system messages: one at start, one with results.
+    The actual work (tool calls, thinking) lives in the subagent's history.
+    """
+    chat_id = sched.chat_id
+
+    # 1. Save start marker to main history
+    save_message(
+        curr,
+        DbMessage(
+            chat_id=chat_id,
+            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            user_id=SYSTEM_USER_ID,
+            message=f"{invocation_details}\n(running in subagent)",
+        ),
+    )
+
+    # 2. Create and run subagent
+    run_result = await create_and_run_agent(
+        curr, chat_id, bot, message=invocation_details
+    )
+
+    # 3. Save result summary to main history
+    agent_texts = extract_agent_messages(run_result.result)
+    summary = "\n".join(agent_texts) if agent_texts else "(no output)"
+    save_message(
+        curr,
+        DbMessage(
+            chat_id=chat_id,
+            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+            user_id=SYSTEM_USER_ID,
+            message=f"Subagent {run_result.slug} completed: {sched.title}\n\nResult:\n{summary}",
+        ),
+    )
+    logger.info(
+        f"Schedule subagent {run_result.slug} completed for schedule {sched.schedule_id}"
+    )
+
+
 async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
     try:
         with context.bot_data["conn"].cursor() as curr:
@@ -756,23 +800,32 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                     )
                 if sched.context:
                     invocation_details += f"\nContext: {sched.context}"
-                invocation_system_message = DbMessage(
-                    chat_id=sched.chat_id,
-                    created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-                    user_id=SYSTEM_USER_ID,
-                    message=invocation_details,
-                )
-                await process_multi_message_claude_invocation(
-                    curr,
-                    application=context.application,
-                    bot=context.bot,
-                    chat_id=sched.chat_id,
-                    agent_config=DEFAULT_AGENT_CONFIG,
-                    invocation=Invocation(
-                        invocation_type="schedule", db_invocation=sched
-                    ),
-                    initial_db_message=invocation_system_message,
-                )
+                if sched.run_in_subagent:
+                    await _run_schedule_in_subagent(
+                        curr,
+                        sched,
+                        invocation_details,
+                        context.application,
+                        context.bot,
+                    )
+                else:
+                    invocation_system_message = DbMessage(
+                        chat_id=sched.chat_id,
+                        created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                        user_id=SYSTEM_USER_ID,
+                        message=invocation_details,
+                    )
+                    await process_multi_message_claude_invocation(
+                        curr,
+                        application=context.application,
+                        bot=context.bot,
+                        chat_id=sched.chat_id,
+                        agent_config=DEFAULT_AGENT_CONFIG,
+                        invocation=Invocation(
+                            invocation_type="schedule", db_invocation=sched
+                        ),
+                        initial_db_message=invocation_system_message,
+                    )
         # DAU: daily session rotation (2am)
         try:
             if should_run_dau(curr, ROOT_USER_ID):

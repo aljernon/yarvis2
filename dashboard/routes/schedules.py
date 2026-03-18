@@ -15,7 +15,8 @@ def api_schedules():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT id, created_at, next_run_at, chat_id, is_active,
-                       title, context, schedule_type, schedule_spec, meta
+                       title, context, schedule_type, schedule_spec, meta,
+                       COALESCE(run_in_subagent, false) AS run_in_subagent
                 FROM schedules
                 ORDER BY is_active DESC, next_run_at ASC
             """)
@@ -39,6 +40,7 @@ def api_schedules():
                     "title": row["title"],
                     "context": row["context"],
                     "meta": row["meta"] or {},
+                    "run_in_subagent": row["run_in_subagent"],
                 }
             )
 

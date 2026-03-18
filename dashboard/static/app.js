@@ -426,7 +426,7 @@ async function loadSchedules() {
   let html = `<table class="inv-table">
     <thead><tr>
       <th>Status</th><th>ID</th><th>Type</th><th>Spec</th><th>Next Run</th>
-      <th>Title</th>
+      <th>Title</th><th>Subagent</th>
     </tr></thead><tbody>`;
 
   for (const s of data.schedules) {
@@ -439,10 +439,11 @@ async function loadSchedules() {
       <td>${s.schedule_spec ? escapeHtml(s.schedule_spec) : "—"}</td>
       <td>${formatTimestamp(s.next_run_at)}<br><span class="relative-time">${relativeTime(s.next_run_at)}</span></td>
       <td>${escapeHtml(s.title)}</td>
+      <td>${s.run_in_subagent ? "🧵" : "⚡"}</td>
     </tr>`;
     if (s.context) {
       html += `<tr class="${cls} schedule-context">
-        <td colspan="6" style="white-space:pre-wrap;padding-left:2em;opacity:0.85">${escapeHtml(s.context).replace(/\\n/g, "\n")}</td>
+        <td colspan="7" style="white-space:pre-wrap;padding-left:2em;opacity:0.85">${escapeHtml(s.context).replace(/\\n/g, "\n")}</td>
       </tr>`;
     }
   }

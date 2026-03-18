@@ -97,6 +97,7 @@ async def schedule_fn(
     cron: str | None = None,
     every: str | None = None,
     context: str | None = None,
+    run_in_subagent: bool = False,
 ) -> ToolResult:
     # Validate exactly one schedule type
     provided = [
@@ -153,6 +154,7 @@ async def schedule_fn(
             schedule_type=schedule_type,
             schedule_spec=schedule_spec,
             context=context,
+            run_in_subagent=run_in_subagent,
         ),
     )
 
@@ -245,6 +247,12 @@ class ScheduleTool(SchedulingTool):
                     name="context",
                     type=str,
                     description="Longer context text, hidden from prompt but shown at invocation time. Use for detailed instructions.",
+                    is_required=False,
+                ),
+                ArgSpec(
+                    name="run_in_subagent",
+                    type=bool,
+                    description="If true, the invocation runs in a yarvis subagent with full tools and CKR. Only a short summary is saved to main history, not the full tool call trace. Use for heavy background tasks that shouldn't bloat conversation history.",
                     is_required=False,
                 ),
             ],

@@ -5,8 +5,7 @@ At 2am local time:
 2. Reassign yesterday's main-chat messages to the archive agent
 3. Run haiku to generate a one-paragraph summary (topics, people, events)
 4. Insert a system message into the archive agent marking it frozen
-5. Insert a system message in main chat about the new session
-6. Trigger a Claude invocation so the new session proactively figures out what to do
+5. Insert a system message in main chat about the new session (no invocation)
 """
 
 import datetime
@@ -14,10 +13,7 @@ import logging
 
 from yarvis_ptb.agent_config import AgentConfig, AgentMeta
 from yarvis_ptb.agent_slugs import archive_slug
-from yarvis_ptb.complex_chat import (
-    COMPLEX_CHAT_LOCK,
-    DEFAULT_AGENT_CONFIG,
-)
+from yarvis_ptb.complex_chat import COMPLEX_CHAT_LOCK
 from yarvis_ptb.debug_chat import add_debug_message_to_queue
 from yarvis_ptb.on_disk_memory import MEMORY_PATH
 from yarvis_ptb.prompting import render_mesage_param_exact
@@ -28,7 +24,6 @@ from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import (
     DbMessage,
-    Invocation,
     create_agent,
     get_agent_by_slug,
     get_dau_sessions,
@@ -196,21 +191,17 @@ async def run_daily_agent_update(curr, chat_id: int, application, bot) -> None:
 
 
 async def invoke_new_session(
-    curr, chat_id: int, yesterday, slug: str, application, bot
+    curr, chat_id: int, yesterday, slug: str, *_args, **_kwargs
 ) -> None:
-    """Build the new-session system message and trigger a Claude invocation."""
-    from yarvis_ptb.complex_chat import process_multi_message_claude_invocation
+    """Save the new-session system message (no Claude invocation).
 
+    The message stays in history as a session marker and gets archived
+    with the next DAU. Boot work (CKR updates, channel scans) runs
+    separately via scheduled invocations, not the main agent.
+    """
     db_msg = build_new_session_message(curr, chat_id, yesterday, slug)
-    await process_multi_message_claude_invocation(
-        curr,
-        application=application,
-        bot=bot,
-        chat_id=chat_id,
-        agent_config=DEFAULT_AGENT_CONFIG,
-        invocation=Invocation(invocation_type="new_session"),
-        initial_db_message=db_msg,
-    )
+    save_message(curr, db_msg)
+    logger.info(f"DAU: saved new-session message for {slug} (no invocation)")
 
 
 def build_new_session_message(curr, chat_id: int, yesterday, slug: str) -> DbMessage:
