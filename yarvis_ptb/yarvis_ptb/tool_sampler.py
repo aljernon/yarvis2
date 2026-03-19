@@ -670,8 +670,9 @@ async def _process_query_with_tools(
             )
 
         if not partial_sample.content and partial_sample.stop_reason == "interrupt":
-            # Return nothing - no need to waste content.
-            return [], claude_calls
+            # Interrupted before generating any content in this iteration.
+            # Return extra_messages (may contain prior completed turns).
+            return extra_messages, claude_calls
 
         logger.info(
             f"Response content types: {[c.type for c in partial_sample.content]}"
