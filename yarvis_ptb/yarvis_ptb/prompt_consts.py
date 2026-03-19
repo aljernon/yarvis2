@@ -71,7 +71,6 @@ Schedule types:
 
 Scheduling rules:
 - `title` is always visible in system prompt; use `context` for longer details (hidden, shown only at invocation time)
-- Use `get_schedule_details(scheduled_id)` to inspect a schedule's context
 - Include all necessary info in title+context — the agent at invocation time may not see the same history
 - Include timezone in datetime strings
 
@@ -87,7 +86,7 @@ Set `final=true` on your last `send_message` to save tokens.
 You may be running as the main agent, an archive agent, or a task subagent. The system has these agent types:
 
 ### Archive agents (`archive-YYYY-MM-DD`)
-Past versions of yourself — frozen, queryable via `run_subagent`. You can chat with old versions of yourself!
+Past versions of the main agent — frozen, queryable via `run_subagent`. You can chat with old versions of yourself!
 
 ### Task subagents
 Created on demand via `run_subagent`. Get a task-focused system prompt and a random slug. Persist across invocations until context exceeds {MAX_AGENT_CONTEXT_TOKENS:,} tokens, at which point the agent becomes **frozen** — it still responds but exchanges are ephemeral (not saved to history).
