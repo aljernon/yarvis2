@@ -82,7 +82,7 @@ function renderContentBlocks(blocks, dbMsgId) {
       const headerLabel = isSendMessageFinal ? `${block.name}/message/final` : (singleStr ? `${block.name}/${keys[0]}` : block.name);
       const startOpen = block.name === "send_message";
       const bytes = new Blob([inputStr]).size;
-      const skillAttr = block.name === "read_memory" && block.input && block.input.name ? ` data-skill-name="${escapeHtml(block.input.name)}"` : "";
+      const skillAttr = block.name === "read_skill" && block.input && block.input.name ? ` data-skill-name="${escapeHtml(block.input.name)}"` : "";
       html += `<div class="tool-use-block"${skillAttr}><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow${startOpen ? " open" : ""}" id="arrow-${id}">&#9654;</span> <strong>Tool:</strong> ${escapeHtml(headerLabel)} <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content${startOpen ? " open" : ""}" id="${id}">${escapeHtml(inputStr)}</div></div>`;
     } else if (block.type === "tool_result") {
       const id = "tr-" + uid();
@@ -491,53 +491,36 @@ function renderSystemPrompt(text) {
   const sysBytes = new Blob([text]).size;
   const outerId = "agent-system-" + uid();
 
-  // Find all skill boundaries
-  const skillRegex = /^Content of skill (\S+) - read from .+$/mg;
+  // Find all === Section === boundaries (workspace includes)
+  const sectionRegex = /^=== (.+?) ===$/mg;
   const matches = [];
   let m;
-  while ((m = skillRegex.exec(text)) !== null) {
+  while ((m = sectionRegex.exec(text)) !== null) {
     matches.push({ index: m.index, name: m[1] });
   }
 
-  // If no skills found, render as single block
+  // If no sections found, render as single block
   if (matches.length === 0) {
     return `<div class="turn-card"><div class="turn-header" id="system-prompt-header"><span class="sender system">System Prompt</span><span class="turn-bytes">${sysBytes}b</span><span class="toggle-arrow open" id="arrow-${outerId}" onclick="toggleCollapsible('${outerId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content open" id="${outerId}" style="max-height:800px">${escapeHtml(text)}</div></div>`;
   }
 
-  // Find where skills section ends (e.g. "Available Knowledge Files" or other section headers)
-  const lastSkillMatch = matches[matches.length - 1];
-  const postSkillRegex = /^\n*===\s/m;
-  const afterLastSkill = text.slice(lastSkillMatch.index);
-  // Search for a section header after the first line of the last skill
-  const firstNewline = afterLastSkill.indexOf("\n");
-  const postMatch = firstNewline >= 0 ? postSkillRegex.exec(afterLastSkill.slice(firstNewline)) : null;
-  const skillsEndIndex = postMatch ? lastSkillMatch.index + firstNewline + postMatch.index : text.length;
-
-  // Split into parts: text before first skill, each skill, then trailing text
+  // Split into parts: text before first section, then each section
   const parts = [];
   if (matches[0].index > 0) {
-    parts.push({ type: "text", content: text.slice(0, matches[0].index) });
+    parts.push({ type: "text", name: "Base Prompt", content: text.slice(0, matches[0].index) });
   }
   for (let i = 0; i < matches.length; i++) {
-    const end = i + 1 < matches.length ? matches[i + 1].index : skillsEndIndex;
-    parts.push({ type: "skill", name: matches[i].name, content: text.slice(matches[i].index, end) });
-  }
-  if (skillsEndIndex < text.length) {
-    parts.push({ type: "text", content: text.slice(skillsEndIndex) });
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+    parts.push({ type: "section", name: matches[i].name, content: text.slice(matches[i].index, end) });
   }
 
   let html = `<div class="turn-card"><div class="turn-header" id="system-prompt-header"><span class="sender system">System Prompt</span><span class="turn-bytes">${sysBytes}b</span><span class="toggle-arrow open" id="arrow-${outerId}" onclick="toggleCollapsible('${outerId}')" style="cursor:pointer">&#9654;</span></div><div class="collapsible-content open" id="${outerId}" style="max-height:none">`;
 
   for (const part of parts) {
-    if (part.type === "skill") {
-      const id = "skill-" + uid();
-      const bytes = new Blob([part.content]).size;
-      html += `<div class="tool-use-block" data-skill-name="${escapeHtml(part.name)}"><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>Skill: ${escapeHtml(part.name)}</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(part.content)}</div></div>`;
-    } else {
-      const id = "systxt-" + uid();
-      const bytes = new Blob([part.content]).size;
-      html += `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>Text</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(part.content)}</div></div>`;
-    }
+    const id = (part.type === "section" ? "section-" : "systxt-") + uid();
+    const bytes = new Blob([part.content]).size;
+    const label = escapeHtml(part.name);
+    html += `<div class="text-block" data-skill-name="${label}"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow" id="arrow-${id}">&#9654;</span> <strong>${label}</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content" id="${id}">${escapeHtml(part.content)}</div></div>`;
   }
 
   html += `</div></div>`;
@@ -638,29 +621,35 @@ async function loadAgentView() {
     // System prompt — split into skill sub-blocks
     html += renderSystemPrompt(data.system_prompt);
 
-    // Collect loaded skills: autoloaded from system prompt + on-demand from read_memory calls
-    const autoloadedSkills = [];
-    const skillRegex2 = /^Content of skill (\S+) - read from .+$/mg;
+    // Collect workspace includes from system prompt + on-demand skills from read_skill calls
+    const workspaceIncludes = [];
+    const sectionRegex2 = /^=== (.+?) ===$/mg;
     let sm;
-    while ((sm = skillRegex2.exec(data.system_prompt)) !== null) {
-      autoloadedSkills.push(sm[1]);
+    while ((sm = sectionRegex2.exec(data.system_prompt)) !== null) {
+      workspaceIncludes.push(sm[1]);
     }
     const onDemandSkills = [];
     for (const msg of data.history) {
       if (!Array.isArray(msg.content)) continue;
       for (const block of msg.content) {
-        if (block.type === "tool_use" && block.name === "read_memory" && block.input && block.input.name) {
+        if (block.type === "tool_use" && block.name === "read_skill" && block.input && block.input.name) {
           onDemandSkills.push(block.input.name);
         }
       }
     }
-    if (autoloadedSkills.length > 0 || onDemandSkills.length > 0) {
-      let skillsHtml = '<div class="skills-summary"><strong>Skills:</strong> ';
-      for (const s of autoloadedSkills) {
-        skillsHtml += `<span class="skill-badge autoload" onclick="scrollToSkill('${escapeHtml(s)}')">${escapeHtml(s)}</span> `;
+    if (workspaceIncludes.length > 0 || onDemandSkills.length > 0) {
+      let skillsHtml = '<div class="skills-summary">';
+      if (workspaceIncludes.length > 0) {
+        skillsHtml += '<strong>Includes:</strong> ';
+        for (const s of workspaceIncludes) {
+          skillsHtml += `<span class="skill-badge autoload" onclick="scrollToSkill('${escapeHtml(s)}')">${escapeHtml(s)}</span> `;
+        }
       }
-      for (const s of onDemandSkills) {
-        skillsHtml += `<span class="skill-badge on-demand" onclick="scrollToSkill('${escapeHtml(s)}')">${escapeHtml(s)}</span> `;
+      if (onDemandSkills.length > 0) {
+        skillsHtml += '<strong>Skills:</strong> ';
+        for (const s of onDemandSkills) {
+          skillsHtml += `<span class="skill-badge on-demand" onclick="scrollToSkill('${escapeHtml(s)}')">${escapeHtml(s)}</span> `;
+        }
       }
       skillsHtml += '</div>';
       html += skillsHtml;
