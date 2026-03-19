@@ -23,7 +23,7 @@ from yarvis_ptb.storage import DbMessage, Invocation, get_messages, get_schedule
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
 from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
 from yarvis_ptb.tools.tool_spec import LocalTool
-from yarvis_ptb.turns import UserTurn
+from yarvis_ptb.turns import InputMessageTurn
 
 bp = Blueprint("chat", __name__)
 
@@ -136,7 +136,7 @@ async def _run_ephemeral_chat(
             )
 
             # Render the user turn with <system> prefix
-            user_turn = UserTurn(
+            user_turn = InputMessageTurn(
                 created_at=now,
                 marked_for_archive=False,
                 user_id=msg_user_id,

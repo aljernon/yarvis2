@@ -138,8 +138,10 @@ def render_mesage_param_for_semantic_search(rec: MessageParam) -> str:
     parts = re.split(r"(<thinking>.*?</thinking>)", text, flags=re.DOTALL)
     parts = [x if not x.startswith("<thinking>") else "" for x in parts]
     text = "\n".join(parts)
-    parts = re.split(r"(<(?:system|meta)>.*?</(?:system|meta)>)", text, flags=re.DOTALL)
-    parts = [x if not x.startswith(("<system>", "<meta>")) else "" for x in parts]
+    parts = re.split(
+        r"(<(?:system|meta)[^>]*>.*?</(?:system|meta)>)", text, flags=re.DOTALL
+    )
+    parts = [x if not x.startswith(("<system", "<meta")) else "" for x in parts]
     text = "\n".join(parts)
     parts = [line.strip() for line in text.split("\n") if line.strip()]
     text = "\n".join(parts)

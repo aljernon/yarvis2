@@ -3,6 +3,7 @@ import copy
 import datetime
 import logging
 from dataclasses import dataclass
+from typing import Literal
 
 from anthropic.types import MessageParam
 
@@ -34,9 +35,14 @@ class BaseTurn(abc.ABC):
 @dataclass
 class SystemTurn(BaseTurn):
     message: str
+    turn_type: Literal["notification", "schedule"] = "notification"
 
     def render(self) -> list[MessageParam]:
-        text = f"<meta>System message created at {self.created_at.isoformat()}</meta>\n<system>{self.message}</system>"
+        ts = self.created_at.isoformat()
+        if self.turn_type == "schedule":
+            text = f'<meta type="schedule" at="{ts}"></meta>\n{self.message}'
+        else:
+            text = f'<meta type="notification" at="{ts}"></meta>\n<system>{self.message}</system>'
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]
         if self.marked_for_archive:
             _apply_archive_prefix(role_messages)
@@ -48,6 +54,7 @@ class SystemTurn(BaseTurn):
             chat_id=chat_id,
             user_id=SYSTEM_USER_ID,
             message=self.message,
+            meta={"turn_type": self.turn_type},
             agent_id=agent_id,
         )
 
@@ -94,7 +101,7 @@ class BotTurn(BaseTurn):
 
 
 @dataclass
-class UserTurn(BaseTurn):
+class InputMessageTurn(BaseTurn):
     message: str
     user_id: int
 
@@ -103,7 +110,12 @@ class UserTurn(BaseTurn):
     reply_to: dict | None = None
     uploaded_file: dict | None = None
 
-    def _resolve_sender(self) -> str:
+    def _resolve_sender_type(self) -> str:
+        if self.user_id == ROOT_AGENT_USER_ID:
+            return "agent"
+        return "human"
+
+    def _resolve_sender_name(self) -> str:
         return USER_ID_MAP.get(
             self.user_id,
             "root agent"
@@ -133,9 +145,12 @@ class UserTurn(BaseTurn):
             display_text = text[:200] + "..." if len(text) > 200 else text
             reply_prefix = f"[Replying to {reply_to['from']} at {reply_to.get('date', '?')}: \"{display_text}\"]\n"
 
-        sender = self._resolve_sender()
-        is_voice_message = self.is_voice
-        full_message = f"<meta>Sent by {sender} at {self.created_at.isoformat()} {is_voice_message=}</meta>\n{reply_prefix}{self.message}"
+        sender_type = self._resolve_sender_type()
+        sender_name = self._resolve_sender_name()
+        ts = self.created_at.isoformat()
+        voice_attr = ' is_voice="true"' if self.is_voice else ""
+        meta_tag = f'<meta type="message" sender_type="{sender_type}" sender_name="{sender_name}" at="{ts}"{voice_attr}></meta>'
+        full_message = f"{meta_tag}\n{reply_prefix}{self.message}"
         content_chunks.append({"type": "text", "text": full_message})
 
         role_messages: list[MessageParam] = [
@@ -165,7 +180,7 @@ class UserTurn(BaseTurn):
         )
 
 
-Turn = SystemTurn | BotTurn | UserTurn
+Turn = SystemTurn | BotTurn | InputMessageTurn
 
 
 def db_message_to_turn(msg: DbMessage) -> Turn:
@@ -187,13 +202,15 @@ def db_message_to_turn(msg: DbMessage) -> Turn:
             marked_for_archive=msg.marked_for_archive,
         )
     if msg.user_id == SYSTEM_USER_ID:
+        meta = msg.meta or {}
         return SystemTurn(
             created_at=msg.created_at,
             message=msg.message,
             marked_for_archive=msg.marked_for_archive,
+            turn_type=meta.get("turn_type", "notification"),
         )
     meta = msg.meta or {}
-    return UserTurn(
+    return InputMessageTurn(
         created_at=msg.created_at,
         message=msg.message,
         user_id=msg.user_id,

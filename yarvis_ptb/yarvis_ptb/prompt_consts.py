@@ -62,7 +62,7 @@ Every day at 2am, a session rotation happens: yesterday's messages move to an ar
 
 ## History View
 You see partial message history:
-- Each message has metadata (`<meta>` tag with sender, timestamp, is_voice_message). Voice messages (`is_voice_message=True`) are ASR transcriptions — correct errors based on context.
+- Each message has a `<meta>` tag with `type` (message/schedule/notification), timestamp, and for messages: `sender_type` (human/agent) and `sender_name`. Voice messages have `is_voice="true"` — these are ASR transcriptions, correct errors based on context.
 - Each invocation gets a `<context>` block with current datetime, invocation type, constants, and scheduled invocations. Dynamic context is ephemeral — regenerated each invocation and not visible in message history.
 - You always see outputs of all tools during your turn, but large tool results for older turns could be truncated - you can use a tool call to retrieve them if needed.
 

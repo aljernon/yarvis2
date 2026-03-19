@@ -93,6 +93,20 @@ Frozen archive agents are queryable via `run_subagent(agent="archive-2026-03-04"
 - OAuth token files (e.g. `whoop_token.json`, `nest_token.json`) are shipped to Heroku via `tokens_to_envs.sh`
 - When adding a new integration, always add its env vars to both `.env` and Heroku
 
+## Database Safety
+
+**Before running any destructive or bulk-update SQL** (UPDATE, DELETE, ALTER, DROP), dump the affected table to `/tmp` first:
+```bash
+conda run -n clam python -c "
+import subprocess, os
+subprocess.run(['pg_dump', '--data-only', '-t', 'messages', os.environ['DATABASE_URL'], '-f', '/tmp/messages_backup.sql'])
+"
+```
+Replace `messages` with the relevant table. This creates a restorable SQL dump. For a full database dump, omit `-t`:
+```bash
+pg_dump "$DATABASE_URL" -f /tmp/yarvis_full_backup.sql
+```
+
 ## Deployment
 The project is hosted on Heroku with PostgreSQL database integration.
 - Heroku app name: `claude-telegram-v2` (fork of original `claude-telegram`/yarvis)

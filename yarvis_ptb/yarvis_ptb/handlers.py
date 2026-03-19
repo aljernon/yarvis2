@@ -745,6 +745,7 @@ async def _run_schedule_in_subagent(
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
             message=f"{invocation_details}\n(running in subagent)",
+            meta={"turn_type": "schedule"},
         ),
     )
 
@@ -763,6 +764,7 @@ async def _run_schedule_in_subagent(
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
             message=f"Subagent {run_result.slug} completed: {sched.title}\n\nResult:\n{summary}",
+            meta={"turn_type": "notification"},
         ),
     )
     logger.info(
@@ -824,6 +826,7 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                         created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                         user_id=SYSTEM_USER_ID,
                         message=invocation_details,
+                        meta={"turn_type": "schedule"},
                     )
                     await process_multi_message_claude_invocation(
                         curr,
