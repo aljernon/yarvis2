@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 LAST_CHECK_VAR = "LAST_MESSAGE_CHECK_DATE"
 CHECK_INTERVAL_MINUTES = 5
 
+
+MONITORED_SOURCES = ["signal", "sms", "telegram", "gmail"]
+
 # Filtering config: DMs visible by default, groups hidden unless whitelisted.
 FILTER_CONFIG = {
     "signal": {
@@ -278,7 +281,9 @@ def _format_notification(
     since_str = since.astimezone(tz).strftime(fmt)
     until_str = until.astimezone(tz).strftime(fmt)
 
-    lines = [f"New messages ({since_str} – {until_str}):"]
+    lines = [
+        f"New messages in monitored sources {MONITORED_SOURCES} ({since_str} – {until_str}):"
+    ]
 
     if errors:
         lines.append("\nFETCH ERRORS (data may be incomplete):")
@@ -289,7 +294,7 @@ def _format_notification(
     for msg in messages:
         by_source.setdefault(msg["source"], []).append(msg)
 
-    for source in ["signal", "sms", "telegram", "gmail"]:
+    for source in MONITORED_SOURCES:
         msgs = by_source.get(source, [])
         if not msgs:
             continue
