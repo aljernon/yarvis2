@@ -15,7 +15,7 @@ class RenderingConfig(BaseModel):
     load_memory: bool = True
     """Load root workspace files into the system prompt.
 
-    True = load all root files (CORE_VALUES, BEHAVIOR, TOOLS, MEMORY, current-status).
+    True = load all root files (HUMAN, BEHAVIOR, TOOLS, MEMORY, HUMAN_STATUS).
     False = don't load any workspace files.
     """
 

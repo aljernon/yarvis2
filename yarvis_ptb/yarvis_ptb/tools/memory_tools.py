@@ -31,7 +31,7 @@ class ReadMemoryTool(LocalTool):
                     type=str,
                     description=(
                         "Name of the file to read (e.g., 'calendar-scheduling', "
-                        "'health-info', 'CORE_VALUES.md'). See MEMORY.md for available files."
+                        "'health-info', 'HUMAN.md'). See MEMORY.md for available files."
                     ),
                     is_required=True,
                 )

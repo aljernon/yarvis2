@@ -29,7 +29,7 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 
 ### Workspace
 `workspace/` is a symlink to `../memory` (separate git repo). Structure:
-- **Root files** (always loaded): `CORE_VALUES.md`, `BEHAVIOR.md`, `TOOLS.md`, `MEMORY.md`, `CURRENT_STATUS.md`
+- **Root files** (always loaded): `HUMAN.md`, `BEHAVIOR.md`, `TOOLS.md`, `MEMORY.md`, `HUMAN_STATUS.md`
 - **Data files** (`memory/`): on-demand data like `health-info.md`, `mom-trip-2026.md`
 - **Skills** (`skills/<name>/SKILL.md`): procedural knowledge loaded via `read_skill` tool
 - **BOOT.md**: daily session boot template
