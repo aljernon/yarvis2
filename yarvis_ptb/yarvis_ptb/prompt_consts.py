@@ -51,7 +51,7 @@ Scheduling rules:
 
 You may be running as the main agent, an archive agent, or a task subagent. The system has these agent types:
 
-### Archive agents (`archive-YYYY-MM-DD`)
+### Archive agents (`archive/YYYY-MM-DD`)
 Past versions of the main agent — frozen, queryable via `run_subagent`. You can chat with old versions of yourself!
 
 ### Task subagents

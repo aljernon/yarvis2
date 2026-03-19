@@ -11,5 +11,5 @@ def generate_agent_slug() -> str:
 
 
 def archive_slug(date: datetime.date) -> str:
-    """Build an archive slug like 'archive-2026-03-04'."""
-    return f"archive-{date.isoformat()}"
+    """Build an archive slug like 'archive/2026-03-04'."""
+    return f"archive/{date.isoformat()}"

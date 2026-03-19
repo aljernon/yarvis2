@@ -10,3 +10,5 @@
 - Never pass pytz timezones to datetime constructor; always use `tz.localize(dt)`. Prefer `America/Los_Angeles` over `US/Pacific`
 - When referencing code locations, use relative paths from project root (e.g. `yarvis_ptb/yarvis_ptb/file.py:42`), not bare filenames. Never put punctuation (`.`, `,`) immediately after a `file:line` reference — it breaks clickability
 - For DB access, use `from yarvis_ptb.storage import connect` — don't re-search for the pattern. `connect()` returns a psycopg2 connection context manager
+- Don't add back-compat aliases for renames — update all references directly
+- For Yarvis-visible information (errors, status, events), put it in the notification/message text — yarvis doesn't see server logs, only what's stored in DB messages

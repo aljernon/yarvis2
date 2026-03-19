@@ -47,7 +47,7 @@ Yarvis is a Telegram bot powered by Claude LLM that provides users with an AI as
 Messages in the `messages` table have a `message` text field and a `meta` JSONB field.
 
 - **User messages**: `message` contains the text. `meta` may have `{"is_voice": true}` for voice messages, or `{"image_b64": "..."}` for image messages.
-- **System messages**: `message` contains the text (e.g. restart notifications). `meta` is usually empty.
+- **System messages**: `message` contains the text (e.g. restart notifications). `meta` has `{"turn_type": "notification"}` or `{"turn_type": "schedule"}`. May also have `{"is_reflection": true}` for auto-reflection completion messages.
 - **Bot messages** (user_id=-1): `message` is set to `"USE_CONTENT_FROM_META"`. The actual content is in `meta.message_params`, which is a list of Claude API `MessageParam` turns:
   ```
   [
@@ -80,13 +80,13 @@ The bot can schedule its own future invocations using the scheduling system:
 
 ## DAU (Disjoint Agent Union)
 Daily session rotation system. At 2am local time (`daily_agent_update.py`):
-1. Creates a frozen archive agent (`archive-YYYY-MM-DD`) for the previous session
+1. Creates a frozen archive agent (`archive/YYYY-MM-DD`) for the previous session
 2. Reassigns main-chat messages (last 2 days, `agent_id IS NULL`) to the archive agent
 3. Generates a haiku summary of the archived conversation
 4. Inserts system messages (freeze notice in archive, new-session notice in main chat)
 5. Triggers a proactive Claude invocation for the new session
 
-Frozen archive agents are queryable via `run_subagent(agent="archive-2026-03-04", message="...")` — queries are ephemeral (not saved under the archive agent). Agent slugs use `coolname` for subagents and date-based format for archives (`agent_slugs.py`).
+Frozen archive agents are queryable via `run_subagent(agent="archive/2026-03-04", message="...")` — queries are ephemeral (not saved under the archive agent). Agent slugs use `coolname` for subagents and date-based format for archives (`agent_slugs.py`).
 
 ## Credentials & Environment Variables
 - API credentials (client IDs, secrets) go in `.env` (gitignored) and must also be set on Heroku via `heroku config:set`

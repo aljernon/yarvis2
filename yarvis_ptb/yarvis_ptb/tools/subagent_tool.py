@@ -588,13 +588,13 @@ class MessageSubagentTool(_SubagentBase):
             description=cleandoc("""
                 Sends a message to an existing agent and returns its response.
                 Works with any agent type: task subagents, yarvis subagents, or
-                archive agents (archive-YYYY-MM-DD).
+                archive agents (archive/YYYY-MM-DD).
                 """),
             args=[
                 ArgSpec(
                     name="agent",
                     type=str,
-                    description="Agent slug (e.g. 'swift-pine' or 'archive-2026-03-04').",
+                    description="Agent slug (e.g. 'swift-pine' or 'archive/2026-03-04').",
                     is_required=True,
                 ),
                 ArgSpec(

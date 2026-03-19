@@ -563,7 +563,7 @@ async def handler_invoke_dau(update: Update, context: CallbackContext):
     yesterday = (
         datetime.datetime.now(DEFAULT_TIMEZONE) - datetime.timedelta(days=1)
     ).date()
-    slug = f"archive-{yesterday}"
+    slug = f"archive/{yesterday}"
     await message.reply_text(f"Saving new-session marker for {slug}...")
     with context.bot_data["conn"].cursor() as curr:
         db_msg = build_new_session_message(curr, message.chat_id, yesterday, slug)

@@ -1,7 +1,7 @@
 """DAU (Disjoint Agent Union) — daily session rotation.
 
 At 2am local time:
-1. Create a frozen archive agent (archive-YYYY-MM-DD) for yesterday's messages
+1. Create a frozen archive agent (archive/YYYY-MM-DD) for yesterday's messages
 2. Reassign yesterday's main-chat messages to the archive agent
 3. Run haiku to generate a one-paragraph summary (topics, people, events)
 4. Insert a system message into the archive agent marking it frozen
