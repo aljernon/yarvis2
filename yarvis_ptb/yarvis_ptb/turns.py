@@ -14,6 +14,7 @@ from yarvis_ptb.settings import (
     USER_ID_MAP,
 )
 from yarvis_ptb.storage import IMAGE_B64_META_FIELD, DbMessage
+from yarvis_ptb.tools.forget_above_tool import FORGET_ABOVE_TOOL_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,8 @@ class BotTurn(BaseTurn):
         ):
             logger.debug(f"Empty message: {role_messages[-2:]}")
             role_messages.pop()
+
+        role_messages = _apply_forget_above(role_messages)
 
         if self.marked_for_archive:
             _apply_archive_prefix(role_messages)
@@ -220,6 +223,73 @@ def db_message_to_turn(msg: DbMessage) -> Turn:
         uploaded_file=meta.get("uploaded_file"),
         marked_for_archive=msg.marked_for_archive,
     )
+
+
+def _apply_forget_above(role_messages: list[MessageParam]) -> list[MessageParam]:
+    """Strip content before the last forget_above tool call.
+
+    Scans for the last assistant turn containing a forget_above tool_use.
+    Drops all turns before it, and within that assistant turn drops all
+    blocks before the forget_above call. The corresponding user turn is
+    filtered to only keep tool_results for remaining tool_use IDs.
+    """
+    # Find the last forget_above: (turn_index, block_index)
+    last_hit: tuple[int, int] | None = None
+    for turn_idx, turn in enumerate(role_messages):
+        if turn["role"] != "assistant" or not isinstance(turn["content"], list):
+            continue
+        for block_idx, block in enumerate(turn["content"]):
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_use"
+                and block.get("name") == FORGET_ABOVE_TOOL_NAME
+            ):
+                last_hit = (turn_idx, block_idx)
+
+    if last_hit is None:
+        return role_messages
+
+    turn_idx, block_idx = last_hit
+
+    # Trim the assistant turn: keep from block_idx onward
+    assistant_turn = role_messages[turn_idx]
+    kept_blocks = assistant_turn["content"][block_idx:]
+    kept_tool_ids = {
+        b["id"]
+        for b in kept_blocks
+        if isinstance(b, dict) and b.get("type") == "tool_use"
+    }
+    assistant_turn["content"] = kept_blocks
+
+    # Filter the next user turn to only keep matching tool_results
+    result: list[MessageParam] = [assistant_turn]
+    for turn in role_messages[turn_idx + 1 :]:
+        if (
+            turn["role"] == "user"
+            and isinstance(turn["content"], list)
+            and not kept_tool_ids
+        ):
+            # No tool_use IDs left to match — keep the turn as-is
+            result.append(turn)
+        elif (
+            turn["role"] == "user"
+            and isinstance(turn["content"], list)
+            and kept_tool_ids
+        ):
+            filtered = [
+                b
+                for b in turn["content"]
+                if not (isinstance(b, dict) and b.get("type") == "tool_result")
+                or b.get("tool_use_id") in kept_tool_ids
+            ]
+            if filtered:
+                turn["content"] = filtered
+                result.append(turn)
+            kept_tool_ids = set()  # only filter the immediately following user turn
+        else:
+            result.append(turn)
+
+    return result
 
 
 def _apply_archive_prefix(role_messages: list[MessageParam]) -> None:

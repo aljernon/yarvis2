@@ -44,6 +44,7 @@ from yarvis_ptb.tools.bash_repl import BashRunTool
 from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 from yarvis_ptb.tools.editor_tool import EditorTool
 from yarvis_ptb.tools.file_tools import build_chat_send_file_tools
+from yarvis_ptb.tools.forget_above_tool import ForgetAboveTool
 from yarvis_ptb.tools.gcal_tools import get_calendar_tools
 from yarvis_ptb.tools.gmail_tool import get_gmail_tools
 from yarvis_ptb.tools.image_tools import build_image_tools
@@ -69,7 +70,7 @@ TOOL_EXECUTION_TIMEOUT_SEC = TOOL_MAX_TIMEOUT_SEC + 10  # hard limit per tool ca
 
 def _build_generic_tools() -> list[LocalTool]:
     """Fresh instances each call — these are stateful, must not be shared across requests."""
-    return [PythonREPLTool(), BashRunTool(), EditorTool()]
+    return [PythonREPLTool(), BashRunTool(), EditorTool(), ForgetAboveTool()]
 
 
 TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()

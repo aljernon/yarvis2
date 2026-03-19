@@ -417,5 +417,123 @@ class TestDbMessageToTurn(unittest.TestCase):
         assert turn.image_b64 is None
 
 
+class TestForgetAbove(unittest.TestCase):
+    def _make_tool_use(self, name, tool_id):
+        return {"type": "tool_use", "name": name, "id": tool_id, "input": {}}
+
+    def _make_tool_result(self, tool_id, text="ok"):
+        return {
+            "type": "tool_result",
+            "tool_use_id": tool_id,
+            "content": [{"type": "text", "text": text}],
+        }
+
+    def test_no_forget_above_unchanged(self):
+        params = [
+            {
+                "role": "assistant",
+                "content": [self._make_tool_use("bash_run", "t1")],
+            },
+            {"role": "user", "content": [self._make_tool_result("t1")]},
+            {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+        ]
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
+        msgs = turn.render()
+        assert len(msgs) == 3
+
+    def test_forget_above_drops_prior_turns(self):
+        params = [
+            {
+                "role": "assistant",
+                "content": [self._make_tool_use("bash_run", "t1")],
+            },
+            {"role": "user", "content": [self._make_tool_result("t1")]},
+            {
+                "role": "assistant",
+                "content": [self._make_tool_use("forget_above", "t2")],
+            },
+            {"role": "user", "content": [self._make_tool_result("t2")]},
+            {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+        ]
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
+        msgs = turn.render()
+        # Should be: forget_above assistant turn, its result, final text
+        assert len(msgs) == 3
+        assert msgs[0]["content"][0]["name"] == "forget_above"
+
+    def test_forget_above_drops_blocks_before_in_same_turn(self):
+        params = [
+            {
+                "role": "assistant",
+                "content": [
+                    self._make_tool_use("bash_run", "t1"),
+                    self._make_tool_use("forget_above", "t2"),
+                    self._make_tool_use("bash_run", "t3"),
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    self._make_tool_result("t1"),
+                    self._make_tool_result("t2"),
+                    self._make_tool_result("t3"),
+                ],
+            },
+            {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+        ]
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
+        msgs = turn.render()
+        assert len(msgs) == 3
+        # Assistant turn should only have forget_above + t3
+        assert len(msgs[0]["content"]) == 2
+        assert msgs[0]["content"][0]["name"] == "forget_above"
+        assert msgs[0]["content"][1]["id"] == "t3"
+        # User turn should only have results for t2 and t3
+        assert len(msgs[1]["content"]) == 2
+
+    def test_forget_above_uses_last_occurrence(self):
+        params = [
+            {
+                "role": "assistant",
+                "content": [self._make_tool_use("forget_above", "t1")],
+            },
+            {"role": "user", "content": [self._make_tool_result("t1")]},
+            {
+                "role": "assistant",
+                "content": [self._make_tool_use("forget_above", "t2")],
+            },
+            {"role": "user", "content": [self._make_tool_result("t2")]},
+            {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+        ]
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
+        msgs = turn.render()
+        assert len(msgs) == 3
+        # Should use the second forget_above
+        assert msgs[0]["content"][0]["id"] == "t2"
+
+    def test_does_not_mutate_original(self):
+        params = [
+            {
+                "role": "assistant",
+                "content": [
+                    self._make_tool_use("bash_run", "t1"),
+                    self._make_tool_use("forget_above", "t2"),
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    self._make_tool_result("t1"),
+                    self._make_tool_result("t2"),
+                ],
+            },
+        ]
+        turn = BotTurn(created_at=NOW, marked_for_archive=False, message_params=params)
+        turn.render()
+        # Original should still have both tool_uses
+        assert len(params[0]["content"]) == 2
+        assert len(params[1]["content"]) == 2
+
+
 if __name__ == "__main__":
     unittest.main()
