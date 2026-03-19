@@ -23,6 +23,58 @@ logger = logging.getLogger(__name__)
 LAST_CHECK_VAR = "LAST_MESSAGE_CHECK_DATE"
 CHECK_INTERVAL_MINUTES = 5
 
+# Filtering config: DMs visible by default, groups hidden unless whitelisted.
+FILTER_CONFIG = {
+    "signal": {
+        "whitelisted_groups": [],
+        "blacklisted_contacts": [],
+    },
+    "sms": {
+        "whitelisted_groups": [],
+        "blacklisted_contacts": [],
+    },
+    "telegram": {
+        "whitelisted_groups": [
+            -1003713018935,  # Ф (family, supergroup ID)
+            -705787714,  # Ф (family, group ID)
+        ],
+        "blacklisted_contacts": [
+            "ya42352",  # bot chat
+            "clam",  # dev/test chats
+        ],
+    },
+    "gmail": {
+        "whitelisted_groups": [],
+        "blacklisted_contacts": [],
+    },
+}
+
+
+def _should_keep(msg: dict) -> bool:
+    """Filter a message based on FILTER_CONFIG. Returns True to keep."""
+    cfg = FILTER_CONFIG.get(msg["source"], {})
+
+    # Blacklisted contact check (partial match on from or partner)
+    for bl in cfg.get("blacklisted_contacts", []):
+        bl_lower = bl.lower()
+        if bl_lower in msg["from"].lower() or bl_lower in msg["partner"].lower():
+            return False
+
+    # Group chat: hidden unless whitelisted
+    if msg.get("is_group"):
+        whitelist = cfg.get("whitelisted_groups", [])
+        chat_id = msg.get("chat_id")
+        partner = msg["partner"]
+        # Telegram: whitelist by chat_id (int)
+        if chat_id is not None and chat_id in whitelist:
+            return True
+        # Signal/SMS: whitelist by group name (partial match)
+        if any(isinstance(w, str) and w.lower() in partner.lower() for w in whitelist):
+            return True
+        return False
+
+    return True
+
 
 def _socks5_proxy() -> str | None:
     return os.environ.get("TAILSCALE_SOCKS5_PROXY")
@@ -172,6 +224,7 @@ async def _fetch_telegram(
                 "direction": msg["direction"],
                 "partner": msg["conversation_partner"],
                 "is_group": msg.get("is_group", False),
+                "chat_id": msg.get("chat_id"),
                 "text": msg["message"],
             }
         )
@@ -292,6 +345,8 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
     except Exception as e:
         logger.warning(f"Gmail fetch failed: {e}")
         errors.append(f"Gmail: {e}")
+
+    all_messages = [m for m in all_messages if _should_keep(m)]
 
     if not all_messages and not errors:
         return None
