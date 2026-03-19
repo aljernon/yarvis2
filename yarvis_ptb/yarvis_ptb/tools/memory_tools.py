@@ -1,4 +1,4 @@
-"""Tools for reading workspace files (skills, data, root files)."""
+"""Tools for reading workspace skills and validating workspace structure."""
 
 import logging
 
@@ -6,7 +6,6 @@ from yarvis_ptb.on_disk_memory import (
     MEMORY_DATA_PATH,
     SKILLS_PATH,
     WORKSPACE_PATH,
-    list_all_workspace_files,
     resolve_file_path,
 )
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
@@ -21,17 +20,16 @@ class ReadMemoryTool(LocalTool):
         return ToolSpec(
             name="read_skill",
             description=(
-                "Load a workspace file by name. Searches skills, data files (memory/), "
-                "and root files. Use this to access detailed knowledge when needed. "
-                "See MEMORY.md in the system prompt for the full index."
+                "Load a skill by name from workspace/skills/. "
+                "For data files (workspace/memory/), use bash to read them directly."
             ),
             args=[
                 ArgSpec(
                     name="name",
                     type=str,
                     description=(
-                        "Name of the file to read (e.g., 'calendar-scheduling', "
-                        "'health-info', 'HUMAN.md'). See MEMORY.md for available files."
+                        "Name of the skill to read (e.g., 'calendar-scheduling', "
+                        "'morning-bookkeeping')."
                     ),
                     is_required=True,
                 )
@@ -43,11 +41,7 @@ class ReadMemoryTool(LocalTool):
 
         path, err = resolve_file_path(name)
         if path is None:
-            available = list_all_workspace_files()
-            return ToolResult.error(
-                f"Workspace file '{name}' not found. Available files:\n"
-                + "\n".join(f"  - {n}" for n in available)
-            )
+            return ToolResult.error(err)
 
         try:
             content = path.read_text()

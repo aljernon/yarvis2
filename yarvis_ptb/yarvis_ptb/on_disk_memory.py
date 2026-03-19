@@ -81,38 +81,21 @@ def read_root_files() -> dict[str, str]:
 
 
 def resolve_file_path(name: str):
-    """Resolve a file name to its path on disk.
+    """Resolve a skill name to its path on disk.
 
-    Search order:
-    1. skills/<name>/SKILL.md
-    2. memory/<name>.md
-    3. Root <name> (exact filename or <name>.md)
+    Only looks in skills/<name>/SKILL.md.
+    Data files should be read via bash (cat workspace/memory/<name>.md).
 
     Returns (path, None) on success, (None, error_msg) on failure.
     """
-    # 1. Skills
     skill_path = SKILLS_PATH / name / "SKILL.md"
     if skill_path.exists():
         return skill_path, None
 
-    # 2. Data files in memory/
-    data_path = MEMORY_DATA_PATH / f"{name}.md"
-    if data_path.exists():
-        return data_path, None
-    # Also try without .md extension
-    data_path2 = MEMORY_DATA_PATH / name
-    if data_path2.exists():
-        return data_path2, None
-
-    # 3. Root files
-    root_path = WORKSPACE_PATH / name
-    if root_path.exists():
-        return root_path, None
-    root_path_md = WORKSPACE_PATH / f"{name}.md"
-    if root_path_md.exists():
-        return root_path_md, None
-
-    return None, f"'{name}' not found in workspace"
+    return (
+        None,
+        f"Skill '{name}' not found. Available skills: {', '.join(s.name for s in sorted(SKILLS_PATH.iterdir()) if (s / 'SKILL.md').exists())}",
+    )
 
 
 def resolve_memory_preload(load: bool) -> str:
@@ -165,16 +148,15 @@ def list_all_workspace_files() -> list[str]:
 
 
 def render_skill_listing() -> str:
-    """Render a dynamic listing of available skills and data files.
+    """Render a dynamic listing of available skills.
 
     Used when list_skills=True to show the agent what's available via read_skill.
     """
     lines = [
-        "=== Available Skills & Data Files ===",
+        "=== Available Skills ===",
         "Use `read_skill(name)` to load any of these.\n",
     ]
 
-    # Skills
     if SKILLS_PATH.exists():
         for skill_dir in sorted(SKILLS_PATH.iterdir()):
             if not skill_dir.is_dir() or skill_dir.name.startswith("."):
@@ -184,15 +166,7 @@ def render_skill_listing() -> str:
                 continue
             metadata = parse_skill_frontmatter(skill_md.read_text())
             desc = metadata.get("description", "")
-            lines.append(f"- **{skill_dir.name}** (skill): {desc}")
-
-    # Data files in memory/
-    if MEMORY_DATA_PATH.exists():
-        for data_file in sorted(MEMORY_DATA_PATH.glob("*.md")):
-            name = data_file.stem
-            # Read first heading as description
-            first_line = data_file.read_text().split("\n", 1)[0].strip("# ").strip()
-            lines.append(f"- **{name}** (data): {first_line}")
+            lines.append(f"- **{skill_dir.name}**: {desc}")
 
     return "\n".join(lines)
 
