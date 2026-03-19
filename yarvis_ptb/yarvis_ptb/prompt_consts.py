@@ -60,6 +60,9 @@ Created on demand via `run_subagent`. Get a task-focused system prompt and a ran
 ## Daily Session Lifecycle
 Every day at 2am, a session rotation happens: yesterday's messages move to an archive agent, and a new session starts. The first message of each new session is rendered from `workspace/BOOT.md` — a template you can edit to control how you boot up. The new-session message is saved to history as a marker (no Claude invocation is triggered).
 
+## Message Events (main chat only)
+The system periodically checks Signal, SMS, Telegram, and Gmail for new messages and creates notifications in chat history. These notifications show who messaged, when, and a preview of the content. If any source failed to fetch, errors are listed at the top of the notification — treat fetch errors as infra issues that may need attention.
+
 ## History View
 You see partial message history:
 - Each message has a `<meta>` tag with `type` (message/schedule/notification), timestamp, and for messages: `sender_type` (human/agent) and `sender_name`. Voice messages have `is_voice="true"` — these are ASR transcriptions, correct errors based on context.

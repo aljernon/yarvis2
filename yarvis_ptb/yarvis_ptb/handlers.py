@@ -36,6 +36,7 @@ from yarvis_ptb.debug_chat import (
     add_debug_message_to_queue,
     maybe_send_messages_to_debug_chat,
 )
+from yarvis_ptb.message_events import check_new_messages, should_check_messages
 from yarvis_ptb.on_disk_memory import read_root_files
 from yarvis_ptb.prompting import (
     build_claude_input,
@@ -782,6 +783,21 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
             hard_restart()
     with context.bot_data["conn"].cursor() as curr:
         now = datetime.datetime.now(DEFAULT_TIMEZONE)
+
+        # Message events check (before schedules)
+        try:
+            if should_check_messages(now, curr):
+                msg = await check_new_messages(curr, ROOT_USER_ID)
+                if msg:
+                    add_debug_message_to_queue(f"**MESSAGE EVENTS:**\n{msg}")
+                    await maybe_send_messages_to_debug_chat(context.application)
+        except Exception:
+            logger.exception("Message events check failed")
+            add_debug_message_to_queue(
+                f"**MESSAGE EVENTS FAILED**\n```\n{traceback.format_exc()}\n```"
+            )
+            await maybe_send_messages_to_debug_chat(context.application)
+
         schedules = get_schedules(curr)
         deltas = [
             (sched, (sched.next_run_at - now).total_seconds()) for sched in schedules
