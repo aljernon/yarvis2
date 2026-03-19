@@ -10,10 +10,11 @@ class ForgetAboveTool(LocalTool):
         return ToolSpec(
             name=FORGET_ABOVE_TOOL_NAME,
             description=(
-                "Drop all content above this tool call from conversation history. "
-                "On the next invocation, everything in this assistant turn before "
-                "this call (and all preceding tool-loop turns) will be removed. "
-                "Use to compress history after long tool-use sequences."
+                "Trim conversation history: on the next invocation, all tool calls "
+                "and results ABOVE this point in the current assistant turn will be "
+                "removed. Only useful AFTER you've already made tool calls that you "
+                "want to drop from history. Do NOT call this as your first action — "
+                "there's nothing above to trim."
             ),
             args=[
                 ArgSpec(
