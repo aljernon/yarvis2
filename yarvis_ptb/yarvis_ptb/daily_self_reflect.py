@@ -331,7 +331,7 @@ async def should_auto_reflect(curr, chat_id: int) -> bool:
             return False
 
     # Check idle time: between 3:30 and 4:30 since last user message
-    recent_messages = get_messages(curr, chat_id, limit=50)
+    recent_messages = get_messages(curr, chat_id, limit=100)
     if not recent_messages:
         return False
 
@@ -503,7 +503,7 @@ async def should_midnight_reflect(curr, chat_id: int) -> bool:
 
     # Check if we already reflected since the last user message
     last_reflect = _get_last_reflect_time(curr, chat_id)
-    recent_messages = get_messages(curr, chat_id, limit=50)
+    recent_messages = get_messages(curr, chat_id, limit=100)
 
     last_user_msg = None
     for msg in reversed(recent_messages):
