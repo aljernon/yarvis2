@@ -7,6 +7,7 @@ import tenacity
 from anthropic.types import MessageParam
 
 from yarvis_ptb.agent_config import AgentConfig, AgentMeta
+from yarvis_ptb.agent_slugs import reflect_slug
 from yarvis_ptb.complex_chat import (
     COMPLEX_CHAT_LOCK,
     DEFAULT_AGENT_CONFIG,
@@ -244,7 +245,7 @@ async def run_force_reflect(
         curr,
         chat_id,
         meta=AgentMeta(agent_config=reflect_config, type="force_reflect").model_dump(),
-        slug=None,
+        slug=reflect_slug(now.date()),
     )
 
     # Save the prompt we sent to the agent
@@ -440,7 +441,7 @@ async def _run_reflect_inner(
         curr,
         chat_id,
         meta=AgentMeta(type="auto_reflect").model_dump(),
-        slug=None,
+        slug=reflect_slug(now.date()),
     )
 
     save_message(
