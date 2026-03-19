@@ -23,7 +23,7 @@ ROOT_FILES = [
     "CORE_VALUES.md",
     "BEHAVIOR.md",
     "TOOLS.md",
-    "current-status.md",
+    "CURRENT_STATUS.md",
 ]
 
 
@@ -126,7 +126,10 @@ def resolve_memory_preload(load: bool) -> str:
     root_files = read_root_files()
     if not root_files:
         return ""
-    lines: list[str] = ["=== Workspace ===\n"]
+    lines: list[str] = [
+        "=== Workspace Memory ===",
+        "The following files are automatically included in every invocation.\n",
+    ]
     for name, content in root_files.items():
         lines.extend(_render_root_file(name, content))
     return "\n".join(lines)
