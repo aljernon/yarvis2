@@ -19,10 +19,10 @@ MEMORY_DATA_PATH = WORKSPACE_PATH / "memory"
 
 # Root files that are always loaded into the system prompt (in this order).
 ROOT_FILES = [
+    "MEMORY.md",
     "CORE_VALUES.md",
     "BEHAVIOR.md",
     "TOOLS.md",
-    "MEMORY.md",
     "current-status.md",
 ]
 
