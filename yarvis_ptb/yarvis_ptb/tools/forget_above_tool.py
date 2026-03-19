@@ -12,7 +12,8 @@ class ForgetAboveTool(LocalTool):
             description=(
                 "Trim conversation history: on the next invocation, all tool calls "
                 "and results ABOVE this point in the current assistant turn will be "
-                "removed. Only useful AFTER you've already made tool calls that you "
+                "removed, so that this tool call will appear to be first. "
+                "Only useful AFTER you've already made tool calls that you "
                 "want to drop from history. Do NOT call this as your first action — "
                 "there's nothing above to trim."
             ),
