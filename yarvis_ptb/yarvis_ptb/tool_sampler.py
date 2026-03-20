@@ -45,7 +45,6 @@ from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 from yarvis_ptb.tools.editor_tool import EditorTool
 from yarvis_ptb.tools.file_tools import build_chat_send_file_tools
 from yarvis_ptb.tools.forget_above_tool import ForgetAboveTool
-from yarvis_ptb.tools.gcal_tools import get_calendar_tools
 from yarvis_ptb.tools.gmail_tool import get_gmail_tools
 from yarvis_ptb.tools.image_tools import build_image_tools
 from yarvis_ptb.tools.memory_tools import build_memory_tools
@@ -76,7 +75,7 @@ def _build_generic_tools() -> list[LocalTool]:
 TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 
 ANTON_DATA_TOOLS: list[LocalTool] = (
-    get_calendar_tools() + get_gmail_tools() + get_whoop_tools() + get_nest_tools()
+    get_gmail_tools() + get_whoop_tools() + get_nest_tools()
 )
 
 
