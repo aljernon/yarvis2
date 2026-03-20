@@ -12,3 +12,7 @@
 - For DB access, use `from yarvis_ptb.storage import connect` — don't re-search for the pattern. `connect()` returns a psycopg2 connection context manager
 - Don't add back-compat aliases for renames — update all references directly
 - For Yarvis-visible information (errors, status, events), put it in the notification/message text — yarvis doesn't see server logs, only what's stored in DB messages
+- When committing, only include files directly related to the requested change — don't bundle unrelated edits
+- Never `git push` unless explicitly asked — pushes trigger a Heroku rebuild
+- When editing workspace files, read the full file first to avoid duplicating existing content
+- Before exploring a subdirectory (dashboard/, signal_accumulator/, etc.), check for a local CLAUDE.md in that directory first
