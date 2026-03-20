@@ -11,7 +11,7 @@ CLAUDE_MODEL_NAME = "claude-opus-4-6"
 
 SUBAGENT_MODEL_MAP = {
     "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-5-20250929",
+    "sonnet": "claude-sonnet-4-6",
     "opus": "claude-opus-4-6",
 }
 SUBAGENT_DEFAULT_MODEL = "haiku"
