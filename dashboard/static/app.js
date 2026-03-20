@@ -317,6 +317,11 @@ async function loadMessages(page) {
     badges += renderUsageBadge(msg.meta);
 
     const sc = senderClass(msg);
+    const turnTypeEmoji = {"notification": "\uD83D\uDD35", "schedule": "\uD83D\uDCC5"};
+    let senderLabel = msg.sender;
+    if (msg.user_id === -2 && msg.meta?.turn_type) {
+      senderLabel += " " + (turnTypeEmoji[msg.meta.turn_type] || "\uD83D\uDCCC " + msg.meta.turn_type);
+    }
     const turnId = "turn-" + msg.id;
 
     let rendered;
@@ -333,7 +338,7 @@ async function loadMessages(page) {
     card.innerHTML = `
       <div class="turn-header">
         <span class="timestamp">${formatTimestamp(msg.created_at)}</span>
-        <span class="sender ${sc}">${escapeHtml(msg.sender)}</span>
+        <span class="sender ${sc}">${escapeHtml(senderLabel)}</span>
         <span class="msg-id">#${msg.id}</span>
         <span class="turn-bytes">${msg.total_bytes}b</span>
         ${badges}
