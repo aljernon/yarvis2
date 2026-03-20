@@ -49,6 +49,7 @@ from yarvis_ptb.ptb_util import (
     auth_decorator,
     auth_decorator_all_complex_chats,
     auth_decorator_complex_chat,
+    build_interruptable_scope,
     get_anthropic_client,
     hard_restart,
     interrupt_all,
@@ -750,10 +751,12 @@ async def _run_schedule_in_subagent(
         ),
     )
 
-    # 2. Create and run subagent
-    run_result = await create_and_run_agent(
-        curr, chat_id, bot, message=invocation_details
-    )
+    # 2. Create and run subagent under a non-interruptable scope so that
+    #    user messages arriving during execution don't kill the subagent.
+    with build_interruptable_scope(chat_id, message_id=None):
+        run_result = await create_and_run_agent(
+            curr, chat_id, bot, message=invocation_details
+        )
 
     # 3. Save result summary to main history
     agent_texts = extract_agent_messages(run_result.result)

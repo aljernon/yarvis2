@@ -300,6 +300,8 @@ a.badge.agent:hover { background: #b090d0; }
 }
 .thinking-header:hover { background: #e4dced; }
 
+.tool-arg-name { font-weight: bold; color: #9a6070; }
+
 .tool-use-header:hover { background: #f8e4e8; }
 .tool-result-header:hover { background: #e0f0f2; }
 .tool-result-header.tool-error { color: #e05068; background: #fdf0f2; }
