@@ -43,6 +43,57 @@ class AgentRunResult:
     slug: str
 
 
+def _default_agent_config() -> AgentConfig:
+    return AgentConfig(
+        rendering=RenderingConfig(
+            prompt_name="anton_private",
+            load_memory=True,
+            list_skills=True,
+            tool_result_truncation_after_n_turns=0,
+        ),
+        sampling=SamplingConfig(
+            model="opus",
+            tool_subset="all",
+            output_mode="tool_message",
+            collect_messages=True,
+        ),
+    )
+
+
+def create_agent_only(
+    curr,
+    chat_id: int,
+    *,
+    agent_config: AgentConfig | None = None,
+) -> tuple[str, AgentConfig]:
+    """Create a new subagent and inject its system message. Returns (slug, agent_config).
+
+    Use this when you need to save messages to the parent history between
+    agent creation and execution. Follow up with run_as_agent() to run it.
+    """
+    if agent_config is None:
+        agent_config = _default_agent_config()
+
+    slug = generate_agent_slug()
+    agent_id = create_agent(
+        curr, chat_id, meta=AgentMeta(agent_config=agent_config).model_dump(), slug=slug
+    )
+    logger.info(f"create_agent_only: created {slug} (id={agent_id})")
+
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    save_message(
+        curr,
+        DbMessage(
+            created_at=now,
+            chat_id=chat_id,
+            user_id=SYSTEM_USER_ID,
+            message=YARVIS_SUBAGENT_SYSTEM_MESSAGE,
+            agent_id=agent_id,
+        ),
+    )
+    return slug, agent_config
+
+
 async def create_and_run_agent(
     curr,
     chat_id: int,
@@ -57,40 +108,7 @@ async def create_and_run_agent(
     running the query, and saving to DB. Caller doesn't need to know
     subagent internals.
     """
-    if agent_config is None:
-        agent_config = AgentConfig(
-            rendering=RenderingConfig(
-                prompt_name="anton_private",
-                load_memory=True,
-                list_skills=True,
-                tool_result_truncation_after_n_turns=0,
-            ),
-            sampling=SamplingConfig(
-                model="opus",
-                tool_subset="all",
-                output_mode="tool_message",
-                collect_messages=True,
-            ),
-        )
-
-    slug = generate_agent_slug()
-    agent_id = create_agent(
-        curr, chat_id, meta=AgentMeta(agent_config=agent_config).model_dump(), slug=slug
-    )
-    logger.info(f"create_and_run_agent: created {slug} (id={agent_id})")
-
-    # Inject subagent system message
-    now = datetime.datetime.now(DEFAULT_TIMEZONE)
-    save_message(
-        curr,
-        DbMessage(
-            created_at=now,
-            chat_id=chat_id,
-            user_id=SYSTEM_USER_ID,
-            message=YARVIS_SUBAGENT_SYSTEM_MESSAGE,
-            agent_id=agent_id,
-        ),
-    )
+    slug, agent_config = create_agent_only(curr, chat_id, agent_config=agent_config)
 
     return await run_as_agent(
         curr,

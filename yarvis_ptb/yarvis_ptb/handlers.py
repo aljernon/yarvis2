@@ -15,7 +15,11 @@ from telegram import Message, Update
 from telegram.ext import Application, CallbackContext, ContextTypes
 from typing_extensions import Callable
 
-from yarvis_ptb.agent_runner import create_and_run_agent, extract_agent_messages
+from yarvis_ptb.agent_runner import (
+    create_agent_only,
+    extract_agent_messages,
+    run_as_agent,
+)
 from yarvis_ptb.complex_chat import (
     DEFAULT_AGENT_CONFIG,
     handle_message_root_user_assistant,
@@ -739,23 +743,28 @@ async def _run_schedule_in_subagent(
     """
     chat_id = sched.chat_id
 
-    # 1. Save start marker to main history
+    # 1. Create agent, save start marker with slug, then run.
+    slug, _agent_config = create_agent_only(curr, chat_id)
     save_message(
         curr,
         DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
-            message=f"{invocation_details}\n(running in subagent)",
+            message=f"{invocation_details}\n(running in subagent {slug})",
             meta={"turn_type": "schedule"},
         ),
     )
 
-    # 2. Create and run subagent under a non-interruptable scope so that
-    #    user messages arriving during execution don't kill the subagent.
+    # 2. Run under a non-interruptable scope so that user messages
+    #    arriving during execution don't kill the subagent.
     with build_interruptable_scope(chat_id, message_id=None):
-        run_result = await create_and_run_agent(
-            curr, chat_id, bot, message=invocation_details
+        run_result = await run_as_agent(
+            curr,
+            chat_id,
+            bot,
+            agent_slug=slug,
+            message=invocation_details,
         )
 
     # 3. Save result summary to main history
@@ -767,7 +776,11 @@ async def _run_schedule_in_subagent(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
-            message=f"Subagent {run_result.slug} completed: {sched.title}\n\nResult:\n{summary}",
+            message=(
+                f'Subagent `{run_result.slug}` completed a schedule invocation "{sched.title}"\n\n'
+                f"Here's the message the subagent returned:\n{summary}\n\n"
+                f'You can send this agent a message via run_subagent(agent="{run_result.slug}", message="...")'
+            ),
             meta={"turn_type": "notification"},
         ),
     )
