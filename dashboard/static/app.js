@@ -57,10 +57,7 @@ async function loadStats() {
 let currentPage = 1;
 let currentChatId = null;
 
-function formatToolInput(input, isSendMessageFinal) {
-  if (isSendMessageFinal) {
-    return `<span class="tool-arg-name">message</span>\n${escapeHtml(input.message)}`;
-  }
+function formatToolInput(input) {
   const keys = Object.keys(input || {});
   if (keys.length === 0) return "";
   const parts = [];
@@ -97,12 +94,23 @@ function renderContentBlocks(blocks, dbMsgId) {
       const id = "tool-" + uid();
       const keys = Object.keys(block.input || {});
       const isSendMessageFinal = block.name === "send_message" && keys.length === 2 && block.input.final === true && typeof block.input.message === "string";
+      const singleStr = isSendMessageFinal || (keys.length === 1 && typeof block.input[keys[0]] === "string");
       const startOpen = block.name === "send_message";
       const skillAttr = block.name === "read_skill" && block.input && block.input.name ? ` data-skill-name="${escapeHtml(block.input.name)}"` : "";
-      const bodyHtml = formatToolInput(block.input, isSendMessageFinal);
-      const inputStr = isSendMessageFinal ? block.input.message : JSON.stringify(block.input);
+      let headerLabel, bodyHtml, inputStr;
+      if (singleStr) {
+        // Single string arg: arg name in header, plain value in body
+        inputStr = isSendMessageFinal ? block.input.message : block.input[keys[0]];
+        headerLabel = isSendMessageFinal ? `${block.name}/message/final` : `${block.name}/${keys[0]}`;
+        bodyHtml = escapeHtml(inputStr);
+      } else {
+        // Multiple args: custom rendering with bold arg names
+        headerLabel = block.name;
+        bodyHtml = formatToolInput(block.input);
+        inputStr = JSON.stringify(block.input);
+      }
       const bytes = new Blob([inputStr]).size;
-      html += `<div class="tool-use-block"${skillAttr}><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow${startOpen ? " open" : ""}" id="arrow-${id}">&#9654;</span> <strong>Tool:</strong> ${escapeHtml(block.name)} <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content${startOpen ? " open" : ""}" id="${id}">${bodyHtml}</div></div>`;
+      html += `<div class="tool-use-block"${skillAttr}><div class="tool-use-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow${startOpen ? " open" : ""}" id="arrow-${id}">&#9654;</span> <strong>Tool:</strong> ${escapeHtml(headerLabel)} <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content${startOpen ? " open" : ""}" id="${id}">${bodyHtml}</div></div>`;
     } else if (block.type === "tool_result") {
       const id = "tr-" + uid();
       let content = "";
