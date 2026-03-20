@@ -543,7 +543,20 @@ async def _process_multi_message_claude_invocation_inner(
     else:
         prompt_size = None
 
-    if message_params:
+    if result.interrupted:
+        # Interrupted mid-tool-loop: message_params preserves completed
+        # tool turns for DB context.  Show shrug + delete output.
+        if hooks.output_message is not None:
+            await bot.delete_message(
+                chat_id=chat_id, message_id=hooks.output_message.id
+            )  # type: ignore
+        if invocation.reply_to_message_id:
+            await bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=invocation.reply_to_message_id,
+                reaction=constants.ReactionEmoji.SHRUG,
+            )  # type: ignore
+    elif message_params:
         if output_mode == "tool_message":
             if hooks.output_message is not None:
                 await bot.delete_message(
@@ -605,6 +618,23 @@ async def _process_multi_message_claude_invocation_inner(
             meta=bot_meta,
         )
         save_message_and_update_index(curr, db_message)
+
+        # After saving the bot message, save interruption notification so it
+        # appears after the partial assistant turns in conversation history.
+        if result.interrupted:
+            msg_text = "Generation interrupted by user."
+            if result.dropped_tool_names:
+                msg_text += " Dropped (not executed) tool calls: " + ", ".join(
+                    result.dropped_tool_names
+                )
+            notification = DbMessage(
+                chat_id=chat_id,
+                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                user_id=SYSTEM_USER_ID,
+                message=msg_text,
+                meta={"turn_type": "notification"},
+            )
+            save_message_and_update_index(curr, notification)
 
     archive_marked_messages(curr, chat_id)
 

@@ -118,6 +118,7 @@ async def _run_ephemeral_chat(
                 (
                     result_params,
                     claude_calls,
+                    _interrupted,
                 ) = await tool_sampler._process_query_with_tools(
                     system=system,
                     messages=message_params,

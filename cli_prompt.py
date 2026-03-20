@@ -139,6 +139,7 @@ async def main(prompt: str, verbose: bool, agent: str | None = None):
                 (
                     result_params,
                     claude_calls,
+                    _interrupted,
                 ) = await tool_sampler._process_query_with_tools(
                     system=system,
                     messages=message_params,

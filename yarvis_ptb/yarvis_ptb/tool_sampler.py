@@ -310,7 +310,7 @@ async def process_query(
             return SamplingResult()
         tool_init_time = time.monotonic() - start
         tool_map = {t.name: t for t in tools}
-        msg, claude_calls = await _process_query_with_tools(
+        msg, claude_calls, interrupted = await _process_query_with_tools(
             system,
             messages,
             claude_tools=local_tools,
@@ -322,6 +322,13 @@ async def process_query(
             max_tokens=config.max_tokens,
             thinking=config.thinking,
         )
+        # Strip dangling tool_use blocks (generated but not executed due
+        # to interruption) — the API requires a matching tool_result for
+        # every tool_use.
+        dropped_tool_names: list[str] = []
+        if interrupted:
+            dropped_tool_names = _strip_dangling_tool_uses(msg)
+
         # Collect subagent cost info if any subagents were used
         from yarvis_ptb.tools.subagent_tool import _SubagentBase
 
@@ -339,7 +346,42 @@ async def process_query(
             claude_calls=claude_calls,
             subagent_usages=subagent_usages,
             tool_init_time=tool_init_time,
+            interrupted=interrupted,
+            dropped_tool_names=dropped_tool_names,
         )
+
+
+def _strip_dangling_tool_uses(msg: list[MessageParam]) -> list[str]:
+    """Remove tool_use blocks from the last assistant turn if no tool_result follows.
+
+    Returns the names of dropped tool calls.  When interrupted before tool
+    execution, the assistant turn has tool_use blocks that were never
+    executed.  The API rejects conversations with tool_use but no matching
+    tool_result, so we strip them.
+    """
+    if not msg:
+        return []
+    last = msg[-1]
+    if last.get("role") != "assistant":
+        return []
+    content = last.get("content", [])
+    if not isinstance(content, list):
+        return []
+    tool_uses = [
+        b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"
+    ]
+    if not tool_uses:
+        return []
+    dropped_names = [b["name"] for b in tool_uses]
+    logger.info(f"Stripping dangling tool_use blocks: {dropped_names}")
+    non_tool = [
+        b for b in content if not (isinstance(b, dict) and b.get("type") == "tool_use")
+    ]
+    if non_tool:
+        last["content"] = non_tool  # type: ignore[typeddict-item]
+    else:
+        msg.pop()
+    return dropped_names
 
 
 def _extract_agent_messages(
@@ -434,7 +476,7 @@ async def _process_query_with_tools(
     model_name: str = CLAUDE_MODEL_NAME,
     max_tokens: int = 16000,
     thinking: str = "adaptive",
-) -> tuple[list[MessageParam], list[ClaudeCallInfo]]:
+) -> tuple[list[MessageParam], list[ClaudeCallInfo], bool]:
     async_client = get_async_anthropic_client()
 
     def _get_retry_after(retry_state) -> float:
@@ -671,9 +713,12 @@ async def _process_query_with_tools(
             )
 
         if not partial_sample.content and partial_sample.stop_reason == "interrupt":
-            # Interrupted before generating any content in this iteration.
-            # Return extra_messages (may contain prior completed turns).
-            return extra_messages, claude_calls
+            # Interrupted before generating new content.  Preserve any
+            # completed tool turns (extra_messages) so they get saved to DB,
+            # but signal interruption so the caller shows shrug, not a
+            # rendered response.  The notification DbMessage is created by
+            # the caller (complex_chat).
+            return extra_messages, claude_calls, True
 
         logger.info(
             f"Response content types: {[c.type for c in partial_sample.content]}"
@@ -683,6 +728,17 @@ async def _process_query_with_tools(
             for content in partial_sample.content
         ]
         extra_messages.append({"role": "assistant", "content": converted_content})
+
+        # Check interruption before executing tools — avoids side effects
+        # (e.g. sending an email to the wrong address).  The assistant turn
+        # with tool_use blocks stays in extra_messages; process_query will
+        # strip dangling tool_uses and fold them into the notification.
+        if scope.is_interrupted and any(
+            c.type == "tool_use" for c in partial_sample.content
+        ):
+            logger.info("Interrupted before tool execution, skipping tools")
+            return extra_messages, claude_calls, True
+
         # No need to call on_update here, as we are already doing it in the stream.
         tool_execution_results: list[ToolResultBlockParam] = []
         should_stop_after = False
@@ -757,7 +813,7 @@ async def _process_query_with_tools(
         if c is not None and not isinstance(c, list):
             msg["content"] = list(c)  # type: ignore[typeddict-item]
 
-    return extra_messages, claude_calls
+    return extra_messages, claude_calls, False
 
 
 class _DummyJobQueue:

@@ -87,3 +87,9 @@ class SamplingResult:
 
     tool_init_time: float = 0.0
     """Time spent initializing tools."""
+
+    interrupted: bool = False
+    """True when generation was interrupted mid-tool-loop (tool turns preserved)."""
+
+    dropped_tool_names: list[str] = field(default_factory=list)
+    """Tool calls that were generated but not executed due to interruption."""
