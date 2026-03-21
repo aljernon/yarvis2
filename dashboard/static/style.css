@@ -136,6 +136,12 @@ a.badge.agent:hover { background: #b090d0; }
 }
 
 /* Subagent group in agent POV */
+.ghost-msg {
+  margin-left: 30px;
+  border-left: 3px solid #ccc;
+  opacity: 0.6;
+}
+
 .subagent-group {
   margin: 6px 0;
   margin-left: 30px;

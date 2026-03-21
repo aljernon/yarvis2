@@ -335,7 +335,7 @@ async function loadMessages(page) {
 
   for (const msg of data.messages) {
     const card = document.createElement("div");
-    card.className = msg.agent_id ? "turn-card subagent" : "turn-card";
+    card.className = msg.is_hidden_auto_message ? "turn-card ghost-msg" : (msg.agent_id ? "turn-card subagent" : "turn-card");
 
     let badges = "";
     if (msg.agent_id) badges += `<a href="/agent?agent_id=${msg.agent_id}" class="badge agent" title="View agent config & history">${msg.agent_slug || 'Agent #' + msg.agent_id}</a>`;
