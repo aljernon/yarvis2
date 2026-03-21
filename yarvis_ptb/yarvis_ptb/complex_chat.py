@@ -69,10 +69,12 @@ COMPLEX_CHAT_LOCK = asyncio.Lock()
 
 SELF_CHECK_PROMPT = (
     "[Automated post-reply review — not a user message, do NOT reply or send_message.] "
-    "Did the last assistant reply demonstrate familiarity with people, events, or topics "
-    "without first verifying via tools (logseq, workspace memory, internet search, "
-    "archived message search)? If yes, use tools now to look up the relevant info. "
-    "If no research is needed, output ONLY the single word: pass"
+    "Did the last assistant reply mention or assume knowledge about people, events, "
+    "places, or topics without first looking them up via tools (logseq, workspace memory, "
+    "internet search, archived message search)? "
+    "'Being in the middle of a conversation' is NOT an excuse to skip research — "
+    "if the reply referenced something that could be verified, look it up NOW. "
+    "If genuinely no claims were made that need verification, output ONLY: pass"
 )
 
 DEFAULT_AGENT_CONFIG = AgentConfig(
