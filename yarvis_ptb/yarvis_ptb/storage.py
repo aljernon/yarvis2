@@ -62,6 +62,7 @@ class DbMessage:
     meta: dict | None = None
     message_id: int | None = None
     agent_id: int | None = None
+    is_hidden_auto_message: bool = False
 
     def is_bot(self):
         return self.user_id == BOT_USER_ID
@@ -209,7 +210,7 @@ def get_messages(
         params = (chat_id, agent_id, limit)
     curr.execute(
         f"""
-        SELECT created_at, chat_id, user_id, message, meta, id, marked_for_archive, agent_id
+        SELECT created_at, chat_id, user_id, message, meta, id, marked_for_archive, agent_id, is_hidden_auto_message
         FROM messages
         WHERE chat_id = %s
         AND is_visible = true
@@ -232,6 +233,7 @@ def get_messages(
                 message_id=row[5],
                 marked_for_archive=row[6],
                 agent_id=row[7],
+                is_hidden_auto_message=row[8],
             )
         )
     return messages
@@ -243,8 +245,9 @@ def save_message(curr, message: DbMessage, *, is_visible: bool = True):
     meta_json = json.dumps(_ensure_json_serializable(message.meta))
     curr.execute(
         """
-            INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id, is_visible)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO messages (created_at, chat_id, user_id, message, meta, marked_for_archive, agent_id, is_visible, is_hidden_auto_message)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
         (
             message.created_at,
@@ -255,8 +258,12 @@ def save_message(curr, message: DbMessage, *, is_visible: bool = True):
             message.marked_for_archive,
             message.agent_id,
             is_visible,
+            message.is_hidden_auto_message,
         ),
     )
+    row = curr.fetchone()
+    if row:
+        message.message_id = row[0]
 
 
 def mark_message_for_archive(curr, chat_id: int, message_id: int):
@@ -290,6 +297,14 @@ def hide_single_message(curr, chat_id: int, message_id: int):
         WHERE chat_id = %s AND id = %s
         """,
         (chat_id, message_id),
+    )
+
+
+def mark_as_hidden_auto(curr, message_id: int):
+    """Sets is_hidden_auto_message=true for a message."""
+    curr.execute(
+        "UPDATE messages SET is_hidden_auto_message = true WHERE id = %s",
+        (message_id,),
     )
 
 

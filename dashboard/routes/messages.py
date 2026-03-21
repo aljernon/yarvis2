@@ -88,7 +88,7 @@ def api_messages():
                 f"""
                 SELECT m.id, m.created_at, m.chat_id, m.user_id, m.message, m.meta, m.marked_for_archive,
                        octet_length(m.meta::text) + octet_length(m.message) as total_bytes,
-                       m.agent_id, a.slug as agent_slug
+                       m.agent_id, a.slug as agent_slug, m.is_hidden_auto_message
                 FROM messages m
                 LEFT JOIN agents a ON m.agent_id = a.id
                 {where_sql}
@@ -119,6 +119,7 @@ def api_messages():
                     "total_bytes": row["total_bytes"],
                     "agent_id": row["agent_id"],
                     "agent_slug": row["agent_slug"],
+                    "is_hidden_auto_message": row["is_hidden_auto_message"],
                 }
             )
 

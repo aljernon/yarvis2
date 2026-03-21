@@ -314,7 +314,7 @@ def build_claude_input(
         user_id=SYSTEM_USER_ID,
         message=context_info,
     )
-    messages = messages + [context_message]
+    messages = [m for m in messages if not m.is_hidden_auto_message] + [context_message]
 
     history = convert_db_messages_to_claude_messages(
         messages,

@@ -346,6 +346,9 @@ async function loadMessages(page) {
     const sc = senderClass(msg);
     const turnTypeEmoji = {"notification": "\uD83D\uDD35", "schedule": "\uD83D\uDCC5"};
     let senderLabel = msg.sender;
+    if (msg.is_hidden_auto_message) {
+      senderLabel = "\uD83D\uDC7B " + senderLabel;
+    }
     if (msg.user_id === -2 && msg.meta?.turn_type) {
       senderLabel += " " + (turnTypeEmoji[msg.meta.turn_type] || "\uD83D\uDCCC " + msg.meta.turn_type);
     }

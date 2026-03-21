@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS messages (
     chat_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
     is_visible BOOLEAN DEFAULT true NOT NULL,
+    is_hidden_auto_message BOOLEAN NOT NULL DEFAULT false,
     message TEXT NOT NULL,  -- Using TEXT for unlimited length string
     marked_for_archive BOOLEAN NOT NULL DEFAULT false,
     meta JSONB,            -- Using JSONB for better performance and indexing capabilities

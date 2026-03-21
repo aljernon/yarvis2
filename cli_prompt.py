@@ -34,6 +34,7 @@ from yarvis_ptb.storage import (
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
 from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
 from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult, ToolSpec
+from yarvis_ptb.turns import db_message_to_turn
 from yarvis_ptb.yarvis_ptb.logging import setup_logging
 
 app = typer.Typer()
@@ -129,6 +130,16 @@ def run(
     interactive: bool = typer.Option(
         False, "--interactive", "-i", help="Confirm each tool call before executing"
     ),
+    after: int = typer.Option(
+        None,
+        "--after",
+        help="Insert prompt after this DB message ID (truncates later history)",
+    ),
+    sticky: bool = typer.Option(
+        False,
+        "--sticky",
+        help="Set message time to 5s after the last message in history",
+    ),
 ):
     asyncio.run(
         main(
@@ -137,6 +148,8 @@ def run(
             agent=agent,
             system_msg=system_msg,
             interactive=interactive,
+            after=after,
+            sticky=sticky,
         )
     )
 
@@ -147,6 +160,8 @@ async def main(
     agent: str | None = None,
     system_msg: bool = False,
     interactive: bool = False,
+    after: int | None = None,
+    sticky: bool = False,
 ):
     load_env()
     setup_logging()
@@ -179,8 +194,37 @@ async def main(
                 limit=rendering_config.max_history_length_turns,
                 agent_id=agent_id,
             )
+            if after is not None:
+                cut = next(
+                    (i + 1 for i, m in enumerate(db_messages) if m.message_id == after),
+                    None,
+                )
+                if cut is None:
+                    print(
+                        f"Message ID {after} not found in history.",
+                        file=sys.stderr,
+                    )
+                    raise typer.Exit(1)
+                db_messages = db_messages[:cut]
+                print(
+                    f"[history truncated after message #{after}, {cut} messages kept]",
+                    file=sys.stderr,
+                )
+            if db_messages:
+                last = db_messages[-1]
+                turn = db_message_to_turn(last)
+                preview = render_claude_response_short(turn.render())[:120].replace(
+                    "\n", "\\n"
+                )
+                print(
+                    f"[last msg: #{last.message_id} user={last.user_id} {last.created_at:%H:%M:%S}] {preview}",
+                    file=sys.stderr,
+                )
+                if sticky:
+                    now = last.created_at + datetime.timedelta(seconds=5)
             msg_user_id = SYSTEM_USER_ID if system_msg else chat_id
             msg_meta = {"turn_type": "notification"} if system_msg else None
+            print(f"[injected msg time: {now:%Y-%m-%d %H:%M:%S}]", file=sys.stderr)
             initial_db_message = DbMessage(
                 created_at=now,
                 chat_id=chat_id,
