@@ -103,7 +103,7 @@ class CliHooks:
                         text = " ".join(c.get("text", "") for c in block["content"])
                     elif isinstance(block.get("content"), str):
                         text = block["content"]
-                    preview = text[:300] + ("..." if len(text) > 300 else "")
+                    preview = text
                     color = "\033[31m" if block.get("is_error") else "\033[32m"
                     print(f"{color}  ← {preview}\033[0m", file=sys.stderr)
 

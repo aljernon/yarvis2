@@ -68,14 +68,12 @@ from yarvis_ptb.util import RateController, ensure
 COMPLEX_CHAT_LOCK = asyncio.Lock()
 
 SELF_CHECK_PROMPT = (
-    "[Automated post-reply review — not a user message, do NOT reply or send_message.] "
-    "Did the last assistant reply discuss people, events, places, or topics that I have "
-    "notes about (in logseq, workspace memory, archived messages) but didn't look up? "
-    "If a person or topic came up, I should proactively read everything I have about them — "
-    "not just verify a single fact, but do a full lookup to enrich my understanding. "
-    "'Being in the middle of a conversation' is NOT an excuse to skip this. "
-    "If there's anything worth looking up, do it NOW. "
-    "If genuinely nothing in the reply warrants a lookup, output ONLY: pass"
+    "Instant self-check. Automatic post-reply check. "
+    "Does it seem that I answered without being sure I have all relevant info? "
+    "I have access to internet, logseq, and hours of our past conversation. "
+    "Do I need to do some research to avoid looking ignorant? "
+    "If answer is no, do nothing. "
+    "This is an automatically triggered message so NEVER send message to the user."
 )
 
 DEFAULT_AGENT_CONFIG = AgentConfig(
