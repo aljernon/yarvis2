@@ -125,7 +125,13 @@ def run(
         help="Agent slug to chat with (loads agent's config and history)",
     ),
     system_msg: bool = typer.Option(
-        False, "--system", "-s", help="Send as system message (SYSTEM_USER_ID)"
+        False, "--system", "-s", help="Send as system notification (SYSTEM_USER_ID)"
+    ),
+    reflection: bool = typer.Option(
+        False,
+        "--reflection",
+        "-r",
+        help="Send as reflection message (SYSTEM_USER_ID, turn_type=reflection)",
     ),
     interactive: bool = typer.Option(
         False, "--interactive", "-i", help="Confirm each tool call before executing"
@@ -147,6 +153,7 @@ def run(
             verbose=verbose,
             agent=agent,
             system_msg=system_msg,
+            reflection=reflection,
             interactive=interactive,
             after=after,
             sticky=sticky,
@@ -159,6 +166,7 @@ async def main(
     verbose: bool,
     agent: str | None = None,
     system_msg: bool = False,
+    reflection: bool = False,
     interactive: bool = False,
     after: int | None = None,
     sticky: bool = False,
@@ -222,8 +230,14 @@ async def main(
                 )
                 if sticky:
                     now = last.created_at + datetime.timedelta(seconds=5)
-            msg_user_id = SYSTEM_USER_ID if system_msg else chat_id
-            msg_meta = {"turn_type": "notification"} if system_msg else None
+            is_system = system_msg or reflection
+            msg_user_id = SYSTEM_USER_ID if is_system else chat_id
+            if reflection:
+                msg_meta = {"turn_type": "reflection"}
+            elif system_msg:
+                msg_meta = {"turn_type": "notification"}
+            else:
+                msg_meta = None
             print(f"[injected msg time: {now:%Y-%m-%d %H:%M:%S}]", file=sys.stderr)
             initial_db_message = DbMessage(
                 created_at=now,

@@ -36,12 +36,14 @@ class BaseTurn(abc.ABC):
 @dataclass
 class SystemTurn(BaseTurn):
     message: str
-    turn_type: Literal["notification", "schedule"] = "notification"
+    turn_type: Literal["notification", "schedule", "reflection"] = "notification"
 
     def render(self) -> list[MessageParam]:
         ts = self.created_at.isoformat()
         if self.turn_type == "schedule":
             text = f'<meta type="schedule" at="{ts}"></meta>\n{self.message}'
+        elif self.turn_type == "reflection":
+            text = f'<meta type="reflection" at="{ts}"></meta>\n{self.message}'
         else:
             text = f'<meta type="notification" at="{ts}"></meta>\n<system>{self.message}</system>'
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]

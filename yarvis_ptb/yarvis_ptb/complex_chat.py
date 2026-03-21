@@ -422,8 +422,7 @@ async def _run_self_check(
         chat_id=chat_id,
         user_id=SYSTEM_USER_ID,
         message=SELF_CHECK_PROMPT,
-        meta={"turn_type": "notification"},
-        is_hidden_auto_message=True,
+        meta={"turn_type": "reflection"},
     )
     db_messages = [*db_messages, selfcheck_db_msg][
         -rendering_config.max_history_length_turns :
@@ -514,10 +513,6 @@ async def _run_self_check(
 
     if did_research:
         logger.info("Self-check: research triggered, messages kept visible")
-        # Send the self-check response to the user
-        response_text = render_claude_response_short(result_params or [])
-        if response_text.strip():
-            await reply_maybe_markdown(bot, chat_id, response_text)
     else:
         logger.info("Self-check: no research needed, messages hidden")
 
