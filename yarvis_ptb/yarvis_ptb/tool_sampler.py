@@ -6,6 +6,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, Protocol
 
+import httpx
 import tenacity
 from anthropic import APIStatusError, RateLimitError
 from anthropic.types import (
@@ -87,7 +88,10 @@ class JobQueueLike(Protocol):
 
 ADAPTIVE_THINKING_MODELS = {"claude-opus-4-6", "claude-sonnet-4-6"}
 
-ANTHROPIC_EXCEPTIONS_TO_RETRY: tuple[type[APIStatusError], ...] = (APIStatusError,)
+ANTHROPIC_EXCEPTIONS_TO_RETRY: tuple[type[Exception], ...] = (
+    APIStatusError,
+    httpx.NetworkError,
+)
 
 
 @dataclass

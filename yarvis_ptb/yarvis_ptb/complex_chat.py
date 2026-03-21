@@ -762,9 +762,19 @@ async def _process_multi_message_claude_invocation_inner(
 
         # Self-check: if this was a normal reply with no research tools used,
         # run a quick non-interruptable check to see if we should have looked things up.
+        # Skip if the response was a sampling failure.
+        has_sampling_failure = any(
+            isinstance(block, dict)
+            and block.get("type") == "text"
+            and "generation failed" in block.get("text", "").lower()
+            for mp in message_params
+            if mp.get("role") == "assistant" and isinstance(mp.get("content"), list)
+            for block in mp["content"]
+        )
         if (
             invocation.invocation_type == "reply"
             and not result.interrupted
+            and not has_sampling_failure
             and message_params
         ):
             tool_names_used = {
