@@ -62,6 +62,7 @@ from yarvis_ptb.ptb_util import (
 from yarvis_ptb.settings import (
     DEFAULT_TIMEZONE,
     HISTORY_LENGTH_TURNS,
+    PROJECT_ROOT,
     ROOT_USER_ID,
     SYSTEM_USER_ID,
 )
@@ -345,8 +346,8 @@ async def handler_memory(update: Update, context: CallbackContext):
 @auth_decorator_complex_chat
 async def handler_sync(update: Update, context: CallbackContext):
     try:
-        subprocess.check_call(["git", "pull"], cwd="/app/repo")
-        subprocess.check_call(["git", "pull"], cwd="/app/workspace")
+        subprocess.check_call(["git", "pull"], cwd=PROJECT_ROOT / "repo")
+        subprocess.check_call(["git", "pull"], cwd=PROJECT_ROOT / "workspace")
     except Exception as e:
         # Get full traceback
         error_traceback = "".join(
@@ -380,7 +381,7 @@ async def handler_todo(update: Update, context: CallbackContext):
 
     try:
         # Pull latest logseq updates
-        subprocess.check_call(["git", "pull"], cwd="/app/logseq")
+        subprocess.check_call(["git", "pull"], cwd=PROJECT_ROOT / "logseq")
 
         # Search for active TODOs and other task items, excluding version and backup files
         result = subprocess.run(
@@ -392,7 +393,7 @@ async def handler_todo(update: Update, context: CallbackContext):
                 "--exclude-dir=bak",
                 "-n",
                 r"^\s*-\s*\(TODO\|LATER\|DOING\|WAITING\)\s",
-                "/app/logseq/",
+                f"{PROJECT_ROOT}/logseq",
             ],
             capture_output=True,
             text=True,
