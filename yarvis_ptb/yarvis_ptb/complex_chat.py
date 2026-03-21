@@ -68,8 +68,8 @@ from yarvis_ptb.util import RateController, ensure
 COMPLEX_CHAT_LOCK = asyncio.Lock()
 
 SELF_CHECK_PROMPT = (
-    "Instant self-check. Automatic post-reply check. "
-    "Does it seem that I answered without being sure I have all relevant info? "
+    "Instant self-check on the reply I JUST gave (the message immediately above). "
+    "Did I answer without being sure I have all relevant info? "
     "I have access to internet, logseq, and hours of our past conversation. "
     "Do I need to do some research to avoid looking ignorant? "
     "If answer is no, do nothing. "
@@ -782,7 +782,9 @@ async def _process_multi_message_claude_invocation_inner(
                 for block in mp["content"]
                 if isinstance(block, dict) and block.get("type") == "tool_use"
             }
-            if tool_names_used <= {"send_message"}:
+            if "send_message" in tool_names_used and tool_names_used <= {
+                "send_message"
+            }:
                 await _run_self_check(
                     curr,
                     bot,

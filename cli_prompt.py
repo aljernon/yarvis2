@@ -261,7 +261,8 @@ async def main(
             tool_map: dict[str, LocalTool] = {}
             for t in all_local_tool_objects:
                 if t.name == "send_message":
-                    tool_map[t.name] = NoOpSendMessageTool(t.spec())
+                    noop = NoOpSendMessageTool(t.spec())
+                    tool_map[t.name] = InteractiveTool(noop) if interactive else noop
                 elif interactive:
                     tool_map[t.name] = InteractiveTool(t)
                 else:
