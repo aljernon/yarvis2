@@ -20,7 +20,7 @@ from yarvis_ptb.prompting import (
 )
 from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.sampling import NoOpHooks
-from yarvis_ptb.settings import DEFAULT_TIMEZONE, ID_USER_MAP
+from yarvis_ptb.settings import DEFAULT_TIMEZONE, ID_USER_MAP, SYSTEM_USER_ID
 from yarvis_ptb.settings.anton import USER_ANTON
 from yarvis_ptb.settings.main import load_env
 from yarvis_ptb.storage import (
@@ -33,9 +33,82 @@ from yarvis_ptb.storage import (
 )
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
 from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
+from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult, ToolSpec
 from yarvis_ptb.yarvis_ptb.logging import setup_logging
 
 app = typer.Typer()
+
+
+class InteractiveTool(LocalTool):
+    """Wraps a tool to print calls and ask for confirmation before executing."""
+
+    def __init__(self, inner: LocalTool):
+        self._inner = inner
+
+    def spec(self) -> ToolSpec:
+        return self._inner.spec()
+
+    async def init(self):
+        await self._inner.init()
+
+    async def close(self):
+        await self._inner.close()
+
+    def context(self):
+        return self._inner.context()
+
+    async def _execute(self, **kwargs) -> ToolResult:
+        # Format the call for display
+        name = self._inner.name
+        parts = []
+        for k, v in kwargs.items():
+            s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+            if len(s) > 120 or "\n" in s:
+                parts.append(
+                    f"  \033[1m{k}\033[0m\n  {s[:200]}{'...' if len(s) > 200 else ''}"
+                )
+            else:
+                parts.append(f"  \033[1m{k}:\033[0m {s}")
+        args_str = "\n".join(parts)
+        print(f"\n\033[33m▶ {name}\033[0m\n{args_str}", file=sys.stderr)
+
+        # Ask for confirmation
+        try:
+            answer = input("\033[36m  [y/n/q] \033[0m").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "q"
+
+        if answer == "q":
+            raise KeyboardInterrupt("User quit")
+        if answer != "y" and answer != "":
+            return ToolResult.error("Tool call rejected by user")
+
+        return await self._inner._execute(**kwargs)
+
+
+class CliHooks:
+    """Hooks that print tool results as they come in."""
+
+    async def on_update(self, accumulated_params: list) -> None:
+        # Print the latest turn if it's a tool result
+        if not accumulated_params:
+            return
+        last = accumulated_params[-1]
+        if last.get("role") == "user" and isinstance(last.get("content"), list):
+            for block in last["content"]:
+                if block.get("type") == "tool_result":
+                    text = ""
+                    if isinstance(block.get("content"), list):
+                        text = " ".join(c.get("text", "") for c in block["content"])
+                    elif isinstance(block.get("content"), str):
+                        text = block["content"]
+                    preview = text[:300] + ("..." if len(text) > 300 else "")
+                    color = "\033[31m" if block.get("is_error") else "\033[32m"
+                    print(f"{color}  ← {preview}\033[0m", file=sys.stderr)
+
+    @property
+    def is_interrupted(self) -> bool:
+        return False
 
 
 @app.command()
@@ -50,11 +123,31 @@ def run(
         "-a",
         help="Agent slug to chat with (loads agent's config and history)",
     ),
+    system_msg: bool = typer.Option(
+        False, "--system", "-s", help="Send as system message (SYSTEM_USER_ID)"
+    ),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="Confirm each tool call before executing"
+    ),
 ):
-    asyncio.run(main(prompt=prompt, verbose=verbose, agent=agent))
+    asyncio.run(
+        main(
+            prompt=prompt,
+            verbose=verbose,
+            agent=agent,
+            system_msg=system_msg,
+            interactive=interactive,
+        )
+    )
 
 
-async def main(prompt: str, verbose: bool, agent: str | None = None):
+async def main(
+    prompt: str,
+    verbose: bool,
+    agent: str | None = None,
+    system_msg: bool = False,
+    interactive: bool = False,
+):
     load_env()
     setup_logging()
 
@@ -86,11 +179,14 @@ async def main(prompt: str, verbose: bool, agent: str | None = None):
                 limit=rendering_config.max_history_length_turns,
                 agent_id=agent_id,
             )
+            msg_user_id = SYSTEM_USER_ID if system_msg else chat_id
+            msg_meta = {"turn_type": "notification"} if system_msg else None
             initial_db_message = DbMessage(
                 created_at=now,
                 chat_id=chat_id,
-                user_id=chat_id,
+                user_id=msg_user_id,
                 message=prompt,
+                meta=msg_meta,
             )
             db_messages = [*db_messages, initial_db_message][
                 -rendering_config.max_history_length_turns :
@@ -100,7 +196,7 @@ async def main(prompt: str, verbose: bool, agent: str | None = None):
 
             # Build system prompt + history
             invocation = Invocation(invocation_type="reply")
-            system, message_params = build_claude_input(
+            system_prompt, message_params = build_claude_input(
                 db_messages,
                 rendering_config,
                 invocation=invocation,
@@ -118,16 +214,20 @@ async def main(prompt: str, verbose: bool, agent: str | None = None):
             all_local_tool_objects = get_tools_for_agent_config(
                 agent_config, curr, chat_id, bot
             )
-            tool_map = {}
+            tool_map: dict[str, LocalTool] = {}
             for t in all_local_tool_objects:
                 if t.name == "send_message":
                     tool_map[t.name] = NoOpSendMessageTool(t.spec())
+                elif interactive:
+                    tool_map[t.name] = InteractiveTool(t)
                 else:
                     tool_map[t.name] = t
 
             claude_tools = [
                 tool_map[t.name].spec().to_claude_tool() for t in all_local_tool_objects
             ]
+
+            hooks = CliHooks() if interactive else NoOpHooks()
 
             from contextlib import AsyncExitStack
 
@@ -141,11 +241,11 @@ async def main(prompt: str, verbose: bool, agent: str | None = None):
                     claude_calls,
                     _interrupted,
                 ) = await tool_sampler._process_query_with_tools(
-                    system=system,
+                    system=system_prompt,
                     messages=message_params,
                     claude_tools=claude_tools,
                     all_local_tool_objects=tool_map,
-                    on_update=NoOpHooks().on_update,
+                    on_update=hooks.on_update,
                     scope=scope,
                     model_name=model_name,
                     job_queue=_DummyJobQueue(),
