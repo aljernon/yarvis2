@@ -344,7 +344,7 @@ async function loadMessages(page) {
     badges += renderUsageBadge(msg.meta);
 
     const sc = senderClass(msg);
-    const turnTypeEmoji = {"notification": "\uD83D\uDD35", "schedule": "\uD83D\uDCC5"};
+    const turnTypeEmoji = {"notification": "\uD83D\uDD35", "schedule": "\uD83D\uDCC5", "reflection": "\uD83D\uDD04"};
     let senderLabel = msg.sender;
     if (msg.is_hidden_auto_message) {
       senderLabel = "\uD83D\uDC7B " + senderLabel;
