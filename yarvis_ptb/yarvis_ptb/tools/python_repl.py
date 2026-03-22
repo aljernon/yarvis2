@@ -1,8 +1,10 @@
+import ast
 import asyncio
 import code
 import io
 import json
 import tempfile
+import textwrap
 import threading
 from contextlib import redirect_stderr, redirect_stdout
 from inspect import cleandoc
@@ -13,6 +15,24 @@ from yarvis_ptb.util import truncate_middle_and_maybe_save
 
 TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
+
+
+def _has_async(source: str) -> bool:
+    """Check if source code contains top-level async constructs (await, async with, async for)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Await, ast.AsyncWith, ast.AsyncFor)):
+            return True
+    return False
+
+
+def _wrap_async(source: str) -> str:
+    """Wrap code containing top-level await/async-with/async-for in an async main + asyncio.run()."""
+    indented = textwrap.indent(source, "    ")
+    return f"async def _async_main_():\n{indented}\nimport asyncio\nasyncio.run(_async_main_())\n"
 
 
 class PythonREPL:
@@ -57,6 +77,8 @@ class PythonREPL:
         self.console.showsyntaxerror = check_error2
 
         try:
+            if _has_async(cmd):
+                cmd = _wrap_async(cmd)
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 # Execute the command
                 self.console.runsource(cmd, symbol="exec")

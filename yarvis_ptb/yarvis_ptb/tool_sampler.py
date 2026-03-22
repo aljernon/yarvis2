@@ -55,7 +55,6 @@ from yarvis_ptb.tools.nest_tools import get_nest_tools
 from yarvis_ptb.tools.python_repl import PythonREPLTool
 from yarvis_ptb.tools.scheduling_tools import build_scheduling_tools
 from yarvis_ptb.tools.subagent_tool import build_subagent_tools
-from yarvis_ptb.tools.telegram_tools import get_telegram_tools
 from yarvis_ptb.tools.todo_tools import build_todo_tools
 from yarvis_ptb.tools.tool_output import GetToolOutputTool
 from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
@@ -72,8 +71,6 @@ def _build_generic_tools() -> list[LocalTool]:
     """Fresh instances each call — these are stateful, must not be shared across requests."""
     return [PythonREPLTool(), BashRunTool(), EditorTool(), ForgetAboveTool()]
 
-
-TELEGRAM_TOOLS: list[LocalTool] = get_telegram_tools()
 
 ANTON_DATA_TOOLS: list[LocalTool] = (
     get_gmail_tools() + get_whoop_tools() + get_nest_tools()
@@ -217,7 +214,6 @@ def get_tools_for_agent_config(
             "scheduling",
             "anton_message_search",
             "chat_send_file",
-            "telegram",
             "image_editing",
             "subagent",
             "todo",
@@ -263,8 +259,6 @@ def _build_tools_from_classes(
             all_local_tool_objects.extend(build_message_search_tools(chat_id))
         elif tool_class == "chat_send_file":
             all_local_tool_objects.extend(build_chat_send_file_tools(chat_id, bot))
-        elif tool_class == "telegram":
-            all_local_tool_objects.extend(TELEGRAM_TOOLS)
         elif tool_class == "messaging":
             all_local_tool_objects.extend(build_message_tools(bot, chat_id, curr))
         elif tool_class == "collect_messaging":
@@ -846,7 +840,6 @@ def _get_tools_by_names(
         "scheduling",
         "anton_message_search",
         "chat_send_file",
-        "telegram",
         "image_editing",
         "memory",
         "tool_output",
