@@ -248,7 +248,7 @@ async def run_force_reflect(
         slug=reflect_slug(now.date()),
     )
 
-    # Save the prompt we sent to the agent
+    # Save the prompt we sent to the agent (before query, for crash safety)
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
     save_message(
         curr,
@@ -274,7 +274,7 @@ async def run_force_reflect(
     )
     msg_params = result.message_params
 
-    # Save to DB under the agent_id
+    # Save bot response with usage to DB under the agent_id
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
     bot_meta_fr: dict = {"message_params": msg_params}
     if result.claude_calls:
