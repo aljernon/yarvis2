@@ -782,9 +782,18 @@ async def _process_multi_message_claude_invocation_inner(
                 for block in mp["content"]
                 if isinstance(block, dict) and block.get("type") == "tool_use"
             }
-            if "send_message" in tool_names_used and tool_names_used <= {
-                "send_message"
-            }:
+            non_research_tools = {
+                "send_message",
+                "schedule",
+                "todo_read",
+                "todo_write",
+                "set_variable",
+                "forget_above",
+            }
+            if (
+                "send_message" in tool_names_used
+                and tool_names_used <= non_research_tools
+            ):
                 await _run_self_check(
                     curr,
                     bot,
