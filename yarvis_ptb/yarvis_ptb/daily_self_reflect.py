@@ -276,6 +276,18 @@ async def run_force_reflect(
 
     # Save to DB under the agent_id
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    bot_meta_fr: dict = {"message_params": msg_params}
+    if result.claude_calls:
+        from yarvis_ptb.tool_sampler import MODEL_PRICING, cost_breakdown, estimate_cost
+
+        model_id = reflect_config.sampling.resolve_model_name()
+        pricing = MODEL_PRICING.get(model_id)
+        bot_meta_fr["usage"] = {
+            "model": model_id,
+            "calls": [c.to_usage_dict(pricing) for c in result.claude_calls],
+            "estimated_cost_usd": estimate_cost(result.claude_calls, model_id),
+            "cost_breakdown_usd": cost_breakdown(result.claude_calls, model_id),
+        }
     save_message(
         curr,
         DbMessage(
@@ -283,7 +295,7 @@ async def run_force_reflect(
             chat_id=chat_id,
             user_id=BOT_USER_ID,
             message="USE_CONTENT_FROM_META",
-            meta={"message_params": msg_params},
+            meta=bot_meta_fr,
             agent_id=agent_id,
         ),
     )
@@ -454,6 +466,17 @@ async def _run_reflect_inner(
             agent_id=agent_id,
         ),
     )
+    bot_meta: dict = {"message_params": result_params}
+    if result.claude_calls:
+        from yarvis_ptb.tool_sampler import MODEL_PRICING, cost_breakdown, estimate_cost
+
+        pricing = MODEL_PRICING.get(MODEL)
+        bot_meta["usage"] = {
+            "model": MODEL,
+            "calls": [c.to_usage_dict(pricing) for c in result.claude_calls],
+            "estimated_cost_usd": estimate_cost(result.claude_calls, MODEL),
+            "cost_breakdown_usd": cost_breakdown(result.claude_calls, MODEL),
+        }
     save_message(
         curr,
         DbMessage(
@@ -461,7 +484,7 @@ async def _run_reflect_inner(
             chat_id=chat_id,
             user_id=BOT_USER_ID,
             message="USE_CONTENT_FROM_META",
-            meta={"message_params": result_params},
+            meta=bot_meta,
             agent_id=agent_id,
         ),
     )
