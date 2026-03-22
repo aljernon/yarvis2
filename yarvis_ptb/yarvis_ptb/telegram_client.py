@@ -106,6 +106,7 @@ async def get_messages(
     chat_id: int,
     limit: int = 50,
     min_date: datetime | None = None,
+    max_date: datetime | None = None,
     search: str | None = None,
 ) -> list[dict]:
     """Get messages from a specific chat."""
@@ -113,8 +114,8 @@ async def get_messages(
     my_id = getattr(me, "id", None)
 
     kwargs: dict = {"limit": limit}
-    if min_date:
-        kwargs["offset_date"] = min_date
+    if max_date:
+        kwargs["offset_date"] = max_date
     if search:
         kwargs["search"] = search
 
@@ -123,6 +124,12 @@ async def get_messages(
     result = []
     for msg in msgs:
         if not msg.text and not getattr(msg, "message", None):
+            continue
+        if (
+            min_date
+            and msg.date
+            and msg.date.replace(tzinfo=None) < min_date.replace(tzinfo=None)
+        ):
             continue
         sender_name = _sender_name(msg)
         direction = "outgoing" if msg.sender_id == my_id else "incoming"
