@@ -457,6 +457,8 @@ def add_caching_to_messages(
         if msg["role"] == "assistant" and msg["content"]:
             # Find the last non-empty content block to cache
             for block in reversed(list(msg["content"])):
+                if block.get("type") in ("thinking", "redacted_thinking"):  # type: ignore
+                    continue
                 if block.get("type") != "text" or block.get("text"):  # type: ignore
                     block["cache_control"] = {"type": "ephemeral"}  # type: ignore
                     break
