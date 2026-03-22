@@ -40,11 +40,16 @@ from yarvis_ptb.yarvis_ptb.logging import setup_logging
 app = typer.Typer()
 
 
+class StopOnToolError(Exception):
+    """Raised to abort after printing the first tool call."""
+
+
 class InteractiveTool(LocalTool):
     """Wraps a tool to print calls and ask for confirmation before executing."""
 
-    def __init__(self, inner: LocalTool):
+    def __init__(self, inner: LocalTool, stop_on_tool: bool = False):
         self._inner = inner
+        self._stop_on_tool = stop_on_tool
 
     def spec(self) -> ToolSpec:
         return self._inner.spec()
@@ -59,19 +64,23 @@ class InteractiveTool(LocalTool):
         return self._inner.context()
 
     async def _execute(self, **kwargs) -> ToolResult:
-        # Format the call for display
+        raise NotImplementedError("Use __call__ directly")
+
+    async def __call__(self, **kwargs) -> ToolResult:
+        # Format the call for display (bypass __call__ exception handling)
         name = self._inner.name
         parts = []
         for k, v in kwargs.items():
             s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
             if len(s) > 120 or "\n" in s:
-                parts.append(
-                    f"  \033[1m{k}\033[0m\n  {s[:200]}{'...' if len(s) > 200 else ''}"
-                )
+                parts.append(f"  \033[1m{k}\033[0m\n  {s}")
             else:
                 parts.append(f"  \033[1m{k}:\033[0m {s}")
         args_str = "\n".join(parts)
         print(f"\n\033[33m▶ {name}\033[0m\n{args_str}", file=sys.stderr)
+
+        if self._stop_on_tool:
+            raise StopOnToolError(name)
 
         # Ask for confirmation
         try:
@@ -84,7 +93,7 @@ class InteractiveTool(LocalTool):
         if answer != "y" and answer != "":
             return ToolResult.error("Tool call rejected by user")
 
-        return await self._inner._execute(**kwargs)
+        return await self._inner(**kwargs)
 
 
 class CliHooks:
@@ -136,6 +145,9 @@ def run(
     interactive: bool = typer.Option(
         False, "--interactive", "-i", help="Confirm each tool call before executing"
     ),
+    stop_on_tool: bool = typer.Option(
+        False, "--stop-on-tool", help="Print first tool call and exit without executing"
+    ),
     after: int = typer.Option(
         None,
         "--after",
@@ -155,6 +167,7 @@ def run(
             system_msg=system_msg,
             reflection=reflection,
             interactive=interactive,
+            stop_on_tool=stop_on_tool,
             after=after,
             sticky=sticky,
         )
@@ -168,6 +181,7 @@ async def main(
     system_msg: bool = False,
     reflection: bool = False,
     interactive: bool = False,
+    stop_on_tool: bool = False,
     after: int | None = None,
     sticky: bool = False,
 ):
@@ -272,13 +286,18 @@ async def main(
             all_local_tool_objects = get_tools_for_agent_config(
                 agent_config, curr, chat_id, bot
             )
+            wrap = interactive or stop_on_tool
             tool_map: dict[str, LocalTool] = {}
             for t in all_local_tool_objects:
                 if t.name == "send_message":
                     noop = NoOpSendMessageTool(t.spec())
-                    tool_map[t.name] = InteractiveTool(noop) if interactive else noop
-                elif interactive:
-                    tool_map[t.name] = InteractiveTool(t)
+                    tool_map[t.name] = (
+                        InteractiveTool(noop, stop_on_tool=stop_on_tool)
+                        if wrap
+                        else noop
+                    )
+                elif wrap:
+                    tool_map[t.name] = InteractiveTool(t, stop_on_tool=stop_on_tool)
                 else:
                     tool_map[t.name] = t
 
@@ -295,22 +314,26 @@ async def main(
                     await stack.enter_async_context(t.context())
 
                 model_name = sampling_config.resolve_model_name()
-                (
-                    result_params,
-                    claude_calls,
-                    _interrupted,
-                ) = await tool_sampler._process_query_with_tools(
-                    system=system_prompt,
-                    messages=message_params,
-                    claude_tools=claude_tools,
-                    all_local_tool_objects=tool_map,
-                    on_update=hooks.on_update,
-                    scope=scope,
-                    model_name=model_name,
-                    job_queue=_DummyJobQueue(),
-                    max_tokens=sampling_config.max_tokens,
-                    thinking=sampling_config.thinking,
-                )
+                try:
+                    (
+                        result_params,
+                        claude_calls,
+                        _interrupted,
+                    ) = await tool_sampler._process_query_with_tools(
+                        system=system_prompt,
+                        messages=message_params,
+                        claude_tools=claude_tools,
+                        all_local_tool_objects=tool_map,
+                        on_update=hooks.on_update,
+                        scope=scope,
+                        model_name=model_name,
+                        job_queue=_DummyJobQueue(),
+                        max_tokens=sampling_config.max_tokens,
+                        thinking=sampling_config.thinking,
+                    )
+                except StopOnToolError as e:
+                    print(f"\n[stopped on first tool call: {e}]", file=sys.stderr)
+                    return
 
             if not result_params:
                 print("(no response)")

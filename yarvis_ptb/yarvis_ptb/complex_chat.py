@@ -67,14 +67,19 @@ from yarvis_ptb.util import RateController, ensure
 
 COMPLEX_CHAT_LOCK = asyncio.Lock()
 
-SELF_CHECK_PROMPT = (
-    "Instant self-check on the reply I JUST gave (the message immediately above). "
-    "Did I answer without being sure I have all relevant info? "
-    "I have access to internet, logseq, and hours of our past conversation. "
-    "Do I need to do some research to avoid looking ignorant? "
-    "If answer is no, do nothing. "
-    "This is an automatically triggered message so NEVER send message to the user."
-)
+SELF_CHECK_PROMPT = """\
+Self-check on my last reply. Identify every person, place, event, or topic I referenced by name.
+
+For EACH reference, complete ALL steps:
+1. ls logseq/pages/ | grep -i <name> — check for dedicated page
+2. grep -r <name> logseq/ workspace/ — find mentions
+3. If step 1 found NO dedicated page file: I lack deep knowledge on this topic. \
+I MUST run read_skill brave-search followed by python_repl to search the web. \
+This is not optional — finding scattered mentions in step 2 does not make up \
+for lacking a dedicated knowledge page.
+
+Also available: run_subagent with archive/ agents for past conversations.
+If nothing named, do nothing. NEVER send_message."""
 
 DEFAULT_AGENT_CONFIG = AgentConfig(
     rendering=RenderingConfig(
