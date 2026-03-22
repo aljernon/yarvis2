@@ -340,7 +340,9 @@ async def main(
                 return
 
             if verbose:
-                print(json.dumps(result_params, indent=2, default=str))
+                print(
+                    json.dumps(result_params, indent=2, default=str, ensure_ascii=False)
+                )
             else:
                 print(render_claude_response_short(result_params))
 

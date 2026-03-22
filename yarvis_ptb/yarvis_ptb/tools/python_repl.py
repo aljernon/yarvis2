@@ -2,7 +2,6 @@ import ast
 import asyncio
 import code
 import io
-import json
 import tempfile
 import textwrap
 import threading
@@ -173,8 +172,12 @@ class PythonREPLTool(LocalTool):
                     s, self._max_output_length, save_path=save_path
                 )
 
-            result = dict(stdout=clip(stdout, "stdout"), stderr=clip(stderr, "stderr"))
-            return ToolResult(json.dumps(result), is_error=is_error)
+            stdout = clip(stdout, "stdout")
+            stderr = clip(stderr, "stderr")
+            text = stdout
+            if stderr:
+                text = f"{text}\n[stderr]\n{stderr}" if text else f"[stderr]\n{stderr}"
+            return ToolResult(text or "(no output)", is_error=is_error)
         except Exception as e:
             return ToolResult.error(f"Error executing Python code: {str(e)}")
 

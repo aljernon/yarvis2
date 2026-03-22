@@ -1,12 +1,19 @@
-import json
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from inspect import cleandoc
-from typing import Tuple
 
 from yarvis_ptb.settings import PROJECT_ROOT
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 from yarvis_ptb.util import truncate_middle_and_maybe_save
+
+
+@dataclass
+class ExecResult:
+    stdout: str
+    stderr: str
+    returncode: int
+
 
 TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
@@ -15,20 +22,8 @@ CWD = PROJECT_ROOT
 
 
 class BashSingleCommandRunner:
-    def execute(self, cmd: str, timeout: int | None = None) -> Tuple[str, str, bool]:
-        """
-        Execute a bash command and return (stdout, stderr, had_error).
-
-        Args:
-            cmd: The bash command to execute
-            timeout: Timeout in seconds for the command (None = no timeout)
-
-        Returns:
-            Tuple containing:
-            - stdout: captured standard output
-            - stderr: captured standard error
-            - had_error: True if an exception was raised
-        """
+    def execute(self, cmd: str, timeout: int | None = None) -> ExecResult:
+        """Execute a bash command and return an ExecResult."""
         process = subprocess.Popen(
             cmd,
             shell=True,
@@ -41,13 +36,10 @@ class BashSingleCommandRunner:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
-            return "", f"Command timed out after {timeout} seconds", True
+            return ExecResult("", f"Command timed out after {timeout} seconds", -1)
         except Exception as e:
-            return "", str(e), True
-        stdout = stdout.decode()
-        stderr = stderr.decode()
-        had_error = process.returncode != 0
-        return stdout, stderr, had_error
+            return ExecResult("", str(e), -1)
+        return ExecResult(stdout.decode(), stderr.decode(), process.returncode)
 
 
 class BashRunTool(LocalTool):
@@ -86,7 +78,8 @@ class BashRunTool(LocalTool):
         assert not kwargs, f"Unexpected kwargs: {kwargs}"
         timeout = min(timeout_sec or TOOL_DEFAULT_TIMEOUT_SEC, TOOL_MAX_TIMEOUT_SEC)
         try:
-            stdout, stderr, is_error = self._repl.execute(code, timeout=timeout)
+            r = self._repl.execute(code, timeout=timeout)
+            is_error = r.returncode != 0
 
             def clip(s: str, stream: str) -> str:
                 save_path = None
@@ -103,8 +96,19 @@ class BashRunTool(LocalTool):
                     s, self._max_output_length, save_path=save_path
                 )
 
-            result = dict(stdout=clip(stdout, "stdout"), stderr=clip(stderr, "stderr"))
-            return ToolResult(json.dumps(result), is_error=is_error)
+            stdout = clip(r.stdout, "stdout")
+            stderr = clip(r.stderr, "stderr")
+            text = stdout
+            if is_error:
+                parts = [f"Exit code {r.returncode}"]
+                if stderr:
+                    parts.append(stderr)
+                if stdout:
+                    parts.append(stdout)
+                text = "\n".join(parts)
+            elif stderr:
+                text = f"{text}\n[stderr]\n{stderr}" if text else f"[stderr]\n{stderr}"
+            return ToolResult(text or "(no output)", is_error=is_error)
 
         except Exception as e:
             return ToolResult.error(f"Error executing Bash code: {str(e)}")
