@@ -20,6 +20,7 @@ from yarvis_ptb.agent_runner import (
     extract_agent_messages,
     run_as_agent,
 )
+from yarvis_ptb.agent_slugs import sched_slug
 from yarvis_ptb.complex_chat import (
     DEFAULT_AGENT_CONFIG,
     handle_message_root_user_assistant,
@@ -739,20 +740,40 @@ async def _run_schedule_in_subagent(
 ) -> None:
     """Run a scheduled invocation inside a subagent, keeping main history clean.
 
-    Main history gets two lightweight system messages: one at start, one with results.
-    The actual work (tool calls, thinking) lives in the subagent's history.
+    Main history gets a start marker, then the subagent runs in isolation.
+    If the subagent produces output (via send_message), it triggers a reply
+    invocation on the main agent with the subagent's message.
     """
     chat_id = sched.chat_id
 
-    # 1. Create agent, save start marker with slug, then run.
-    slug, _agent_config = create_agent_only(curr, chat_id)
+    # Build the subagent's task message — title + context + instructions.
+    agent_message_parts = [
+        f"Scheduled invocation: {sched.title}",
+    ]
+    if sched.context:
+        agent_message_parts.append(sched.context)
+    agent_message_parts.append(
+        "You are running as a scheduled subagent. "
+        "Use send_message to communicate any useful information back. "
+        "Your send_message output will be passed to the main agent as a reply invocation, "
+        "and it can respond to the user or follow up if needed."
+    )
+    agent_message = "\n".join(agent_message_parts)
+
+    # 1. Create agent with sched/ prefix, save start marker.
+    slug = sched_slug()
+    slug, _agent_config = create_agent_only(curr, chat_id, slug=slug)
     save_message(
         curr,
         DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
-            message=f"{invocation_details}\n(running in subagent {slug})",
+            message=(
+                f"{invocation_details}\n"
+                f"(running in subagent `{slug}`; if it sends a message, "
+                f"you will see it as a reply invocation)"
+            ),
             meta={"turn_type": "schedule"},
         ),
     )
@@ -765,28 +786,35 @@ async def _run_schedule_in_subagent(
             chat_id,
             bot,
             agent_slug=slug,
-            message=invocation_details,
+            message=agent_message,
         )
 
-    # 3. Save result summary to main history
+    # 3. If the subagent produced output, invoke the main agent to process it.
     agent_texts = extract_agent_messages(run_result.result)
-    summary = "\n".join(agent_texts) if agent_texts else "(no output)"
-    save_message(
+    if not agent_texts:
+        logger.info(f"Schedule subagent {slug} produced no output, skipping invocation")
+        return
+
+    summary = "\n".join(agent_texts)
+    logger.info(f"Schedule subagent {slug} completed, invoking main agent")
+    await process_multi_message_claude_invocation(
         curr,
-        DbMessage(
+        application=application,
+        bot=bot,
+        chat_id=chat_id,
+        agent_config=DEFAULT_AGENT_CONFIG,
+        invocation=Invocation(invocation_type="reply"),
+        initial_db_message=DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
-            message=(
-                f'Subagent `{run_result.slug}` completed a schedule invocation "{sched.title}"\n\n'
-                f"Here's the message the subagent returned:\n{summary}\n\n"
-                f'You can send this agent a message via run_subagent(agent="{run_result.slug}", message="...")'
-            ),
-            meta={"turn_type": "notification"},
+            message=summary,
+            meta={
+                "turn_type": "subagent_message",
+                "agent_slug": run_result.slug,
+                "schedule_title": sched.title,
+            },
         ),
-    )
-    logger.info(
-        f"Schedule subagent {run_result.slug} completed for schedule {sched.schedule_id}"
     )
 
 

@@ -65,6 +65,7 @@ def create_agent_only(
     chat_id: int,
     *,
     agent_config: AgentConfig | None = None,
+    slug: str | None = None,
 ) -> tuple[str, AgentConfig]:
     """Create a new subagent and inject its system message. Returns (slug, agent_config).
 
@@ -74,7 +75,8 @@ def create_agent_only(
     if agent_config is None:
         agent_config = _default_agent_config()
 
-    slug = generate_agent_slug()
+    if slug is None:
+        slug = generate_agent_slug()
     agent_id = create_agent(
         curr, chat_id, meta=AgentMeta(agent_config=agent_config).model_dump(), slug=slug
     )
