@@ -55,6 +55,9 @@ croniter==5.0.1
 # Signal message reading via websocket
 websocket-client==1.8.0
 
+# HTML to markdown for web_fetch tool
+html2text==2025.4.15
+
 # SOCKS5 proxy support for requests/httpx (Tailscale on Heroku)
 pysocks==1.7.1
 socksio==1.0.0

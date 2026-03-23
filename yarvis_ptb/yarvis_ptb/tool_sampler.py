@@ -58,6 +58,7 @@ from yarvis_ptb.tools.subagent_tool import build_subagent_tools
 from yarvis_ptb.tools.todo_tools import build_todo_tools
 from yarvis_ptb.tools.tool_output import GetToolOutputTool
 from yarvis_ptb.tools.tool_spec import ClaudeTool, LocalTool, ToolResult
+from yarvis_ptb.tools.web_fetch_tool import build_web_fetch_tools
 from yarvis_ptb.tools.whoop_tools import get_whoop_tools
 
 logger = logging.getLogger(__name__)
@@ -217,6 +218,7 @@ def get_tools_for_agent_config(
             "image_editing",
             "subagent",
             "todo",
+            "web_fetch",
         ]
     else:
         # Specific tools requested — build from names
@@ -271,6 +273,8 @@ def _build_tools_from_classes(
             all_local_tool_objects.extend(build_subagent_tools(curr, chat_id, bot))
         elif tool_class == "todo":
             all_local_tool_objects.extend(build_todo_tools(agent_slug))
+        elif tool_class == "web_fetch":
+            all_local_tool_objects.extend(build_web_fetch_tools())
         elif tool_class == "tool_output":
             all_local_tool_objects.append(GetToolOutputTool(curr))
         else:
