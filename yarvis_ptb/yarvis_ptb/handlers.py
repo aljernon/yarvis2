@@ -776,7 +776,7 @@ async def _run_schedule_in_subagent(
                 f"(running in subagent `{slug}`; if it sends a message, "
                 f"you will see it as a reply invocation)"
             ),
-            meta=system_turn_meta("schedule"),
+            meta=system_turn_meta("notification"),
         ),
     )
 

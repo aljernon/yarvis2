@@ -17,7 +17,7 @@ from yarvis_ptb.prompting import (
 )
 from yarvis_ptb.ptb_util import InterruptionScope
 from yarvis_ptb.sampling import NoOpHooks
-from yarvis_ptb.settings import DEFAULT_TIMEZONE, ROOT_AGENT_USER_ID, ROOT_USER_ID
+from yarvis_ptb.settings import AGENT_TO_AGENT_USER_ID, DEFAULT_TIMEZONE, ROOT_USER_ID
 from yarvis_ptb.settings.main import SUBAGENT_MODEL_MAP
 from yarvis_ptb.storage import DbMessage, Invocation, get_messages, get_schedules
 from yarvis_ptb.tool_sampler import _DummyJobQueue, get_tools_for_agent_config
@@ -65,7 +65,7 @@ async def _run_ephemeral_chat(
                 limit=rendering_config.max_history_length_turns,
                 agent_id=agent_id,
             )
-            msg_user_id = ROOT_AGENT_USER_ID if agent_id is not None else chat_id
+            msg_user_id = AGENT_TO_AGENT_USER_ID if agent_id is not None else chat_id
             initial_db_message = DbMessage(
                 created_at=now,
                 chat_id=chat_id,
