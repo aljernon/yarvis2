@@ -36,7 +36,10 @@ class BaseTurn(abc.ABC):
 @dataclass
 class SystemTurn(BaseTurn):
     message: str
-    turn_type: Literal["notification", "schedule", "reflection"] = "notification"
+    turn_type: Literal["notification", "schedule", "reflection", "subagent_message"] = (
+        "notification"
+    )
+    agent_slug: str | None = None
 
     def render(self) -> list[MessageParam]:
         ts = self.created_at.isoformat()
@@ -44,6 +47,9 @@ class SystemTurn(BaseTurn):
             text = f'<meta type="schedule" at="{ts}"></meta>\n{self.message}'
         elif self.turn_type == "reflection":
             text = f'<meta type="reflection" at="{ts}"></meta>\n{self.message}'
+        elif self.turn_type == "subagent_message":
+            slug_attr = f' agent="{self.agent_slug}"' if self.agent_slug else ""
+            text = f'<meta type="subagent_message" at="{ts}"{slug_attr}></meta>\n{self.message}'
         else:
             text = f'<meta type="notification" at="{ts}"></meta>\n<system>{self.message}</system>'
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]
@@ -213,6 +219,7 @@ def db_message_to_turn(msg: DbMessage) -> Turn:
             message=msg.message,
             marked_for_archive=msg.marked_for_archive,
             turn_type=meta.get("turn_type", "notification"),
+            agent_slug=meta.get("agent_slug"),
         )
     meta = msg.meta or {}
     return InputMessageTurn(
