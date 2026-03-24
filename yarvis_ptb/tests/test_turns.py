@@ -12,6 +12,7 @@ from yarvis_ptb.turns import (
     InputMessageTurn,
     SystemTurn,
     db_message_to_turn,
+    system_turn_meta,
 )
 
 NOW = datetime.datetime(2026, 3, 15, 10, 0, 0, tzinfo=pytz.UTC)
@@ -366,7 +367,7 @@ class TestDbMessageToTurn(unittest.TestCase):
             chat_id=CHAT_ID,
             user_id=SYSTEM_USER_ID,
             message="heartbeat",
-            meta={"turn_type": "schedule"},
+            meta=system_turn_meta("schedule"),
         )
         turn = db_message_to_turn(db)
         assert isinstance(turn, SystemTurn)

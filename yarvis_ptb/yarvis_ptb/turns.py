@@ -5,11 +5,19 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
+SystemTurnType = Literal["notification", "schedule", "reflection"]
+
+
+def system_turn_meta(turn_type: SystemTurnType, **extra: object) -> dict:
+    """Build a typed meta dict for system messages. Ensures turn_type is valid at type-check time."""
+    return {"turn_type": turn_type, **extra}
+
+
 from anthropic.types import MessageParam
 
 from yarvis_ptb.settings import (
+    AGENT_TO_AGENT_USER_ID,
     BOT_USER_ID,
-    ROOT_AGENT_USER_ID,
     SYSTEM_USER_ID,
     USER_ID_MAP,
 )
@@ -36,10 +44,7 @@ class BaseTurn(abc.ABC):
 @dataclass
 class SystemTurn(BaseTurn):
     message: str
-    turn_type: Literal["notification", "schedule", "reflection", "subagent_message"] = (
-        "notification"
-    )
-    agent_slug: str | None = None
+    turn_type: SystemTurnType = "notification"
 
     def render(self) -> list[MessageParam]:
         ts = self.created_at.isoformat()
@@ -47,9 +52,6 @@ class SystemTurn(BaseTurn):
             text = f'<meta type="schedule" at="{ts}"></meta>\n{self.message}'
         elif self.turn_type == "reflection":
             text = f'<meta type="reflection" at="{ts}"></meta>\n{self.message}'
-        elif self.turn_type == "subagent_message":
-            slug_attr = f' agent="{self.agent_slug}"' if self.agent_slug else ""
-            text = f'<meta type="subagent_message" at="{ts}"{slug_attr}></meta>\n{self.message}'
         else:
             text = f'<meta type="notification" at="{ts}"></meta>\n<system>{self.message}</system>'
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]
@@ -120,17 +122,20 @@ class InputMessageTurn(BaseTurn):
     image_b64: str | None = None
     reply_to: dict | None = None
     uploaded_file: dict | None = None
+    agent_slug: str | None = None
 
     def _resolve_sender_type(self) -> str:
-        if self.user_id == ROOT_AGENT_USER_ID:
+        if self.user_id == AGENT_TO_AGENT_USER_ID:
             return "agent"
         return "human"
 
     def _resolve_sender_name(self) -> str:
+        if self.agent_slug:
+            return self.agent_slug
         return USER_ID_MAP.get(
             self.user_id,
             "root agent"
-            if self.user_id == ROOT_AGENT_USER_ID
+            if self.user_id == AGENT_TO_AGENT_USER_ID
             else f"unknown user ({self.user_id})",
         )
 
@@ -219,7 +224,6 @@ def db_message_to_turn(msg: DbMessage) -> Turn:
             message=msg.message,
             marked_for_archive=msg.marked_for_archive,
             turn_type=meta.get("turn_type", "notification"),
-            agent_slug=meta.get("agent_slug"),
         )
     meta = msg.meta or {}
     return InputMessageTurn(
@@ -230,6 +234,7 @@ def db_message_to_turn(msg: DbMessage) -> Turn:
         image_b64=meta.get(IMAGE_B64_META_FIELD),
         reply_to=meta.get("reply_to"),
         uploaded_file=meta.get("uploaded_file"),
+        agent_slug=meta.get("agent_slug"),
         marked_for_archive=msg.marked_for_archive,
     )
 

@@ -61,6 +61,7 @@ from yarvis_ptb.ptb_util import (
     reply_maybe_markdown,
 )
 from yarvis_ptb.settings import (
+    AGENT_TO_AGENT_USER_ID,
     DEFAULT_TIMEZONE,
     HISTORY_LENGTH_TURNS,
     PROJECT_ROOT,
@@ -90,6 +91,7 @@ from yarvis_ptb.storage import (
 )
 from yarvis_ptb.tools.scheduling_tools import compute_next_run
 from yarvis_ptb.tools.whoop_tools import maybe_refresh_whoop_token
+from yarvis_ptb.turns import system_turn_meta
 from yarvis_ptb.util import ensure
 from yarvis_ptb.vm_watchdog import maybe_reset_vm
 from yarvis_ptb.whisper_transcription import transcribe_voice_message
@@ -774,7 +776,7 @@ async def _run_schedule_in_subagent(
                 f"(running in subagent `{slug}`; if it sends a message, "
                 f"you will see it as a reply invocation)"
             ),
-            meta={"turn_type": "schedule"},
+            meta=system_turn_meta("schedule"),
         ),
     )
 
@@ -807,13 +809,9 @@ async def _run_schedule_in_subagent(
         initial_db_message=DbMessage(
             chat_id=chat_id,
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-            user_id=SYSTEM_USER_ID,
+            user_id=AGENT_TO_AGENT_USER_ID,
             message=summary,
-            meta={
-                "turn_type": "subagent_message",
-                "agent_slug": run_result.slug,
-                "schedule_title": sched.title,
-            },
+            meta={"agent_slug": run_result.slug},
         ),
     )
 
@@ -887,7 +885,7 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
                         created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                         user_id=SYSTEM_USER_ID,
                         message=invocation_details,
-                        meta={"turn_type": "schedule"},
+                        meta=system_turn_meta("schedule"),
                     )
                     await process_multi_message_claude_invocation(
                         curr,

@@ -17,6 +17,7 @@ from yarvis_ptb.settings import DEFAULT_TIMEZONE, PROJECT_ROOT, SYSTEM_USER_ID
 from yarvis_ptb.storage import DbMessage, VariablesForChat, save_message
 from yarvis_ptb.telegram_client import get_recent_messages, telegram_session
 from yarvis_ptb.timezones import get_complex_chat_timezone_str
+from yarvis_ptb.turns import system_turn_meta
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +367,7 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
             created_at=now,
             user_id=SYSTEM_USER_ID,
             message=notification,
-            meta={"turn_type": "notification"},
+            meta=system_turn_meta("notification"),
         ),
     )
 

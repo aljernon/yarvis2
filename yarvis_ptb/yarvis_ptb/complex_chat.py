@@ -63,6 +63,7 @@ from yarvis_ptb.storage import (
     get_schedules,
 )
 from yarvis_ptb.tool_sampler import _DummyJobQueue
+from yarvis_ptb.turns import system_turn_meta
 from yarvis_ptb.util import RateController, ensure
 
 COMPLEX_CHAT_LOCK = asyncio.Lock()
@@ -427,7 +428,7 @@ async def _run_self_check(
         chat_id=chat_id,
         user_id=SYSTEM_USER_ID,
         message=SELF_CHECK_PROMPT,
-        meta={"turn_type": "reflection"},
+        meta=system_turn_meta("reflection"),
     )
     db_messages = [*db_messages, selfcheck_db_msg][
         -rendering_config.max_history_length_turns :
@@ -816,7 +817,7 @@ async def _process_multi_message_claude_invocation_inner(
                 created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
                 user_id=SYSTEM_USER_ID,
                 message=msg_text,
-                meta={"turn_type": "notification"},
+                meta=system_turn_meta("notification"),
             )
             save_message_and_update_index(curr, notification)
 
