@@ -123,6 +123,7 @@ class InputMessageTurn(BaseTurn):
     reply_to: dict | None = None
     uploaded_file: dict | None = None
     agent_slug: str | None = None
+    target_slug: str | None = None
 
     def _resolve_sender_type(self) -> str:
         if self.user_id == AGENT_TO_AGENT_USER_ID:
@@ -165,7 +166,8 @@ class InputMessageTurn(BaseTurn):
         sender_name = self._resolve_sender_name()
         ts = self.created_at.isoformat()
         voice_attr = ' is_voice="true"' if self.is_voice else ""
-        meta_tag = f'<meta type="message" sender_type="{sender_type}" sender_name="{sender_name}" at="{ts}"{voice_attr}></meta>'
+        target_attr = f' target="{self.target_slug}"' if self.target_slug else ""
+        meta_tag = f'<meta type="message" sender_type="{sender_type}" sender_name="{sender_name}" at="{ts}"{voice_attr}{target_attr}></meta>'
         full_message = f"{meta_tag}\n{reply_prefix}{self.message}"
         content_chunks.append({"type": "text", "text": full_message})
 
@@ -235,6 +237,7 @@ def db_message_to_turn(msg: DbMessage) -> Turn:
         reply_to=meta.get("reply_to"),
         uploaded_file=meta.get("uploaded_file"),
         agent_slug=meta.get("agent_slug"),
+        target_slug=meta.get("target_slug"),
         marked_for_archive=msg.marked_for_archive,
     )
 

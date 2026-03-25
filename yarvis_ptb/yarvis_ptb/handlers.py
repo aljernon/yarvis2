@@ -811,7 +811,7 @@ async def _run_schedule_in_subagent(
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=AGENT_TO_AGENT_USER_ID,
             message=summary,
-            meta={"agent_slug": run_result.slug},
+            meta={"agent_slug": run_result.slug, "target_slug": "ROOT"},
         ),
     )
 

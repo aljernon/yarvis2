@@ -11,6 +11,7 @@ import os
 
 import httpx
 import pytz
+import tenacity
 from simplegmail import Gmail
 
 from yarvis_ptb.settings import DEFAULT_TIMEZONE, PROJECT_ROOT, SYSTEM_USER_ID
@@ -334,20 +335,28 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
 
     all_messages: list[dict] = []
     errors: list[str] = []
-    for label, fetcher in [
-        ("Signal", _fetch_signal(since, now)),
-        ("SMS", _fetch_sms(since, now)),
-        ("Telegram", _fetch_telegram(since, now)),
+
+    retry_policy = tenacity.retry(
+        stop=tenacity.stop_after_attempt(3),
+        wait=tenacity.wait_exponential(multiplier=1, min=1, max=5),
+        before_sleep=tenacity.before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+
+    for label, fetch_fn in [
+        ("Signal", lambda: _fetch_signal(since, now)),
+        ("SMS", lambda: _fetch_sms(since, now)),
+        ("Telegram", lambda: _fetch_telegram(since, now)),
     ]:
         try:
-            all_messages.extend(await fetcher)
+            all_messages.extend(await retry_policy(fetch_fn)())
         except Exception as e:
             logger.warning(f"{label} fetch failed: {e}")
             errors.append(f"{label}: {e}")
 
     # Gmail uses sync simplegmail library
     try:
-        all_messages.extend(_fetch_gmail(since, now))
+        all_messages.extend(retry_policy(_fetch_gmail)(since, now))
     except Exception as e:
         logger.warning(f"Gmail fetch failed: {e}")
         errors.append(f"Gmail: {e}")

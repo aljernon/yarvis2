@@ -268,9 +268,10 @@ class _SubagentBase(LocalTool):
                 DbMessage(
                     created_at=now,
                     chat_id=self._chat_id,
-                    user_id=AGENT_TO_AGENT_USER_ID,  # User message
+                    user_id=AGENT_TO_AGENT_USER_ID,
                     message=message,
                     agent_id=agent_id,
+                    meta={"agent_slug": "ROOT", "target_slug": slug},
                 ),
             )
             if message_params:

@@ -217,7 +217,10 @@ function renderSubagentGroup(group) {
     si = endIdx;
   }
 
-  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow" id="arrow-${collapseId}">&#9654;</span> <span class="badge agent">${slug}</span> <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span></div><div class="collapsible-content" id="${collapseId}">${bodyHtml}</div></div>`;
+  const slugLink = `<a href="/agent?agent_id=${group.agent_id}" class="badge agent" onclick="event.stopPropagation()">${slug}</a>`;
+  const isSched = slug.startsWith("sched/");
+  const openClass = isSched ? " open" : "";
+  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow${openClass}" id="arrow-${collapseId}">&#9654;</span> ${slugLink} <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span></div><div class="collapsible-content${openClass}" id="${collapseId}">${bodyHtml}</div></div>`;
 }
 
 function shortModelName(model) {
@@ -749,6 +752,13 @@ async function loadAgentView() {
       if (turnTime) html += flushSubagents(turnTime);
 
       const isSystemMsg = firstRole === "user" && typeof data.history[startIdx].content === "string" && data.history[startIdx].content.startsWith("<system>System message");
+      // Detect agent-to-agent messages: <meta type="message" sender_type="agent" sender_name="..." target="...">
+      const firstContent = data.history[startIdx].content;
+      const firstText = firstRole === "user" && Array.isArray(firstContent) && firstContent.length > 0 &&
+        firstContent[0].type === "text" ? firstContent[0].text : "";
+      const agentMetaMatch = firstText.match(/^<meta type="message" sender_type="agent" sender_name="([^"]+)"/);
+      const agentTargetMatch = agentMetaMatch && firstText.match(/target="([^"]+)"/);
+
       const sc = firstRole === "assistant" ? "bot" : (isSystemMsg ? "system" : "");
       let bodyHtml = "";
       for (let j = startIdx; j < endIdx; j++) {
@@ -784,10 +794,23 @@ async function loadAgentView() {
             dbIdLabel = ids.length === 1 ? `db:${ids[0]}` : `db:${ids.join(",")}`;
           }
         }
-        const roleLabel = isSystemMsg ? "system" : firstRole;
+        let roleLabel = isSystemMsg ? "system" : firstRole;
+        let roleLabelHtml = escapeHtml(roleLabel);
+        if (agentMetaMatch) {
+          const senderSlug = agentMetaMatch[1];
+          const targetSlug = agentTargetMatch ? agentTargetMatch[1] : null;
+          const groups = data.subagent_groups || [];
+          function agentBadge(slug) {
+            const g = groups.find(g => g.agent_slug === slug);
+            if (g) return `<a href="/agent?agent_id=${g.agent_id}" class="badge agent">${escapeHtml(slug)}</a>`;
+            return `<span class="badge agent">${escapeHtml(slug)}</span>`;
+          }
+          roleLabelHtml = agentBadge(senderSlug);
+          if (targetSlug) roleLabelHtml += ` → ${agentBadge(targetSlug)}`;
+        }
         const turnUsage = findUsageForRange(data.turn_usages, startIdx, endIdx);
         const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
-        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
+        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${roleLabelHtml}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
       }
       i = endIdx;
     }
