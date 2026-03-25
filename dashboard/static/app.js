@@ -218,9 +218,7 @@ function renderSubagentGroup(group) {
   }
 
   const slugLink = `<a href="/agent?agent_id=${group.agent_id}" class="badge agent" onclick="event.stopPropagation()">${slug}</a>`;
-  const isSched = slug.startsWith("sched/");
-  const openClass = isSched ? " open" : "";
-  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow${openClass}" id="arrow-${collapseId}">&#9654;</span> ${slugLink} <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span></div><div class="collapsible-content${openClass}" id="${collapseId}">${bodyHtml}</div></div>`;
+  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> ${slugLink} <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span></div><div class="collapsible-content open" id="${collapseId}">${bodyHtml}</div></div>`;
 }
 
 function shortModelName(model) {
@@ -703,17 +701,18 @@ async function loadAgentView() {
       html += toolsHtml;
     }
 
-    // Prepare subagent groups sorted by first_time for chronological interleaving
+    // Prepare subagent groups sorted by last_time for chronological interleaving
+    // (position where the subagent finished, not where it started)
     const subagentGroups = (data.subagent_groups || []).slice().sort((a, b) =>
-      a.first_time.localeCompare(b.first_time)
+      a.last_time.localeCompare(b.last_time)
     );
     let nextSubagentIdx = 0;
 
-    // Helper: render all subagent groups whose first_time <= given timestamp
+    // Helper: render all subagent groups whose last_time <= given timestamp
     function flushSubagents(beforeTime) {
       let out = "";
       while (nextSubagentIdx < subagentGroups.length &&
-             (!beforeTime || subagentGroups[nextSubagentIdx].first_time <= beforeTime)) {
+             (!beforeTime || subagentGroups[nextSubagentIdx].last_time <= beforeTime)) {
         out += renderSubagentGroup(subagentGroups[nextSubagentIdx]);
         nextSubagentIdx++;
       }
