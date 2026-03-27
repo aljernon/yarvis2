@@ -1157,4 +1157,81 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     }
   }
+
+  if (document.getElementById("workspace-container")) {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get("date");
+    loadWorkspaceDiff(date);
+  }
 });
+
+
+// ── Workspace Diff ─────────────────────────────────────────────────────────
+
+async function loadWorkspaceDiff(date) {
+  const container = document.getElementById("workspace-container");
+  container.innerHTML = "<p>Loading...</p>";
+  try {
+    const url = date ? `/api/workspace-diff?date=${date}` : "/api/workspace-diff";
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    const currentDate = data.date;
+    const d = new Date(currentDate + "T12:00:00");
+    const prevDate = new Date(d); prevDate.setDate(d.getDate() - 1);
+    const nextDate = new Date(d); nextDate.setDate(d.getDate() + 1);
+    const fmt = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+    // Use local date, not UTC
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+    const isToday = currentDate === today;
+
+    let html = `<div class="workspace-nav">`;
+    if (!isToday) html += `<a href="/workspace?date=${fmt(nextDate)}">&larr; ${fmt(nextDate)}</a>`;
+    else html += `<span></span>`;
+    html += `<strong>${currentDate}${isToday ? " (today)" : ""}</strong>`;
+    html += `<a href="/workspace?date=${fmt(prevDate)}">${fmt(prevDate)} &rarr;</a>`;
+    html += `</div>`;
+
+    html += renderRepoDiff("Workspace", data.workspace);
+    html += renderRepoDiff("Logseq (Yarvis only)", data.logseq);
+
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<p>Error: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderRepoDiff(title, repoData) {
+  const collapseId = "repo-" + uid();
+  let html = `<div class="repo-diff-section">`;
+  html += `<div class="repo-diff-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> <strong>${escapeHtml(title)}</strong> <span class="workspace-info-inline">${repoData.commits} commit(s)</span></div>`;
+  html += `<div class="collapsible-content open" id="${collapseId}">`;
+
+  if (repoData.error) {
+    html += `<div class="workspace-info">${escapeHtml(repoData.error)}</div>`;
+  } else {
+    if (repoData.stat) html += `<pre class="workspace-stat">${escapeHtml(repoData.stat)}</pre>`;
+    if (repoData.diff) {
+      html += `<pre class="workspace-diff">${colorDiff(repoData.diff)}</pre>`;
+    } else {
+      html += `<div class="workspace-info">No changes</div>`;
+    }
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function colorDiff(diff) {
+  return diff.split("\n").map(line => {
+    const esc = escapeHtml(line);
+    if (line.startsWith("commit ")) return `<span class="diff-commit">${esc}</span>`;
+    if (line.startsWith("Author:") || line.startsWith("Date:")) return `<span class="diff-commit-meta">${esc}</span>`;
+    if (line.startsWith("+++") || line.startsWith("---")) return `<span class="diff-file">${esc}</span>`;
+    if (line.startsWith("@@")) return `<span class="diff-hunk">${esc}</span>`;
+    if (line.startsWith("+")) return `<span class="diff-add">${esc}</span>`;
+    if (line.startsWith("-")) return `<span class="diff-del">${esc}</span>`;
+    if (line.startsWith("diff ")) return `<span class="diff-file">${esc}</span>`;
+    return esc;
+  }).join("\n");
+}

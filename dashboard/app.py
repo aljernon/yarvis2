@@ -41,6 +41,11 @@ def agents_page():
     return render_template("agents.html")
 
 
+@app.route("/workspace")
+def workspace_page():
+    return render_template("workspace.html")
+
+
 # ── Register Blueprints ─────────────────────────────────────────────────────
 
 from dashboard.routes.agent_view import bp as agent_view_bp
@@ -48,12 +53,14 @@ from dashboard.routes.agents import bp as agents_bp
 from dashboard.routes.chat import bp as chat_bp
 from dashboard.routes.messages import bp as messages_bp
 from dashboard.routes.schedules import bp as schedules_bp
+from dashboard.routes.workspace import bp as workspace_bp
 
 app.register_blueprint(messages_bp)
 app.register_blueprint(agents_bp)
 app.register_blueprint(agent_view_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(schedules_bp)
+app.register_blueprint(workspace_bp)
 
 
 if __name__ == "__main__":
