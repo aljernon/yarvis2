@@ -20,7 +20,11 @@ class ReadMemoryTool(LocalTool):
         return ToolSpec(
             name="read_skill",
             description=(
-                "Load a skill by name from workspace/skills/. "
+                "Load a skill's procedural knowledge before performing a task that matches it. "
+                "Skills contain domain-specific instructions, code patterns, and critical rules "
+                "that you MUST follow. When a task matches an available skill's description, "
+                "load the skill BEFORE taking any action on the task. "
+                "Available skills are listed in your system prompt under 'Available Skills'. "
                 "For data files (workspace/memory/), use bash to read them directly."
             ),
             args=[
@@ -28,7 +32,7 @@ class ReadMemoryTool(LocalTool):
                     name="name",
                     type=str,
                     description=(
-                        "Name of the skill to read (e.g., 'calendar-scheduling', "
+                        "Skill directory name exactly as listed (e.g., 'calendar-scheduling', "
                         "'morning-bookkeeping')."
                     ),
                     is_required=True,

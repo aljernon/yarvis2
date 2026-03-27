@@ -154,7 +154,9 @@ def render_skill_listing() -> str:
     """
     lines = [
         "=== Available Skills ===",
-        "Use `read_skill(name)` to load any of these.\n",
+        "Skills are procedural knowledge — domain-specific instructions, code patterns,",
+        "and critical rules for specific tasks. When a task matches a skill's description,",
+        "load it with `read_skill(name)` BEFORE taking action. Multiple skills may apply.\n",
     ]
 
     if SKILLS_PATH.exists():
