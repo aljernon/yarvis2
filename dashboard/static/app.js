@@ -359,10 +359,18 @@ async function loadMessages(page) {
     if (msg.has_message_params) {
       rendered = renderMessageParams(msg.meta, turnId);
     } else {
-      // Non-bot messages: wrap in a single api-message block
-      const id = "txt-" + uid();
-      const imageHtml = msg.has_image ? `<div class="image-block"><img src="/api/message/${msg.id}/image" alt="User image" loading="lazy"></div>` : "";
-      rendered = `<div class="api-message" data-turn-id="${turnId}" data-msg-idx="0">${imageHtml}<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.message)}</div></div></div>`;
+      // Non-bot messages: render from api_messages to include <meta> tags
+      const apiMsg = msg.api_messages?.[0];
+      const content = apiMsg?.content;
+      if (Array.isArray(content)) {
+        rendered = `<div class="api-message" data-turn-id="${turnId}" data-msg-idx="0">${renderContentBlocks(content, msg.id)}</div>`;
+      } else if (typeof content === "string" && content.trim()) {
+        const id = "txt-" + uid();
+        rendered = `<div class="api-message" data-turn-id="${turnId}" data-msg-idx="0"><div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(content)}</div></div></div>`;
+      } else {
+        const id = "txt-" + uid();
+        rendered = `<div class="api-message" data-turn-id="${turnId}" data-msg-idx="0"><div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.message)}</div></div></div>`;
+      }
     }
     const rawJson = escapeHtml(JSON.stringify(msg.api_messages, null, 2));
 
