@@ -40,6 +40,7 @@ from yarvis_ptb.tool_sampler import (
     get_tools_for_agent_config,
     process_query,
 )
+from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +308,7 @@ async def run_force_reflect(
 
 
 AUTO_REFLECT_PROMPT = """\
-This is an automatic self-reflection triggered by the system, not a user message. \
+You are running as a sub-agent for automatic self-reflection. \
 Please read the auto-reflect skill using read_skill tool (name: "auto-reflect") and follow its instructions."""
 
 AUTO_REFLECT_COOLDOWN_SECS = 3600  # 1 hour
@@ -433,9 +434,12 @@ async def _run_reflect_inner(
         forced_now_date=now,
     )
 
-    # 4. Call process_query with full tool access
+    # 4. Call process_query — replace send_message with CollectMessageTool
     scope = InterruptionScope(chat_id=chat_id, message_id=None)
-    all_tools = get_tools_for_agent_config(agent_config, curr, chat_id, bot)
+    all_tools = [
+        CollectMessageTool() if t.name == "send_message" else t
+        for t in get_tools_for_agent_config(agent_config, curr, chat_id, bot)
+    ]
     hooks = NoOpHooks()
     result = await process_query(
         system=system,
@@ -449,11 +453,12 @@ async def _run_reflect_inner(
     result_params = result.message_params
 
     # 5. Save trigger + bot response under agent
+    slug = reflect_slug(now.date())
     agent_id = create_agent(
         curr,
         chat_id,
         meta=AgentMeta(type="auto_reflect").model_dump(),
-        slug=reflect_slug(now.date()),
+        slug=slug,
     )
 
     save_message(
@@ -489,19 +494,21 @@ async def _run_reflect_inner(
         ),
     )
 
-    # 6. Save a system message to main history noting that reflection happened
-    # NOTE: We intentionally do NOT save a bot/assistant placeholder here.
-    # Previously we saved an assistant message with placeholder text like
-    # "[Self-reflection completed; output omitted from history]", but Claude
-    # would see that in conversation history and mimic it instead of actually
-    # reflecting, producing the placeholder text as its real output.
+    # 6. Save a system message to main history with reflection summary
+    # send_message calls from the reflection agent become the summary.
+    sent_messages = result.agent_messages
+    if sent_messages:
+        summary_text = "\n".join(sent_messages)
+        notification = f"{label} ({slug}):\n{summary_text}"
+    else:
+        notification = f"{label} ({slug}): no summary returned."
     save_message_and_update_index(
         curr,
         DbMessage(
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             chat_id=chat_id,
             user_id=SYSTEM_USER_ID,
-            message=f"{label} completed. Full output saved separately.",
+            message=notification,
             meta={"is_reflection": True},
         ),
     )
