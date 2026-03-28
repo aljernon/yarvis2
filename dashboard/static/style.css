@@ -475,3 +475,5 @@ a.badge.agent:hover { background: #b090d0; }
 .repo-diff-section { margin: 12px 0; border: 1px solid #e0d8d8; border-radius: 6px; overflow: hidden; }
 .repo-diff-header { padding: 10px 16px; background: #f7f0f0; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .workspace-info-inline { color: #888; font-size: 0.85em; font-weight: normal; }
+.pull-btn { margin-left: auto; font-size: 0.8em; padding: 2px 8px; cursor: pointer; background: #e8e8e8; border: 1px solid #ccc; border-radius: 3px; }
+.pull-btn:hover { background: #ddd; }

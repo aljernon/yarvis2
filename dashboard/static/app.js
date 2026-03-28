@@ -1193,7 +1193,7 @@ async function loadWorkspaceDiff(date) {
     html += `<a href="/workspace?date=${fmt(prevDate)}">${fmt(prevDate)} &rarr;</a>`;
     html += `</div>`;
 
-    html += renderRepoDiff("Workspace", data.workspace);
+    html += renderRepoDiff("Workspace", data.workspace, {pullBtn: true});
     html += renderRepoDiff("Logseq (Yarvis only)", data.logseq);
 
     container.innerHTML = html;
@@ -1202,10 +1202,29 @@ async function loadWorkspaceDiff(date) {
   }
 }
 
-function renderRepoDiff(title, repoData) {
+async function pullWorkspace(btn) {
+  btn.disabled = true;
+  btn.textContent = "pulling...";
+  try {
+    const resp = await fetch("/api/workspace-pull", {method: "POST"});
+    const data = await resp.json();
+    btn.textContent = data.ok ? "done!" : "error";
+    if (data.ok && !data.output.includes("Already up to date")) {
+      setTimeout(() => location.reload(), 500);
+    } else {
+      setTimeout(() => { btn.textContent = "git pull"; btn.disabled = false; }, 1500);
+    }
+  } catch (e) {
+    btn.textContent = "error";
+    setTimeout(() => { btn.textContent = "git pull"; btn.disabled = false; }, 1500);
+  }
+}
+
+function renderRepoDiff(title, repoData, opts) {
   const collapseId = "repo-" + uid();
   let html = `<div class="repo-diff-section">`;
-  html += `<div class="repo-diff-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> <strong>${escapeHtml(title)}</strong> <span class="workspace-info-inline">${repoData.commits} commit(s)</span></div>`;
+  const pullHtml = opts?.pullBtn ? ` <button class="pull-btn" onclick="event.stopPropagation(); pullWorkspace(this)">git pull</button>` : "";
+  html += `<div class="repo-diff-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> <strong>${escapeHtml(title)}</strong> <span class="workspace-info-inline">${repoData.commits} commit(s)</span>${pullHtml}</div>`;
   html += `<div class="collapsible-content open" id="${collapseId}">`;
 
   if (repoData.error) {
