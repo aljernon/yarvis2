@@ -23,6 +23,23 @@ RETENTION_DAYS = 7
 app = Flask(__name__)
 
 
+def _ensure_contacts_table(conn: sqlite3.Connection):
+    # Check if existing table has uuid column; if not, recreate
+    try:
+        conn.execute("SELECT uuid FROM contacts LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("DROP TABLE IF EXISTS contacts")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS contacts (
+            uuid TEXT PRIMARY KEY,
+            phone TEXT,
+            name TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+
 def _parse_envelope(envelope_json: str) -> dict | None:
     """Parse a raw envelope JSON into a message dict, or None if not a text message."""
     raw = json.loads(envelope_json)
@@ -30,6 +47,7 @@ def _parse_envelope(envelope_json: str) -> dict | None:
 
     source = envelope.get("sourceNumber", "")
     source_name = envelope.get("sourceName", "")
+    source_uuid = envelope.get("sourceUuid", "")
     ts = envelope.get("timestamp", 0)
 
     dm = envelope.get("dataMessage") or {}
@@ -47,6 +65,7 @@ def _parse_envelope(envelope_json: str) -> dict | None:
 
     is_sync = bool(sync.get("message"))
     dest = sync.get("destinationNumber", "") if is_sync else ""
+    dest_uuid = sync.get("destinationUuid", "") if is_sync else ""
 
     # Group info
     group = msg_obj.get("groupInfo") or msg_obj.get("groupV2") or {}
@@ -59,7 +78,9 @@ def _parse_envelope(envelope_json: str) -> dict | None:
         "timestamp_ms": ts,
         "source_number": source,
         "source_name": source_name,
+        "source_uuid": source_uuid,
         "destination_number": dest,
+        "destination_uuid": dest_uuid,
         "destination_name": "",
         "group_id": group_id,
         "group_name": group_name,
@@ -74,11 +95,11 @@ def _get_new_messages(since_ms: int, source: str | None) -> list[dict]:
     since_iso = datetime.fromtimestamp(since_ms / 1000, tz=timezone.utc).isoformat()
     try:
         conn = sqlite3.connect(DB_PATH)
+        _ensure_contacts_table(conn)
         rows = conn.execute(
             "SELECT envelope_json FROM raw_envelopes WHERE captured_at >= ? ORDER BY id DESC",
             (since_iso,),
         ).fetchall()
-        conn.close()
     except sqlite3.OperationalError:
         return []
 
@@ -91,7 +112,34 @@ def _get_new_messages(since_ms: int, source: str | None) -> list[dict]:
             continue
         if source and source not in (msg["source_number"] or ""):
             continue
+        # Update contacts cache from incoming messages (keyed by UUID)
+        if not msg["is_sync"] and msg["source_uuid"] and msg["source_name"]:
+            conn.execute(
+                "INSERT OR REPLACE INTO contacts (uuid, phone, name, updated_at) VALUES (?, ?, ?, ?)",
+                (
+                    msg["source_uuid"],
+                    msg["source_number"] or None,
+                    msg["source_name"],
+                    msg["timestamp"],
+                ),
+            )
         messages.append(msg)
+
+    conn.commit()
+
+    # Resolve destination names for outgoing messages from contacts cache
+    for msg in messages:
+        if msg["is_sync"] and not msg["destination_name"]:
+            dest_uuid = msg.get("destination_uuid", "")
+            if dest_uuid:
+                row = conn.execute(
+                    "SELECT name FROM contacts WHERE uuid = ?",
+                    (dest_uuid,),
+                ).fetchone()
+                if row:
+                    msg["destination_name"] = row[0]
+
+    conn.close()
     return messages
 
 
@@ -166,9 +214,11 @@ def get_messages():
     all_msgs.sort(key=lambda m: m["timestamp_ms"], reverse=True)
     all_msgs = all_msgs[:limit]
 
-    # Remove internal field
+    # Remove internal fields
     for m in all_msgs:
         del m["timestamp_ms"]
+        m.pop("source_uuid", None)
+        m.pop("destination_uuid", None)
 
     return jsonify(all_msgs)
 
@@ -195,5 +245,38 @@ def health():
     )
 
 
+def _seed_contacts():
+    """Populate contacts table from all historical envelopes (run once at startup)."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        _ensure_contacts_table(conn)
+        rows = conn.execute("SELECT envelope_json FROM raw_envelopes").fetchall()
+    except sqlite3.OperationalError:
+        return
+
+    count = 0
+    for (envelope_json,) in rows:
+        raw = json.loads(envelope_json)
+        envelope = raw.get("envelope", {})
+        source_uuid = envelope.get("sourceUuid", "")
+        source_name = envelope.get("sourceName", "")
+        source_number = envelope.get("sourceNumber")
+        if source_uuid and source_name:
+            conn.execute(
+                "INSERT OR REPLACE INTO contacts (uuid, phone, name, updated_at) VALUES (?, ?, ?, ?)",
+                (
+                    source_uuid,
+                    source_number,
+                    source_name,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            count += 1
+    conn.commit()
+    conn.close()
+    print(f"Seeded contacts from {count} envelopes")
+
+
 if __name__ == "__main__":
+    _seed_contacts()
     app.run(host=LISTEN_HOST, port=LISTEN_PORT)
