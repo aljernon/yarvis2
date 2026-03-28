@@ -60,8 +60,9 @@ NUDGES: list[Nudge] = [
         name="forgot-send",
         prompt=(
             "Self-check: I didn't call send_message this turn. "
+            "The caller (human or agent) can't see any messages unless send_message is used. "
             "Was that intentional, or did I forget? "
-            "If I forgot, call send_message now."
+            "If I forgot, let's call send_message now."
         ),
         should_run=lambda tools: "send_message" not in tools,
         should_persist=lambda nudge_tools: "send_message" in nudge_tools,
