@@ -49,11 +49,11 @@ class SystemTurn(BaseTurn):
     def render(self) -> list[MessageParam]:
         ts = self.created_at.isoformat()
         if self.turn_type == "schedule":
-            text = f'<meta type="schedule" at="{ts}"></meta>\n{self.message}'
+            text = f'<meta type="schedule" at="{ts}" />\n{self.message}'
         elif self.turn_type == "reflection":
-            text = f'<meta type="reflection" at="{ts}"></meta>\n{self.message}'
+            text = f'<meta type="reflection" at="{ts}" />\n{self.message}'
         else:
-            text = f'<meta type="notification" at="{ts}"></meta>\n<system>{self.message}</system>'
+            text = f'<meta type="notification" at="{ts}" />\n<system>{self.message}</system>'
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]
         if self.marked_for_archive:
             _apply_archive_prefix(role_messages)
@@ -167,7 +167,7 @@ class InputMessageTurn(BaseTurn):
         ts = self.created_at.isoformat()
         voice_attr = ' is_voice="true"' if self.is_voice else ""
         target_attr = f' target="{self.target_slug}"' if self.target_slug else ""
-        meta_tag = f'<meta type="message" sender_type="{sender_type}" sender_name="{sender_name}" at="{ts}"{voice_attr}{target_attr}></meta>'
+        meta_tag = f'<meta type="message" sender_type="{sender_type}" sender_name="{sender_name}" at="{ts}"{voice_attr}{target_attr} />'
         full_message = f"{meta_tag}\n{reply_prefix}{self.message}"
         content_chunks.append({"type": "text", "text": full_message})
 
