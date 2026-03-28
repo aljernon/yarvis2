@@ -45,7 +45,7 @@ from yarvis_ptb.tools.bash_repl import BashRunTool
 from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 from yarvis_ptb.tools.editor_tool import EditorTool
 from yarvis_ptb.tools.file_tools import build_chat_send_file_tools
-from yarvis_ptb.tools.forget_above_tool import ForgetAboveTool
+from yarvis_ptb.tools.forget_above_tool import FORGET_ABOVE_TOOL_NAME, ForgetAboveTool
 from yarvis_ptb.tools.gmail_tool import get_gmail_tools
 from yarvis_ptb.tools.image_tools import build_image_tools
 from yarvis_ptb.tools.memory_tools import build_memory_tools
@@ -772,6 +772,10 @@ async def _process_query_with_tools(
                         )
                 else:
                     result = ToolResult.error(f"Unknown tool: {tool_name}")
+                # Track tool calls for forget_above first-call detection
+                forget_tool = all_local_tool_objects.get(FORGET_ABOVE_TOOL_NAME)
+                if forget_tool is not None and tool_name != FORGET_ABOVE_TOOL_NAME:
+                    forget_tool.prior_tool_calls += 1  # type: ignore[union-attr]
                 # Show result to Claude.
                 result_content: ToolResultBlockParam = {
                     "tool_use_id": content.id,

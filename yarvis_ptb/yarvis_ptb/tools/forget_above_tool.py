@@ -6,6 +6,9 @@ FORGET_ABOVE_TOOL_NAME = "forget_above"
 
 
 class ForgetAboveTool(LocalTool):
+    def __init__(self):
+        self.prior_tool_calls = 0
+
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name=FORGET_ABOVE_TOOL_NAME,
@@ -29,6 +32,12 @@ class ForgetAboveTool(LocalTool):
         )
 
     async def _execute(self, **kwargs) -> ToolResult:
+        if self.prior_tool_calls == 0:
+            return ToolResult.error(
+                "forget_above has no effect as the first tool call — "
+                "there is nothing above to forget. "
+                "Use it after tool calls you want trimmed from history."
+            )
         return ToolResult(
             "Acknowledged. Content above this call will be removed from history "
             "on the next invocation."
