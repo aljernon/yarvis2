@@ -26,6 +26,7 @@ from yarvis_ptb.debug_chat import (
     maybe_send_messages_to_debug_chat,
 )
 from yarvis_ptb.message_search import save_message_and_update_index
+from yarvis_ptb.nudges import run_nudges
 from yarvis_ptb.on_disk_memory import commit_memory
 from yarvis_ptb.prompting import (
     COMPLEX_ANTON_PROMPT,
@@ -44,7 +45,7 @@ from yarvis_ptb.ptb_util import (
     typing_action,
 )
 from yarvis_ptb.rendering_config import RenderingConfig
-from yarvis_ptb.sampling import NoOpHooks, SamplingConfig
+from yarvis_ptb.sampling import SamplingConfig
 from yarvis_ptb.settings import (
     BOT_USER_ID,
     DEFAULT_TIMEZONE,
@@ -62,25 +63,10 @@ from yarvis_ptb.storage import (
     get_messages,
     get_schedules,
 )
-from yarvis_ptb.tool_sampler import _DummyJobQueue
 from yarvis_ptb.turns import system_turn_meta
 from yarvis_ptb.util import RateController, ensure
 
 COMPLEX_CHAT_LOCK = asyncio.Lock()
-
-SELF_CHECK_PROMPT = """\
-Self-check on my last reply. Identify every person, place, event, or topic I referenced by name.
-
-For EACH reference, complete ALL steps:
-1. ls logseq/pages/ | grep -i <name> — check for dedicated page
-2. grep -r <name> logseq/ workspace/ — find mentions
-3. If step 1 found NO dedicated page file: I lack deep knowledge on this topic. \
-I MUST run read_skill brave-search followed by python_repl to search the web. \
-This is not optional — finding scattered mentions in step 2 does not make up \
-for lacking a dedicated knowledge page.
-
-Also available: run_subagent with archive/ agents for past conversations.
-If nothing named, do nothing. NEVER send_message."""
 
 DEFAULT_AGENT_CONFIG = AgentConfig(
     rendering=RenderingConfig(
@@ -399,130 +385,6 @@ async def _process_multi_message_claude_invocation_no_lock(
         )
 
 
-async def _run_self_check(
-    curr,
-    bot: Bot,
-    chat_id: int,
-    agent_config: AgentConfig,
-    all_tools: list,
-    application: Application,
-):
-    """Run a quick self-check after a reply that used no research tools.
-
-    Non-interruptable. If the self-check produces no tool calls (i.e. nothing
-    to research), both the system prompt and the bot response are marked as
-    is_hidden_auto_message so they don't clutter conversation history.
-    """
-    logger.info("Self-check: starting")
-    rendering_config = agent_config.rendering
-    now = datetime.datetime.now(DEFAULT_TIMEZONE)
-
-    # 1. Load current history (includes the just-saved bot response)
-    db_messages = get_messages(
-        curr, chat_id=chat_id, limit=rendering_config.max_history_length_turns
-    )
-
-    # 2. Append self-check system notification
-    selfcheck_db_msg = DbMessage(
-        created_at=now,
-        chat_id=chat_id,
-        user_id=SYSTEM_USER_ID,
-        message=SELF_CHECK_PROMPT,
-        meta=system_turn_meta("reflection"),
-    )
-    db_messages = [*db_messages, selfcheck_db_msg][
-        -rendering_config.max_history_length_turns :
-    ]
-
-    scheduled_invocations = get_schedules(curr, chat_id)
-    invocation = Invocation(invocation_type="reply")
-    system, message_params = build_claude_input(
-        db_messages,
-        rendering_config,
-        invocation=invocation,
-        scheduled_invocations=scheduled_invocations,
-        forced_now_date=now,
-        agent_slug=ROOT_AGENT_SLUG,
-    )
-
-    # 3. Run Claude non-interruptable
-    scope = InterruptionScope(chat_id=chat_id, message_id=None)
-
-    tool_map = {}
-    from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
-
-    for t in all_tools:
-        if t.name == "send_message":
-            tool_map[t.name] = NoOpSendMessageTool(t.spec())
-        else:
-            tool_map[t.name] = t
-
-    claude_tools = [tool_map[t.name].spec().to_claude_tool() for t in all_tools]
-
-    from contextlib import AsyncExitStack
-
-    async with AsyncExitStack() as stack:
-        for t in tool_map.values():
-            await stack.enter_async_context(t.context())
-
-        model_name = agent_config.sampling.resolve_model_name()
-        (
-            result_params,
-            sc_claude_calls,
-            _interrupted,
-        ) = await tool_sampler._process_query_with_tools(
-            system=system,
-            messages=message_params,
-            claude_tools=claude_tools,
-            all_local_tool_objects=tool_map,
-            on_update=NoOpHooks().on_update,
-            scope=scope,
-            model_name=model_name,
-            job_queue=_DummyJobQueue(),
-            max_tokens=agent_config.sampling.max_tokens,
-            thinking=agent_config.sampling.thinking,
-        )
-
-    # 4. Determine if any research tools were used
-    tool_names_used = {
-        block["name"]
-        for mp in (result_params or [])
-        if mp.get("role") == "assistant" and isinstance(mp.get("content"), list)
-        for block in mp["content"]
-        if isinstance(block, dict) and block.get("type") == "tool_use"
-    }
-    did_research = bool(tool_names_used - {"send_message"})
-
-    # 5. Save self-check messages
-    if not did_research:
-        selfcheck_db_msg.is_hidden_auto_message = True
-    save_message_and_update_index(curr, selfcheck_db_msg)
-
-    if result_params:
-        sc_bot_meta: dict = {"message_params": result_params}
-        if sc_claude_calls:
-            pricing = tool_sampler.MODEL_PRICING.get(model_name)
-            sc_cost = tool_sampler.estimate_cost(sc_claude_calls, model_name)
-            sc_bot_meta["usage"] = {
-                "calls": [c.to_usage_dict(pricing) for c in sc_claude_calls],
-                "estimated_cost_usd": sc_cost,
-            }
-        sc_bot_msg = DbMessage(
-            chat_id=chat_id,
-            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-            user_id=BOT_USER_ID,
-            message="USE_CONTENT_FROM_META",
-            meta=sc_bot_meta,
-            is_hidden_auto_message=not did_research,
-        )
-        save_message_and_update_index(curr, sc_bot_msg)
-
-    if did_research:
-        logger.info("Self-check: research triggered, messages kept visible")
-    else:
-        logger.info("Self-check: no research needed, messages hidden")
-
-
 async def _process_multi_message_claude_invocation_inner(
     curr,
     application: Application,
@@ -759,9 +621,7 @@ async def _process_multi_message_claude_invocation_inner(
         )
         save_message_and_update_index(curr, db_message)
 
-        # Self-check: if this was a normal reply with no research tools used,
-        # run a quick non-interruptable check to see if we should have looked things up.
-        # Skip if the response was a sampling failure.
+        # Post-reply nudges (self-checks run sequentially)
         has_sampling_failure = any(
             isinstance(block, dict)
             and block.get("type") == "text"
@@ -783,26 +643,15 @@ async def _process_multi_message_claude_invocation_inner(
                 for block in mp["content"]
                 if isinstance(block, dict) and block.get("type") == "tool_use"
             }
-            non_research_tools = {
-                "send_message",
-                "schedule",
-                "todo_read",
-                "todo_write",
-                "set_variable",
-                "forget_above",
-            }
-            if (
-                "send_message" in tool_names_used
-                and tool_names_used <= non_research_tools
-            ):
-                await _run_self_check(
-                    curr,
-                    bot,
-                    chat_id,
-                    agent_config,
-                    all_tools,
-                    application,
-                )
+            await run_nudges(
+                curr,
+                bot,
+                chat_id,
+                agent_config,
+                all_tools,
+                application,
+                original_tool_names=tool_names_used,
+            )
 
         # After saving the bot message, save interruption notification so it
         # appears after the partial assistant turns in conversation history.
