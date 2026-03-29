@@ -24,7 +24,7 @@ ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -6 | tail 
 Read each session file. Sessions are very large JSONL with noisy metadata (base64 signatures, tool IDs, etc.). **Always preprocess with jq first** to extract just the useful content:
 
 ```bash
-# Extract user messages and assistant text from a session JSONL
+# Extract user messages, assistant text, and tool calls from a session JSONL
 jq -r '
   select(.type == "user" and .message.role == "user") |
     .message.content |
@@ -37,8 +37,9 @@ jq -r '
 jq -r '
   select(.type == "assistant") |
     .message.content[]? |
-    select(.type == "text") |
-    "ASSISTANT: " + .text
+    if .type == "text" then "ASSISTANT: " + .text
+    elif .type == "tool_use" then "TOOL: " + .name
+    else empty end
 ' "$SESSION_FILE"
 ```
 
