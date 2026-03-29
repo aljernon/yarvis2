@@ -66,6 +66,9 @@ logger = logging.getLogger(__name__)
 TOOL_DEFAULT_TIMEOUT_SEC = 15
 TOOL_MAX_TIMEOUT_SEC = 600
 TOOL_EXECUTION_TIMEOUT_SEC = TOOL_MAX_TIMEOUT_SEC + 10  # hard limit per tool call
+TOOL_LOOP_TOKEN_HINT_THRESHOLD = (
+    3000  # suggest subagent/forget_above when tool loop grows past this
+)
 
 
 def _build_generic_tools() -> list[LocalTool]:
@@ -812,6 +815,43 @@ async def _process_query_with_tools(
                 f"Claude finished sampling with stop reason: {partial_sample.stop_reason=}"
             )
             break
+
+        # Hint when tool loop context is getting large.
+        # Use prompt token growth between calls to capture both Claude output
+        # and tool result content.
+        if len(claude_calls) >= 2:
+            tool_loop_tokens = (
+                claude_calls[-1].num_prompt_tokens
+                - claude_calls[0].num_prompt_tokens
+                + claude_calls[-1].num_output_tokens
+            )
+        else:
+            tool_loop_tokens = claude_calls[-1].num_output_tokens
+        if (
+            tool_loop_tokens > TOOL_LOOP_TOKEN_HINT_THRESHOLD
+            and extra_messages
+            and extra_messages[-1].get("role") == "user"
+        ):
+            extra_messages[-1]["content"].append(  # type: ignore[union-attr]
+                {
+                    "type": "text",
+                    "text": (
+                        "<system>Note: the tool loop above consumed more than 3k output tokens. "
+                        "Choose your approach based on the nature of the remaining work:\n"
+                        "(1) If the remaining work is self-contained, or you may need to follow up "
+                        "with the same subagent later: call forget_above now, then delegate the "
+                        "remaining work to a subagent. You don't need to put a summary in "
+                        "forget_above — the subagent result will appear after the forget point "
+                        "so it is preserved in conversation history.\n"
+                        "(2) If the remaining work requires a lot of context from the current "
+                        "conversation history: finish the work here in the main conversation, "
+                        "then call forget_above to trim the heavy tool output from history.\n"
+                        "(3) If the work is both complex (requires conversation context) and you "
+                        "will need all the tool calls preserved for follow-up: continue working "
+                        "in the main conversation without calling forget_above.</system>"
+                    ),
+                }
+            )
 
     # Ensure all content fields are plain lists — pydantic-core ≥2.28 may
     # produce ValidatorIterator objects that are not JSON-serializable.

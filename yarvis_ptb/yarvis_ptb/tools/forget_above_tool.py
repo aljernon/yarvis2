@@ -13,19 +13,26 @@ class ForgetAboveTool(LocalTool):
         return ToolSpec(
             name=FORGET_ABOVE_TOOL_NAME,
             description=(
-                "Trim conversation history: on the next invocation, all tool calls "
-                "and results ABOVE this point in the current assistant turn will be "
-                "removed, so that this tool call will appear to be first. "
-                "Only useful AFTER you've already made tool calls in THIS turn that "
-                "you want to drop from history (e.g. heavy research you no longer need). "
-                "NEVER call this as your first action — it only trims content within "
-                "the current assistant turn, not prior messages."
+                "Trim conversation history: on the next invocation, everything above "
+                "this point will be removed — all prior conversation turns AND all "
+                "tool calls/results above this point in the current bot turn. This call "
+                "will appear to be the start of the conversation. Everything AFTER this "
+                "call (later tool calls, subagent results) is preserved. "
+                "Only useful AFTER you've already made tool calls in THIS turn. "
+                "NEVER call this as your first action — there is nothing above to forget. "
+                "Common pattern: forget_above, then delegate remaining work to a subagent. "
+                "No summary needed — the subagent gets its own context, and its result "
+                "will be returned into this conversation (below the forget point, so it's kept)."
             ),
             args=[
                 ArgSpec(
                     name="summary",
                     type=str,
-                    description="Optional note summarizing what was above, for your own reference.",
+                    description=(
+                        "Optional note summarizing what was above, for your own reference "
+                        "in subsequent tool calls within this turn. Not needed if you are "
+                        "about to delegate to a subagent."
+                    ),
                     is_required=False,
                 ),
             ],
