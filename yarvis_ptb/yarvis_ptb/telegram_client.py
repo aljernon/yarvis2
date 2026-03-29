@@ -21,6 +21,32 @@ from telethon.tl.types import Channel, Chat, User
 
 SESSION_PATH = os.environ.get("TELETHON_SESSION_PATH", "session_name2")
 
+_MEDIA_NAMES = {
+    "MessageMediaPhoto": "Image",
+    "MessageMediaDocument": "File",
+    "MessageMediaWebPage": "Link",
+    "MessageMediaGeo": "Location",
+    "MessageMediaContact": "Contact",
+    "MessageMediaPoll": "Poll",
+    "MessageMediaVenue": "Venue",
+    "MessageMediaGeoLive": "LiveLocation",
+    "MessageMediaDice": "Dice",
+}
+
+
+def _media_label(media) -> str:
+    cls = type(media).__name__
+    return _MEDIA_NAMES.get(cls, cls)
+
+
+def _msg_text(msg) -> str | None:
+    """Extract text from a Telethon message, appending a media label if present."""
+    text = msg.text or ""
+    if msg.media:
+        tag = f"[{_media_label(msg.media)}]"
+        text = f"{text} {tag}" if text else tag
+    return text or None
+
 
 class _SharedClient:
     """Reentrant singleton: first enter connects, last exit disconnects."""
@@ -123,7 +149,8 @@ async def get_messages(
     msgs: list = raw if isinstance(raw, list) else [raw] if raw else []
     result = []
     for msg in msgs:
-        if not msg.text and not getattr(msg, "message", None):
+        text = _msg_text(msg)
+        if text is None:
             continue
         if (
             min_date
@@ -133,9 +160,6 @@ async def get_messages(
             continue
         sender_name = _sender_name(msg)
         direction = "outgoing" if msg.sender_id == my_id else "incoming"
-        text = msg.text or ""
-        if msg.media and not msg.text:
-            text = f"[Media: {type(msg.media).__name__}]"
         result.append(
             {
                 "timestamp": msg.date.isoformat() if msg.date else "",
@@ -172,13 +196,11 @@ async def get_recent_messages(
         for msg in msgs:
             if not msg.date or msg.date < cutoff:
                 continue
-            if not msg.text and not getattr(msg, "message", None):
+            text = _msg_text(msg)
+            if text is None:
                 continue
             sender_name = _sender_name(msg)
             direction = "outgoing" if msg.sender_id == my_id else "incoming"
-            text = msg.text or ""
-            if msg.media and not msg.text:
-                text = f"[Media: {type(msg.media).__name__}]"
             sender_phone = getattr(msg.sender, "phone", None) if msg.sender else None
             all_messages.append(
                 {
