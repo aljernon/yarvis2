@@ -499,9 +499,9 @@ async def _run_reflect_inner(
     sent_messages = result.agent_messages
     if sent_messages:
         summary_text = "\n".join(sent_messages)
-        notification = f"{label} ({slug}):\n{summary_text}"
+        notification = f"{label} (run by subagent: {slug}):\n{summary_text}"
     else:
-        notification = f"{label} ({slug}): no summary returned."
+        notification = f"{label} (run by subagent: {slug}): no summary returned."
     save_message_and_update_index(
         curr,
         DbMessage(
