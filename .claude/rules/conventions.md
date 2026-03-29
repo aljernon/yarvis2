@@ -18,3 +18,4 @@
 - Never `git push` unless explicitly asked — pushes trigger a Heroku rebuild
 - When editing workspace files, read the full file first to avoid duplicating existing content
 - Before exploring a subdirectory (dashboard/, signal_accumulator/, etc.), check for a local CLAUDE.md in that directory first
+- For local env vars (API keys, credentials), use `set -a && source .env && set +a` — not `activate.zsh`

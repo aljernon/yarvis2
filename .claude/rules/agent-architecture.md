@@ -34,6 +34,10 @@ Post-reply self-checks that run sequentially after each bot reply. Each `Nudge` 
 
 Runs as a subagent with `CollectMessageTool`. Any `send_message` calls become a summary in the main chat notification. Triggered by idle timeout or midnight cron.
 
+## Telegram client (`telegram_client.py`)
+
+Telegram messages are persistent on their servers — use Telethon to re-fetch any historical messages. The notification check window in `message_events.py` is just a polling interval, not a data retention limit. Running locally requires `set -a && source .env && set +a` for `TELEGRAM_ID`/`TELEGRAM_HASH`.
+
 ## Key files
 
 | File | What it does |
