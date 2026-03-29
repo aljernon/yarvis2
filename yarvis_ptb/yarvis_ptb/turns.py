@@ -53,7 +53,7 @@ class SystemTurn(BaseTurn):
         elif self.turn_type == "reflection":
             text = f'<meta type="reflection" at="{ts}" />\n{self.message}'
         else:
-            text = f'<meta type="notification" at="{ts}" />\n<system>{self.message}</system>'
+            text = f'<meta type="notification" at="{ts}" />\n<system>\n{self.message}\n</system>'
         role_messages: list[MessageParam] = [{"role": "user", "content": text}]
         if self.marked_for_archive:
             _apply_archive_prefix(role_messages)
