@@ -500,6 +500,7 @@ async def _process_multi_message_claude_invocation_inner(
                 hooks=hooks,
                 job_queue=application.job_queue,
                 scope=scope,
+                enable_token_hint=True,
             )
         except Exception:
             tb = traceback.format_exc()

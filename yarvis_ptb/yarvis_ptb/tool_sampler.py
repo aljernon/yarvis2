@@ -293,6 +293,8 @@ async def process_query(
     hooks: SamplingHooks,
     job_queue: JobQueueLike,
     scope: InterruptionScope,
+    *,
+    enable_token_hint: bool = False,
 ) -> SamplingResult:
     """Process a query using Claude and available tools.
 
@@ -325,6 +327,7 @@ async def process_query(
             job_queue=job_queue,
             max_tokens=config.max_tokens,
             thinking=config.thinking,
+            enable_token_hint=enable_token_hint,
         )
         # Strip dangling tool_use blocks (generated but not executed due
         # to interruption) — the API requires a matching tool_result for
@@ -482,6 +485,7 @@ async def _process_query_with_tools(
     model_name: str = CLAUDE_MODEL_NAME,
     max_tokens: int = 16000,
     thinking: str = "adaptive",
+    enable_token_hint: bool = False,
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo], bool]:
     async_client = get_async_anthropic_client()
 
@@ -828,7 +832,8 @@ async def _process_query_with_tools(
         else:
             tool_loop_tokens = claude_calls[-1].num_output_tokens
         if (
-            tool_loop_tokens > TOOL_LOOP_TOKEN_HINT_THRESHOLD
+            enable_token_hint
+            and tool_loop_tokens > TOOL_LOOP_TOKEN_HINT_THRESHOLD
             and extra_messages
             and extra_messages[-1].get("role") == "user"
         ):
