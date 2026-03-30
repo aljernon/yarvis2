@@ -303,7 +303,7 @@ def _format_notification(
         lines.append(f"\n{source.upper()}:")
         for msg in msgs:
             ts_str = msg["ts"].astimezone(tz).strftime("%H:%M:%S")
-            text = msg["text"][:200] + "..." if len(msg["text"]) > 200 else msg["text"]
+            text = msg["text"][:500] + "..." if len(msg["text"]) > 500 else msg["text"]
             if msg["direction"] == "outgoing":
                 who = f"Anton → {msg['partner']}"
             else:
