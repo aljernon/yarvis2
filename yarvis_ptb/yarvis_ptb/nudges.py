@@ -83,7 +83,8 @@ NUDGES: list[Nudge] = [
             "to search the web. This is not optional — finding scattered mentions "
             "in step 3 does not make up for lacking a dedicated knowledge page.\n\n"
             "Also available: run_subagent with archive/ agents for past conversations.\n"
-            "If nothing named, do nothing. NEVER send_message."
+            "If nothing named, do nothing. NEVER send_message. "
+            "Do not continue or finish any interrupted messages — only do research."
         ),
         should_run=lambda tools: (
             "send_message" in tools and tools <= NON_RESEARCH_TOOLS
