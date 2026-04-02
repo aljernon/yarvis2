@@ -90,8 +90,8 @@ def _clean_message_params_for_jsonl(message_params: list) -> list:
 app = typer.Typer()
 
 
-def _get_ckr_commit_before(dt: datetime.datetime) -> str:
-    """Find the last CKR commit on main before the given datetime."""
+def _get_workspace_commit_before(dt: datetime.datetime) -> str:
+    """Find the last workspace commit on main before the given datetime."""
     iso = dt.isoformat()
     result = subprocess.run(
         ["git", "log", "main", f"--before={iso}", "--format=%H", "-1"],
@@ -102,12 +102,12 @@ def _get_ckr_commit_before(dt: datetime.datetime) -> str:
     )
     commit = result.stdout.strip()
     if not commit:
-        raise RuntimeError(f"No CKR commit found before {iso}")
+        raise RuntimeError(f"No workspace commit found before {iso}")
     return commit
 
 
-def _ckr_checkout(commit: str):
-    """Check out a specific CKR commit, discarding any local changes."""
+def _workspace_checkout(commit: str):
+    """Check out a specific workspace commit, discarding any local changes."""
     subprocess.run(
         ["git", "checkout", "."], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
@@ -118,11 +118,11 @@ def _ckr_checkout(commit: str):
         ["git", "checkout", commit], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
     short = commit[:7]
-    print(f"[CKR checked out to {short}]", file=sys.stderr)
+    print(f"[workspace checked out to {short}]", file=sys.stderr)
 
 
-def _ckr_restore_main():
-    """Restore CKR to main HEAD, discarding any changes."""
+def _workspace_restore_main():
+    """Restore workspace to main HEAD, discarding any changes."""
     subprocess.run(
         ["git", "checkout", "."], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
@@ -132,7 +132,7 @@ def _ckr_restore_main():
     subprocess.run(
         ["git", "checkout", "main"], cwd=WORKSPACE_DIR, check=True, capture_output=True
     )
-    print("[CKR restored to main]", file=sys.stderr)
+    print("[workspace restored to main]", file=sys.stderr)
 
 
 @app.command()
@@ -194,9 +194,9 @@ async def main(
     msg_time = _get_message_time(chat_id, last_message_id)
     now = msg_time
 
-    # Find and checkout the CKR state at the time of the target message
-    ckr_commit = _get_ckr_commit_before(now)
-    _ckr_checkout(ckr_commit)
+    # Find and checkout the workspace state at the time of the target message
+    ws_commit = _get_workspace_commit_before(now)
+    _workspace_checkout(ws_commit)
 
     try:
         await _run(
@@ -213,7 +213,7 @@ async def main(
             now,
         )
     finally:
-        _ckr_restore_main()
+        _workspace_restore_main()
 
 
 def _get_message_time(chat_id: int, message_id: int) -> datetime.datetime:

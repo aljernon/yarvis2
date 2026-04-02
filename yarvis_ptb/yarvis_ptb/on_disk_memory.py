@@ -23,7 +23,6 @@ ROOT_FILES = [
     "HUMAN.md",
     "BEHAVIOR.md",
     "TOOLS.md",
-    "HUMAN_STATUS.md",
 ]
 
 
