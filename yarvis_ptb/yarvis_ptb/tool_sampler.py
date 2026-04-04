@@ -670,6 +670,7 @@ async def _process_query_with_tools(
 
     # Process response and handle tool calls
     extra_messages: list[MessageParam] = []
+    token_hint_sent = False
 
     def convert_result_content_to_input_content(
         result_content: ContentBlock,
@@ -833,6 +834,7 @@ async def _process_query_with_tools(
             tool_loop_tokens = claude_calls[-1].num_output_tokens
         if (
             enable_token_hint
+            and not token_hint_sent
             and tool_loop_tokens > TOOL_LOOP_TOKEN_HINT_THRESHOLD
             and extra_messages
             and extra_messages[-1].get("role") == "user"
@@ -857,6 +859,7 @@ async def _process_query_with_tools(
                     ),
                 }
             )
+            token_hint_sent = True
 
     # Ensure all content fields are plain lists — pydantic-core ≥2.28 may
     # produce ValidatorIterator objects that are not JSON-serializable.
