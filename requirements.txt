@@ -33,6 +33,9 @@ telethon==1.38.1
 # OpenAI API for Whisper transcription
 openai==1.57.0
 
+# Soniox ASR
+soniox==2.2.0
+
 # For location logger
 flask==3.1.0
 

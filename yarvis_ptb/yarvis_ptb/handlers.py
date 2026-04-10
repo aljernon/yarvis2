@@ -4,6 +4,7 @@ import logging
 import os
 import pprint
 import subprocess
+import tempfile
 import traceback
 from dataclasses import asdict, dataclass
 from tempfile import NamedTemporaryFile, gettempprefix
@@ -75,6 +76,7 @@ from yarvis_ptb.settings.main import (
     KNOWN_USER_PRIVATE_CHAT_CONFIGS,
     ROOT_AGENT_SLUG,
 )
+from yarvis_ptb.soniox_transcription import transcribe_file_soniox
 from yarvis_ptb.storage import (
     DbMessage,
     Invocation,
@@ -94,7 +96,7 @@ from yarvis_ptb.tools.whoop_tools import maybe_refresh_whoop_token
 from yarvis_ptb.turns import system_turn_meta
 from yarvis_ptb.util import ensure
 from yarvis_ptb.vm_watchdog import maybe_reset_vm
-from yarvis_ptb.whisper_transcription import transcribe_voice_message
+from yarvis_ptb.whisper_transcription import transcribe_file_whisper
 
 logger = logging.getLogger(__name__)
 
@@ -606,10 +608,40 @@ async def handle_voice_message(
         logger.error("No voice message")
         return
     logger.info(f"Transcribing {update.message=}")
-    text = await transcribe_voice_message(bot=context.bot, voice=update.message.voice)
+
+    # Download voice file once, run both ASR services in parallel
+    voice_file = await context.bot.get_file(update.message.voice.file_id)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        voice_path = os.path.join(tmp_dir, "voice.ogg")
+        await voice_file.download_to_drive(voice_path)
+
+        whisper_task = asyncio.get_event_loop().run_in_executor(
+            None, transcribe_file_whisper, voice_path
+        )
+        soniox_task = asyncio.get_event_loop().run_in_executor(
+            None, transcribe_file_soniox, voice_path
+        )
+        results = await asyncio.gather(
+            whisper_task, soniox_task, return_exceptions=True
+        )
+
+    # Build combined text for the agent — always show both, errors included
+    def _format_result(name: str, result: str | BaseException) -> str:
+        if isinstance(result, str):
+            return f"Transcription from {name}:\n{result}"
+        logger.error(f"{name} transcription failed: {result}")
+        return f"Transcription from {name}:\n[error: {result}]"
+
+    text = "\n\n".join(
+        [
+            _format_result("Whisper", results[0]),
+            _format_result("Soniox", results[1]),
+        ]
+    )
+
     object.__setattr__(update.message, "text", text)
     await reply_maybe_markdown(
-        context.bot, update.message.chat_id, f"**Transcribed:**\n{update.message.text}"
+        context.bot, update.message.chat_id, f"**Transcribed:**\n{text}"
     )
     return await _handle_message(auth, update, context, is_voice=True)
 
