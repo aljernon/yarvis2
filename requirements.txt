@@ -75,3 +75,4 @@ coolname
 
 # Google Flights search
 fast-flights
+arxiv>=2.0.0
