@@ -87,7 +87,7 @@ class JobQueueLike(Protocol):
     ) -> Any: ...
 
 
-ADAPTIVE_THINKING_MODELS = {"claude-opus-4-6", "claude-sonnet-4-6"}
+ADAPTIVE_THINKING_MODELS = {"claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"}
 
 ANTHROPIC_EXCEPTIONS_TO_RETRY: tuple[type[Exception], ...] = (
     APIStatusError,
@@ -144,6 +144,12 @@ class ModelPricing:
 
 
 MODEL_PRICING: dict[str, ModelPricing] = {
+    "claude-opus-4-7": ModelPricing(
+        input=5.0 / 1e6,
+        cache_read=0.50 / 1e6,
+        cache_creation=6.25 / 1e6,
+        output=25.0 / 1e6,
+    ),
     "claude-opus-4-6": ModelPricing(
         input=5.0 / 1e6,
         cache_read=0.50 / 1e6,
