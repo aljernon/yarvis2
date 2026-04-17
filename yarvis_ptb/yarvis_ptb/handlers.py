@@ -944,32 +944,30 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
             )
             await maybe_send_messages_to_debug_chat(context.application)
 
-        # Auto-reflection check (idle-triggered)
+        # Auto-reflection check (idle-triggered) — runs in background so it
+        # doesn't block the minute callback or user-message handling.
         try:
-            should_reflect = await should_auto_reflect(curr, ROOT_USER_ID)
-            if should_reflect:
-                await run_auto_reflect(
-                    curr, ROOT_USER_ID, context.application, context.bot
+            if await should_auto_reflect(curr, ROOT_USER_ID):
+                asyncio.create_task(
+                    run_auto_reflect(ROOT_USER_ID, context.application, context.bot)
                 )
-                context.bot_data["conn"].commit()
         except Exception:
-            logger.exception("Auto-reflect failed")
+            logger.exception("Auto-reflect check failed")
             add_debug_message_to_queue(
-                f"**AUTO-REFLECT FAILED**\n```\n{traceback.format_exc()}\n```"
+                f"**AUTO-REFLECT CHECK FAILED**\n```\n{traceback.format_exc()}\n```"
             )
             await maybe_send_messages_to_debug_chat(context.application)
 
-        # Midnight reflection (end-of-day catchup)
+        # Midnight reflection (end-of-day catchup) — also runs in background.
         try:
             if await should_midnight_reflect(curr, ROOT_USER_ID):
-                await run_auto_reflect(
-                    curr, ROOT_USER_ID, context.application, context.bot
+                asyncio.create_task(
+                    run_auto_reflect(ROOT_USER_ID, context.application, context.bot)
                 )
-                context.bot_data["conn"].commit()
         except Exception:
-            logger.exception("Midnight reflect failed")
+            logger.exception("Midnight reflect check failed")
             add_debug_message_to_queue(
-                f"**MIDNIGHT REFLECT FAILED**\n```\n{traceback.format_exc()}\n```"
+                f"**MIDNIGHT REFLECT CHECK FAILED**\n```\n{traceback.format_exc()}\n```"
             )
             await maybe_send_messages_to_debug_chat(context.application)
 
