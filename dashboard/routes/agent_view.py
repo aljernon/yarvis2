@@ -4,7 +4,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import psycopg2.extras
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from dashboard.helpers import (
     extract_api_msg_db_ids,
@@ -39,7 +39,7 @@ def _get_default_chat_id():
     return ROOT_USER_ID
 
 
-def _load_agent_context():
+def _load_agent_context(*, skip_forget_above: bool = False):
     """Shared logic: load messages, build system prompt + history."""
     chat_id = _get_default_chat_id()
     conn = get_db()
@@ -53,6 +53,7 @@ def _load_agent_context():
             DEFAULT_AGENT_CONFIG.rendering,
             scheduled_invocations=scheduled_invocations,
             agent_slug=ROOT_AGENT_SLUG,
+            skip_forget_above=skip_forget_above,
         )
         truncate_base64_images(history)
         return messages, system_prompt, history
@@ -130,7 +131,10 @@ def _load_subagent_groups(chat_id: int, min_time, max_time) -> list[dict]:
 @bp.route("/api/agent-view")
 def api_agent_view():
     """Return the full agent view: system prompt + message history as Claude sees it."""
-    messages, system_prompt, history = _load_agent_context()
+    skip_forget = request.args.get("full") == "1"
+    messages, system_prompt, history = _load_agent_context(
+        skip_forget_above=skip_forget
+    )
 
     tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
     tool_names = [t["name"] for t in tool_specs]

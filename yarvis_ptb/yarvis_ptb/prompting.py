@@ -161,13 +161,15 @@ def build_context_info(
 def convert_db_messages_to_claude_messages(
     messages: list[DbMessage],
     tool_result_truncation_after_n_turns: int | None = None,
+    *,
+    skip_forget_above: bool = False,
 ) -> list[MessageParam]:
     all_role_messages: list[MessageParam] = []
     api_msg_annotations: list[ApiMsgAnnotation] = []
 
     for turn_idx, msg in enumerate(messages):
         turn = db_message_to_turn(msg)
-        role_messages = turn.render()
+        role_messages = turn.render(skip_forget_above=skip_forget_above)
 
         for _ in role_messages:
             api_msg_annotations.append(
@@ -292,6 +294,7 @@ def build_claude_input(
     scheduled_invocations: list[DbSchedule] | None = None,
     forced_now_date: datetime.datetime | None = None,
     agent_slug: str | None = None,
+    skip_forget_above: bool = False,
 ) -> tuple[str, list[MessageParam]]:
     """Build system prompt and message history for a Claude API call.
 
@@ -319,6 +322,7 @@ def build_claude_input(
     history = convert_db_messages_to_claude_messages(
         messages,
         tool_result_truncation_after_n_turns=rendering_config.tool_result_truncation_after_n_turns,
+        skip_forget_above=skip_forget_above,
     )
     return system, history
 

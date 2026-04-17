@@ -1,7 +1,7 @@
 """Agent listing and subagent detail routes."""
 
 import psycopg2.extras
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from dashboard.helpers import (
     extract_api_msg_db_ids,
@@ -78,14 +78,19 @@ def api_subagent(agent_id: int):
             db_messages = get_messages(cur, agent_row["chat_id"], agent_id=agent_id)
 
         agent_config_dict = agent_meta.get("agent_config", {})
+        skip_forget = request.args.get("full") == "1"
         try:
             agent_config = AgentConfig.model_validate(agent_config_dict)
             system_prompt, api_messages = build_claude_input(
-                db_messages, agent_config.rendering
+                db_messages,
+                agent_config.rendering,
+                skip_forget_above=skip_forget,
             )
         except Exception:
             system_prompt = None
-            api_messages = convert_db_messages_to_claude_messages(db_messages)
+            api_messages = convert_db_messages_to_claude_messages(
+                db_messages, skip_forget_above=skip_forget
+            )
 
         truncate_base64_images(api_messages)
 

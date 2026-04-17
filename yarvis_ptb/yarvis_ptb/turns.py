@@ -33,7 +33,7 @@ class BaseTurn(abc.ABC):
     marked_for_archive: bool
 
     @abc.abstractmethod
-    def render(self) -> list[MessageParam]: ...
+    def render(self, *, skip_forget_above: bool = False) -> list[MessageParam]: ...
 
     @abc.abstractmethod
     def to_db_message(
@@ -46,7 +46,7 @@ class SystemTurn(BaseTurn):
     message: str
     turn_type: SystemTurnType = "notification"
 
-    def render(self) -> list[MessageParam]:
+    def render(self, *, skip_forget_above: bool = False) -> list[MessageParam]:
         ts = self.created_at.isoformat()
         if self.turn_type == "schedule":
             text = f'<meta type="schedule" at="{ts}" />\n{self.message}'
@@ -74,7 +74,7 @@ class SystemTurn(BaseTurn):
 class BotTurn(BaseTurn):
     message_params: list[MessageParam]
 
-    def render(self) -> list[MessageParam]:
+    def render(self, *, skip_forget_above: bool = False) -> list[MessageParam]:
         role_messages: list[MessageParam] = copy.deepcopy(self.message_params)
 
         # Drop empty trailing assistant message
@@ -86,7 +86,8 @@ class BotTurn(BaseTurn):
             logger.debug(f"Empty message: {role_messages[-2:]}")
             role_messages.pop()
 
-        role_messages = _apply_forget_above(role_messages)
+        if not skip_forget_above:
+            role_messages = _apply_forget_above(role_messages)
 
         if self.marked_for_archive:
             _apply_archive_prefix(role_messages)
@@ -140,7 +141,7 @@ class InputMessageTurn(BaseTurn):
             else f"unknown user ({self.user_id})",
         )
 
-    def render(self) -> list[MessageParam]:
+    def render(self, *, skip_forget_above: bool = False) -> list[MessageParam]:
         content_chunks: list = []
 
         if self.image_b64:

@@ -3,6 +3,7 @@
 {% block content %}
 <div class="controls" id="agent-controls">
   <span style="color:#7a6880;font-size:0.9em" id="agent-subtitle">Main chat agent view (hardcoded to root user)</span>
+  <button id="agent-full-btn" onclick="toggleFullHistory()">show full history</button>
   <button id="agent-token-btn" onclick="fetchAgentTokens()">tokens?</button>
   <span id="agent-token-info" class="token-info"></span>
 </div>

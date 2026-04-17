@@ -639,7 +639,22 @@ async function fetchAgentTokens() {
   }
 }
 
+let agentViewFull = false;
+let currentSubagentId = null;
+
+function toggleFullHistory() {
+  agentViewFull = !agentViewFull;
+  const btn = document.getElementById("agent-full-btn");
+  if (btn) btn.textContent = agentViewFull ? "show with forget_above" : "show full history";
+  if (currentSubagentId != null) {
+    loadSubagentView(currentSubagentId);
+  } else {
+    loadAgentView();
+  }
+}
+
 async function loadAgentView() {
+  currentSubagentId = null;
   const container = document.getElementById("agent-container");
   const loading = document.getElementById("agent-loading");
   const btn = document.getElementById("load-agent-btn");
@@ -649,7 +664,8 @@ async function loadAgentView() {
   if (loading) loading.style.display = "";
 
   try {
-    const resp = await fetch("/api/agent-view");
+    const url = agentViewFull ? "/api/agent-view?full=1" : "/api/agent-view";
+    const resp = await fetch(url);
     const data = await resp.json();
     if (loading) loading.style.display = "none";
 
@@ -837,6 +853,7 @@ async function loadAgentView() {
 // ── Subagent view ────────────────────────────────────────────────────────────
 
 async function loadSubagentView(agentId) {
+  currentSubagentId = agentId;
   const container = document.getElementById("agent-container");
   const loading = document.getElementById("agent-loading");
   const subtitle = document.getElementById("agent-subtitle");
@@ -848,7 +865,8 @@ async function loadSubagentView(agentId) {
   if (loading) loading.style.display = "";
 
   try {
-    const resp = await fetch(`/api/subagent/${agentId}`);
+    const fullParam = agentViewFull ? "?full=1" : "";
+    const resp = await fetch(`/api/subagent/${agentId}${fullParam}`);
     if (!resp.ok) {
       const err = await resp.json();
       if (loading) loading.textContent = `Error: ${err.error || resp.statusText}`;
