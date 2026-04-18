@@ -4,6 +4,7 @@ import json
 
 import pytz
 
+from yarvis_ptb.on_disk_memory import commit_memory
 from yarvis_ptb.settings import DEFAULT_TIMEZONE_STR, PROJECT_ROOT
 
 SETTINGS_MEMORY_PATH = PROJECT_ROOT / "workspace/settings.json"
@@ -22,7 +23,11 @@ def get_complex_chat_timezone_str() -> str:
 
 
 def set_timezone(new_tz: str) -> str:
-    """Set timezone in settings.json. Returns the old timezone string."""
+    """Set timezone in settings.json. Returns the old timezone string.
+
+    The workspace is a fresh git clone on every container start, so the
+    update is committed + pushed to the memory repo to survive restarts.
+    """
     old_tz = get_complex_chat_timezone_str()
     try:
         with open(SETTINGS_MEMORY_PATH) as f:
@@ -33,6 +38,7 @@ def set_timezone(new_tz: str) -> str:
     with open(SETTINGS_MEMORY_PATH, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
+    commit_memory()
     return old_tz
 
 
