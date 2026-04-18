@@ -12,6 +12,7 @@ from yarvis_ptb.message_search import save_message_and_update_index
 from yarvis_ptb.settings import ROOT_USER_ID, SYSTEM_USER_ID
 from yarvis_ptb.storage import DbMessage
 from yarvis_ptb.timezones import set_timezone
+from yarvis_ptb.tools.scheduling_tools import reanchor_cron_schedules
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,15 @@ class TimezoneHandler(tornado.web.RequestHandler):
             self.write({"old": old_tz, "new": new_tz, "changed": False})
             return
 
-        # Save system message
+        # Re-anchor cron schedules + save a system message about it
         with self.conn.cursor() as curr:
+            reanchored, fired_immediate = reanchor_cron_schedules(curr, ROOT_USER_ID)
+            reanchor_note = (
+                f" Re-anchored {reanchored} cron schedule(s) to the new timezone"
+                f"; {fired_immediate} will fire once now to catch a skipped run."
+                if reanchored
+                else ""
+            )
             save_message_and_update_index(
                 curr,
                 DbMessage(
@@ -78,6 +86,7 @@ class TimezoneHandler(tornado.web.RequestHandler):
                         f"System timezone updated accordingly. "
                         f"All scheduled invocations, time references, and "
                         f'"today"/"tomorrow" boundaries now use the new timezone.'
+                        f"{reanchor_note}"
                     ),
                 ),
             )

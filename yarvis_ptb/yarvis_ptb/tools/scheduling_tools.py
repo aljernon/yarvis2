@@ -7,12 +7,14 @@ from croniter import croniter
 from yarvis_ptb.settings import DEFAULT_TIMEZONE
 from yarvis_ptb.storage import (
     DbSchedule,
+    advance_schedule,
     deactivate_schedule,
     get_schedule_by_id,
     get_schedules,
     save_schedule,
     update_schedule,
 )
+from yarvis_ptb.timezones import get_timezone
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,12 @@ def parse_interval(spec: str) -> datetime.timedelta:
 
 
 def compute_next_run(schedule: DbSchedule, now: datetime.datetime) -> datetime.datetime:
-    """Compute the next run time for a recurring schedule."""
+    """Compute the next run time for a recurring schedule.
+
+    Cron expressions are interpreted in the user's current timezone
+    (get_timezone(complex_chat=True)), so `0 21 * * *` means "9 PM in
+    whatever timezone the user is currently in."
+    """
     if schedule.schedule_type == "every":
         interval = parse_interval(schedule.schedule_spec)
         next_run = schedule.next_run_at + interval
@@ -50,12 +57,47 @@ def compute_next_run(schedule: DbSchedule, now: datetime.datetime) -> datetime.d
             next_run += interval
         return next_run
     elif schedule.schedule_type == "cron":
-        cron = croniter(schedule.schedule_spec, now.astimezone(DEFAULT_TIMEZONE))
+        user_tz = get_timezone(complex_chat=True)
+        cron = croniter(schedule.schedule_spec, now.astimezone(user_tz))
         return cron.get_next(datetime.datetime).astimezone(DEFAULT_TIMEZONE)
     else:
         raise ValueError(
             f"Cannot compute next run for schedule_type={schedule.schedule_type}"
         )
+
+
+def reanchor_cron_schedules(curr, chat_id: int) -> tuple[int, int]:
+    """Shift cron schedules' next_run_at into the user's current timezone.
+
+    Call after `set_timezone` changes the user timezone. For each active
+    cron schedule:
+      * If the new-tz interpretation would skip the upcoming firing
+        (new_next > old_next), set next_run_at to now so callback_minute
+        fires it once on the next tick and then advances normally. This
+        preserves "fire once per schedule" even if several wall-clock
+        firings got jumped over.
+      * Otherwise just rewrite next_run_at to the new-tz-correct value.
+
+    `every` schedules are interval-based (tz-invariant) and `at` schedules
+    are one-shot absolute times, so neither is touched.
+
+    Returns (reanchored_count, fired_immediate_count).
+    """
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    schedules = get_schedules(curr, chat_id)
+    reanchored = 0
+    fired_immediate = 0
+    for sched in schedules:
+        if sched.schedule_type != "cron":
+            continue
+        new_next = compute_next_run(sched, now)
+        if new_next > sched.next_run_at:
+            advance_schedule(curr, sched, now - datetime.timedelta(seconds=1))
+            fired_immediate += 1
+        else:
+            advance_schedule(curr, sched, new_next)
+        reanchored += 1
+    return reanchored, fired_immediate
 
 
 async def cancel_schedule_fn(curr, chat_id: int, scheduled_id: int) -> ToolResult:
@@ -143,6 +185,7 @@ async def schedule_fn(
         )
 
     schedule_type, spec_value = provided[0]
+    user_tz = get_timezone(complex_chat=True)
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
 
     if schedule_type == "at":
@@ -151,7 +194,7 @@ async def schedule_fn(
         except Exception as e:
             return ToolResult.error(text=f"Error parsing datetime '{spec_value}': {e}")
         if dt.tzinfo is None:
-            dt = DEFAULT_TIMEZONE.localize(dt)
+            dt = user_tz.localize(dt)
         if dt < now:
             return ToolResult.error(text=f"Cannot schedule in the past: {dt}")
         next_run_at = dt
@@ -161,7 +204,7 @@ async def schedule_fn(
         if not croniter.is_valid(spec_value):
             return ToolResult.error(text=f"Invalid cron expression: '{spec_value}'")
         try:
-            cron_iter = croniter(spec_value, now.astimezone(DEFAULT_TIMEZONE))
+            cron_iter = croniter(spec_value, now.astimezone(user_tz))
             next_run_at = cron_iter.get_next(datetime.datetime).astimezone(
                 DEFAULT_TIMEZONE
             )
@@ -285,7 +328,12 @@ class ScheduleTool(SchedulingTool):
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="schedule",
-            description=f"Schedule an invocation. Provide exactly one of 'at', 'cron', or 'every'. Default timezone is {DEFAULT_TIMEZONE}.",
+            description=(
+                "Schedule an invocation. Provide exactly one of 'at', 'cron', or 'every'. "
+                "All times are interpreted in the user's current local timezone, which "
+                "follows their phone. A cron like `0 21 * * *` means 9 PM local, and it "
+                "will shift automatically when the user travels between timezones."
+            ),
             args=[
                 ArgSpec(
                     name="at",
