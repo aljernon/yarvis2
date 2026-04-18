@@ -552,6 +552,34 @@ def advance_schedule(curr, schedule: DbSchedule, next_run_at: datetime.datetime)
     )
 
 
+def update_schedule(
+    curr,
+    schedule_id: int,
+    *,
+    title: str | None = None,
+    context: str | None = None,
+) -> None:
+    """Update editable fields on an existing schedule.
+
+    Only fields explicitly passed (non-None) are updated.
+    """
+    sets = []
+    params: list = []
+    if title is not None:
+        sets.append("title = %s")
+        params.append(title)
+    if context is not None:
+        sets.append("context = %s")
+        params.append(context)
+    if not sets:
+        return
+    params.append(schedule_id)
+    curr.execute(
+        f"UPDATE schedules SET {', '.join(sets)} WHERE id = %s",
+        tuple(params),
+    )
+
+
 def deactivate_schedule(curr, schedule: DbSchedule):
     """Set schedule as non-active"""
     assert schedule.schedule_id is not None, "Should be saved first"

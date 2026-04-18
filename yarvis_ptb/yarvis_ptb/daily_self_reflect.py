@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import functools
 import logging
 import os
 import traceback
@@ -39,7 +40,10 @@ from yarvis_ptb.storage import (
 )
 from yarvis_ptb.timezones import get_timezone
 from yarvis_ptb.tool_sampler import (
+    MODEL_PRICING,
     _DummyJobQueue,
+    cost_breakdown,
+    estimate_cost,
     get_tools_for_agent_config,
     process_query,
 )
@@ -322,12 +326,17 @@ MIN_TOOL_CALLS_FOR_REFLECT = 10
 
 
 def _get_last_reflect_time(curr, chat_id: int) -> datetime.datetime | None:
-    """Query the most recent reflection placeholder from messages."""
+    """Last time a reflection on ROOT (main chat) ran, for cooldown gating.
+
+    Scoped to reflected_agent_id IS NULL so schedule-reflects (which target a
+    specific subagent) don't suppress the idle auto-reflect cooldown.
+    """
     curr.execute(
         """
         SELECT created_at FROM messages
         WHERE chat_id = %s AND agent_id IS NULL AND is_visible = true
           AND meta @> '{"is_reflection": true}'
+          AND meta->>'reflected_agent_id' IS NULL
         ORDER BY created_at DESC LIMIT 1
         """,
         (chat_id,),
@@ -397,97 +406,71 @@ async def should_auto_reflect(curr, chat_id: int) -> bool:
     return True
 
 
-async def _run_reflect_inner(
-    curr, chat_id: int, application, bot, *, label: str = "Auto-reflect"
+async def run_reflect_core(
+    curr,
+    chat_id: int,
+    *,
+    label: str,
+    history_snapshot: list[DbMessage],
+    trigger_text: str,
+    scheduled_invocations,
+    now: datetime.datetime,
+    slug: str,
+    agent_meta: AgentMeta,
+    notification_prefix: str,
+    notification_meta: dict[str, object],
+    application,
+    bot,
 ) -> None:
-    """Core reflection logic.
+    """Shared reflect pipeline for auto-reflect and schedule-reflect.
 
-    Acquires COMPLEX_CHAT_LOCK only briefly — once around the history snapshot
-    and once around the DB writes — so the Claude loop runs concurrently with
-    user-message handling.
+    Caller must have already snapshotted history + schedules under
+    COMPLEX_CHAT_LOCK and composed the trigger text + full
+    history_snapshot. This helper runs the Claude loop without the lock
+    (so user messages can be answered concurrently) and re-acquires the
+    lock only for the DB writes at the end.
     """
-    now = datetime.datetime.now(DEFAULT_TIMEZONE)
     agent_config = DEFAULT_AGENT_CONFIG
-
-    logger.info(f"{label}: starting")
-    add_debug_message_to_queue(f"**{label.upper()}: starting**")
-
     rendering_config = agent_config.rendering
-    max_history_length_turns = rendering_config.max_history_length_turns
 
-    # 1. Snapshot history + schedules under the lock so the read is consistent
-    async with COMPLEX_CHAT_LOCK:
-        db_messages = get_messages(
-            curr, chat_id=chat_id, limit=max_history_length_turns
-        )
-        scheduled_invocations = get_schedules(curr, chat_id)
-
-    # 2. Append the reflection trigger as a system message
-    reflect_msg = DbMessage(
-        chat_id=chat_id,
-        created_at=now,
-        user_id=SYSTEM_USER_ID,
-        message=AUTO_REFLECT_PROMPT,
-    )
-    db_messages = [*db_messages, reflect_msg][-max_history_length_turns:]
-
-    # 3. Build Claude input (same pipeline as main invocation = cache hit)
     system, message_params = build_claude_input(
-        db_messages,
+        history_snapshot,
         rendering_config,
         invocation=Invocation(invocation_type="automatic"),
         scheduled_invocations=scheduled_invocations,
         forced_now_date=now,
     )
 
-    # 4. Run the Claude loop WITHOUT the lock — user messages can be answered
-    #    concurrently.
     scope = InterruptionScope(chat_id=chat_id, message_id=None)
     all_tools = [
         CollectMessageTool() if t.name == "send_message" else t
         for t in get_tools_for_agent_config(agent_config, curr, chat_id, bot)
     ]
-    hooks = NoOpHooks()
     result = await process_query(
         system=system,
         messages=message_params,
         agent_config=agent_config,
         tools=all_tools,
-        hooks=hooks,
+        hooks=NoOpHooks(),
         job_queue=application.job_queue,
         scope=scope,
     )
     result_params = result.message_params
 
-    # 5. Write reflect-agent messages + main-chat summary under the lock so they
-    #    don't interleave with user turns.
-    slug = reflect_slug(now.date())
     async with COMPLEX_CHAT_LOCK:
-        agent_id = create_agent(
-            curr,
-            chat_id,
-            meta=AgentMeta(type="auto_reflect").model_dump(),
-            slug=slug,
-        )
-
+        agent_id = create_agent(curr, chat_id, meta=agent_meta.model_dump(), slug=slug)
         save_message(
             curr,
             DbMessage(
                 created_at=now,
                 chat_id=chat_id,
                 user_id=SYSTEM_USER_ID,
-                message=AUTO_REFLECT_PROMPT,
+                message=trigger_text,
                 agent_id=agent_id,
             ),
         )
         bot_meta: dict = {"message_params": result_params}
         if result.claude_calls:
-            from yarvis_ptb.tool_sampler import (
-                MODEL_PRICING,
-                cost_breakdown,
-                estimate_cost,
-            )
-
             pricing = MODEL_PRICING.get(MODEL)
             bot_meta["usage"] = {
                 "model": MODEL,
@@ -509,10 +492,9 @@ async def _run_reflect_inner(
 
         sent_messages = result.agent_messages
         if sent_messages:
-            summary_text = "\n".join(sent_messages)
-            notification = f"{label} (run by subagent: {slug}):\n{summary_text}"
+            notification = f"{notification_prefix}:\n" + "\n".join(sent_messages)
         else:
-            notification = f"{label} (run by subagent: {slug}): no summary returned."
+            notification = f"{notification_prefix}: no summary returned."
         save_message_and_update_index(
             curr,
             DbMessage(
@@ -520,16 +502,55 @@ async def _run_reflect_inner(
                 chat_id=chat_id,
                 user_id=SYSTEM_USER_ID,
                 message=notification,
-                meta={"is_reflection": True},
+                meta=notification_meta,
             ),
         )
 
-    # 6. Commit memory changes (FS — safe outside the lock)
     commit_memory()
 
     summary = render_claude_response_short(result_params)
     logger.info(f"{label} completed: {summary[:200]}")
     add_debug_message_to_queue(f"**{label.upper()}: completed**\n{summary}")
+
+
+async def _run_reflect_inner(
+    curr, chat_id: int, application, bot, *, label: str = "Auto-reflect"
+) -> None:
+    """Idle/midnight auto-reflect on the ROOT main chat."""
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    max_history_length_turns = DEFAULT_AGENT_CONFIG.rendering.max_history_length_turns
+
+    logger.info(f"{label}: starting")
+    add_debug_message_to_queue(f"**{label.upper()}: starting**")
+
+    async with COMPLEX_CHAT_LOCK:
+        history = get_messages(curr, chat_id=chat_id, limit=max_history_length_turns)
+        scheduled_invocations = get_schedules(curr, chat_id)
+
+    reflect_msg = DbMessage(
+        chat_id=chat_id,
+        created_at=now,
+        user_id=SYSTEM_USER_ID,
+        message=AUTO_REFLECT_PROMPT,
+    )
+    history_snapshot = [*history, reflect_msg][-max_history_length_turns:]
+
+    slug = reflect_slug(now.date())
+    await run_reflect_core(
+        curr,
+        chat_id,
+        label=label,
+        history_snapshot=history_snapshot,
+        trigger_text=AUTO_REFLECT_PROMPT,
+        scheduled_invocations=scheduled_invocations,
+        now=now,
+        slug=slug,
+        agent_meta=AgentMeta(type="auto_reflect"),
+        notification_prefix=f"{label} (run by subagent: {slug})",
+        notification_meta={"is_reflection": True},
+        application=application,
+        bot=bot,
+    )
 
 
 async def should_midnight_reflect(curr, chat_id: int) -> bool:
@@ -562,23 +583,41 @@ async def should_midnight_reflect(curr, chat_id: int) -> bool:
     return True
 
 
-AUTO_REFLECT_LOCK = asyncio.Lock()
+@functools.cache
+def get_reflect_lock(reflected_agent_id: int | None) -> asyncio.Lock:
+    """Per-reflected-agent reflection lock. None identifies ROOT / main chat.
+
+    Prevents two reflections from running on the same agent at once while
+    still allowing concurrent reflections on different agents (e.g. idle
+    auto-reflect on ROOT alongside a schedule-reflect on a subagent).
+    """
+    # `@functools.cache` never evicts, so every distinct agent id keeps a
+    # dead Lock for the process lifetime. Fine here — Heroku cycles the dyno
+    # daily, so the set stays bounded to ~one day of scheduled subagents.
+    return asyncio.Lock()
+
+
+async def auto_reflect_job(context) -> None:
+    """job_queue wrapper so PTB holds a strong reference while we reflect."""
+    await run_auto_reflect(
+        context.job.data["chat_id"], context.application, context.bot
+    )
 
 
 async def run_auto_reflect(chat_id: int, application, bot) -> None:
     """Run self-reflection in the background.
 
     Opens its own DB connection (the caller's cursor may be released before
-    reflection finishes) and guards against overlapping reflections via
-    AUTO_REFLECT_LOCK. COMPLEX_CHAT_LOCK is acquired only briefly inside
-    _run_reflect_inner — user messages are answered concurrently with the
-    Claude loop.
+    reflection finishes) and peeks at the ROOT reflect lock to skip when
+    another reflection on ROOT is already running. COMPLEX_CHAT_LOCK is
+    acquired only briefly inside _run_reflect_inner — user messages are
+    answered concurrently with the Claude loop.
     """
-    if AUTO_REFLECT_LOCK.locked():
-        logger.info("Auto-reflect: skipping, another reflection is already running")
+    if get_reflect_lock(None).locked():
+        logger.info("Auto-reflect: skipping, a reflection on ROOT is already running")
         return
 
-    async with AUTO_REFLECT_LOCK:
+    async with get_reflect_lock(None):
         try:
             with connect() as conn, conn.cursor() as curr:
                 await _run_reflect_inner(

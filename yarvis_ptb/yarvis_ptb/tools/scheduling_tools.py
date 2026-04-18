@@ -11,6 +11,7 @@ from yarvis_ptb.storage import (
     get_schedule_by_id,
     get_schedules,
     save_schedule,
+    update_schedule,
 )
 from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 
@@ -87,6 +88,37 @@ async def get_schedule_details_fn(curr, chat_id: int, scheduled_id: int) -> Tool
         "is_active": schedule.is_active,
     }
     return ToolResult.success(details)
+
+
+async def update_schedule_fn(
+    curr,
+    chat_id: int,
+    scheduled_id: int,
+    title: str | None = None,
+    context: str | None = None,
+) -> ToolResult:
+    schedule = get_schedule_by_id(curr, scheduled_id)
+    if schedule is None:
+        return ToolResult.error(text=f"No schedule found with id {scheduled_id}")
+    if schedule.chat_id != chat_id:
+        return ToolResult.error(
+            text=f"Schedule {scheduled_id} belongs to a different chat"
+        )
+    if not schedule.is_active:
+        return ToolResult.error(
+            text=f"Schedule {scheduled_id} is not active — cannot update"
+        )
+    if title is None and context is None:
+        return ToolResult.error(
+            text="Nothing to update — pass at least one of 'title' or 'context'"
+        )
+    update_schedule(curr, scheduled_id, title=title, context=context)
+    updated = []
+    if title is not None:
+        updated.append("title")
+    if context is not None:
+        updated.append("context")
+    return ToolResult(text=f"Updated schedule {scheduled_id}: {', '.join(updated)}")
 
 
 async def schedule_fn(
@@ -213,6 +245,42 @@ class GetScheduleDetailsTool(SchedulingTool):
         return await get_schedule_details_fn(self.curr, self.chat_id, **kwargs)
 
 
+class UpdateScheduleTool(SchedulingTool):
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="update_schedule",
+            description=(
+                "Update the title or context of an existing, active schedule. "
+                "Use this to refine the instructions after reflecting on how "
+                "a scheduled invocation actually ran. Pass at least one of "
+                "`title` or `context` — omitted fields are left unchanged."
+            ),
+            args=[
+                ArgSpec(
+                    name="scheduled_id",
+                    type=int,
+                    description="The id of the schedule to update",
+                    is_required=True,
+                ),
+                ArgSpec(
+                    name="title",
+                    type=str,
+                    description="New short title (shown in system prompt). Omit to leave unchanged.",
+                    is_required=False,
+                ),
+                ArgSpec(
+                    name="context",
+                    type=str,
+                    description="New longer context (shown at invocation time). Omit to leave unchanged.",
+                    is_required=False,
+                ),
+            ],
+        )
+
+    async def _execute(self, **kwargs) -> ToolResult:
+        return await update_schedule_fn(self.curr, self.chat_id, **kwargs)
+
+
 class ScheduleTool(SchedulingTool):
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -267,4 +335,5 @@ def build_scheduling_tools(curr, chat_id) -> list[LocalTool]:
         CancelScheduleTool(curr, chat_id),
         GetScheduleDetailsTool(curr, chat_id),
         ScheduleTool(curr, chat_id),
+        UpdateScheduleTool(curr, chat_id),
     ]

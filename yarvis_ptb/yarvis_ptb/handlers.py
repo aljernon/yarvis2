@@ -33,7 +33,7 @@ from yarvis_ptb.daily_agent_update import (
     should_run_dau,
 )
 from yarvis_ptb.daily_self_reflect import (
-    run_auto_reflect,
+    auto_reflect_job,
     run_force_reflect,
     should_auto_reflect,
     should_midnight_reflect,
@@ -61,6 +61,7 @@ from yarvis_ptb.ptb_util import (
     interrupt_all,
     reply_maybe_markdown,
 )
+from yarvis_ptb.schedule_reflect import schedule_reflect_job
 from yarvis_ptb.settings import (
     AGENT_TO_AGENT_USER_ID,
     DEFAULT_TIMEZONE,
@@ -828,28 +829,44 @@ async def _run_schedule_in_subagent(
             message=agent_message,
         )
 
+    subagent_end_time = datetime.datetime.now(DEFAULT_TIMEZONE)
+
     # 3. If the subagent produced output, invoke the main agent to process it.
     agent_texts = extract_agent_messages(run_result.result)
-    if not agent_texts:
-        logger.info(f"Schedule subagent {slug} produced no output, skipping invocation")
-        return
-
-    summary = "\n".join(agent_texts)
-    logger.info(f"Schedule subagent {slug} completed, invoking main agent")
-    await process_multi_message_claude_invocation(
-        curr,
-        application=application,
-        bot=bot,
-        chat_id=chat_id,
-        agent_config=DEFAULT_AGENT_CONFIG,
-        invocation=Invocation(invocation_type="reply"),
-        initial_db_message=DbMessage(
+    if agent_texts:
+        summary = "\n".join(agent_texts)
+        logger.info(f"Schedule subagent {slug} completed, invoking main agent")
+        await process_multi_message_claude_invocation(
+            curr,
+            application=application,
+            bot=bot,
             chat_id=chat_id,
-            created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
-            user_id=AGENT_TO_AGENT_USER_ID,
-            message=summary,
-            meta={"agent_slug": run_result.slug, "target_slug": "ROOT"},
-        ),
+            agent_config=DEFAULT_AGENT_CONFIG,
+            invocation=Invocation(invocation_type="reply"),
+            initial_db_message=DbMessage(
+                chat_id=chat_id,
+                created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
+                user_id=AGENT_TO_AGENT_USER_ID,
+                message=summary,
+                meta={"agent_slug": run_result.slug, "target_slug": "ROOT"},
+            ),
+        )
+    else:
+        logger.info(f"Schedule subagent {slug} produced no output, skipping reply")
+
+    # 4. Schedule background reflection on how this scheduled run went. Main
+    #    reply (if any) has already been awaited and saved above, so when=0
+    #    is fine. PTB's job_queue holds a strong reference until it finishes.
+    ensure(application.job_queue).run_once(
+        schedule_reflect_job,
+        when=0,
+        data={
+            "chat_id": chat_id,
+            "subagent_id": run_result.agent_id,
+            "subagent_slug": run_result.slug,
+            "subagent_end_time": subagent_end_time,
+        },
+        name=f"schedule_reflect/{run_result.slug}",
     )
 
 
@@ -949,12 +966,15 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
             )
             await maybe_send_messages_to_debug_chat(context.application)
 
-        # Auto-reflection check (idle-triggered) — runs in background so it
-        # doesn't block the minute callback or user-message handling.
+        # Auto-reflection check (idle-triggered) — dispatched to job_queue so
+        # it doesn't block the minute callback or user-message handling.
         try:
             if await should_auto_reflect(curr, ROOT_USER_ID):
-                asyncio.create_task(
-                    run_auto_reflect(ROOT_USER_ID, context.application, context.bot)
+                ensure(context.application.job_queue).run_once(
+                    auto_reflect_job,
+                    when=0,
+                    data={"chat_id": ROOT_USER_ID},
+                    name="auto_reflect",
                 )
         except Exception:
             logger.exception("Auto-reflect check failed")
@@ -963,11 +983,14 @@ async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
             )
             await maybe_send_messages_to_debug_chat(context.application)
 
-        # Midnight reflection (end-of-day catchup) — also runs in background.
+        # Midnight reflection (end-of-day catchup) — also via job_queue.
         try:
             if await should_midnight_reflect(curr, ROOT_USER_ID):
-                asyncio.create_task(
-                    run_auto_reflect(ROOT_USER_ID, context.application, context.bot)
+                ensure(context.application.job_queue).run_once(
+                    auto_reflect_job,
+                    when=0,
+                    data={"chat_id": ROOT_USER_ID},
+                    name="midnight_reflect",
                 )
         except Exception:
             logger.exception("Midnight reflect check failed")
