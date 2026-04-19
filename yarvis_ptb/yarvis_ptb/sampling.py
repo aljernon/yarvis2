@@ -25,12 +25,14 @@ class SamplingConfig(BaseModel):
     thinking: str = "adaptive"
     """Thinking mode: "adaptive", "none", or an int for budget_tokens."""
 
-    thinking_first: int | None = None
-    """budget_tokens override for the FIRST Claude call in a tool loop.
+    thinking_first: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    """`output_config.effort` override for the FIRST adaptive-thinking call
+    in a tool loop.
 
-    Anti-sycophancy lever: forcing a high budget on the initial reply makes
-    the model reason before committing, rather than agreeing reflexively.
-    Subsequent calls in the loop fall back to `thinking`. None = disabled.
+    Anti-sycophancy lever: effort="xhigh" or "max" on Opus 4.7 pushes the
+    model to reason deeply on the initial reply before committing, rather
+    than agreeing reflexively. Subsequent calls fall back to default
+    adaptive effort (= high). None = disabled.
     """
 
     output_mode: Literal["text", "tool_message"] = "text"

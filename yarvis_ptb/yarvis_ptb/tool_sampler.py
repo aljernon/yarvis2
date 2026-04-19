@@ -492,7 +492,7 @@ async def _process_query_with_tools(
     model_name: str = CLAUDE_MODEL_NAME,
     max_tokens: int = 16000,
     thinking: str = "adaptive",
-    thinking_first: int | None = None,
+    thinking_first: Literal["low", "medium", "high", "xhigh", "max"] | None = None,
     enable_token_hint: bool = False,
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo], bool]:
     async_client = get_async_anthropic_client()
@@ -542,14 +542,18 @@ async def _process_query_with_tools(
         )
         if model_name in ADAPTIVE_THINKING_MODELS:
             is_first_call = not extra_messages
-            if is_first_call and thinking_first is not None:
+            if thinking == "adaptive":
+                # `display: "summarized"` restores visible thinking text on
+                # Opus 4.7 (default became "omitted" in the Apr 18 rollout).
                 kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": thinking_first,
+                    "type": "adaptive",
+                    "display": "summarized",
                 }
-            elif thinking == "adaptive":
-                kwargs["thinking"] = {"type": "adaptive"}
+                if is_first_call and thinking_first is not None:
+                    # Anti-sycophancy: force heavier effort on the first call.
+                    kwargs["output_config"] = {"effort": thinking_first}
             elif thinking != "none":
+                # Manual-budget path; deprecated and 400s on Opus 4.7.
                 kwargs["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": int(thinking),
@@ -678,11 +682,11 @@ async def _process_query_with_tools(
 
         except ANTHROPIC_EXCEPTIONS_TO_RETRY as e:
             # This explicit catch ensures the tenacity decorator retries
-            logger.warning(f"API error encountered: {type(e)} {e}")
+            logger.warning("API error encountered: %s", e, exc_info=True)
             raise
         except APIStatusError as e:
             # This explicit catch ensures the tenacity decorator retries
-            logger.warning(f"Weird API error encountered: {type(e)} {e}")
+            logger.warning("Weird API error encountered: %s", e, exc_info=True)
             raise
 
     # Process response and handle tool calls

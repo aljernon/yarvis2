@@ -80,8 +80,10 @@ DEFAULT_AGENT_CONFIG = AgentConfig(
         output_mode="tool_message",
         # Anti-sycophancy: force heavy reasoning on the first call of each
         # tool loop so the model commits to a position before agreeing
-        # reflexively. Subsequent iterations fall back to adaptive.
-        thinking_first=16384,
+        # reflexively. Only "max" reliably produces a thinking block on Opus
+        # 4.7; "high"/"xhigh" often skip thinking even with adaptive.
+        # Subsequent iterations fall back to adaptive defaults.
+        thinking_first="max",
     ),
 )
 
