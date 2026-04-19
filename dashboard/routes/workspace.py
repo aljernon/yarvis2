@@ -1,11 +1,14 @@
 """Workspace/logseq diff route — daily git diffs."""
 
 import datetime
+import logging
 import os
 import subprocess
 
 import pytz
 from flask import Blueprint, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("workspace", __name__)
 
@@ -205,6 +208,13 @@ def api_workspace_pull():
     )
     ok = result.returncode == 0
     output = (result.stdout.strip() + "\n" + result.stderr.strip()).strip()
+    if not ok:
+        logger.warning(
+            "workspace-pull failed (rc=%s) in %s:\n%s",
+            result.returncode,
+            repo_dir,
+            output,
+        )
     return jsonify({"ok": ok, "output": output}), 200 if ok else 500
 
 
