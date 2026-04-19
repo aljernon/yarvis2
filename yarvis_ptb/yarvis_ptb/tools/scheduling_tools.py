@@ -59,7 +59,7 @@ def compute_next_run(schedule: DbSchedule, now: datetime.datetime) -> datetime.d
     elif schedule.schedule_type == "cron":
         user_tz = get_timezone(complex_chat=True)
         cron = croniter(schedule.schedule_spec, now.astimezone(user_tz))
-        return cron.get_next(datetime.datetime).astimezone(DEFAULT_TIMEZONE)
+        return cron.get_next(datetime.datetime).astimezone(user_tz)
     else:
         raise ValueError(
             f"Cannot compute next run for schedule_type={schedule.schedule_type}"
@@ -205,9 +205,7 @@ async def schedule_fn(
             return ToolResult.error(text=f"Invalid cron expression: '{spec_value}'")
         try:
             cron_iter = croniter(spec_value, now.astimezone(user_tz))
-            next_run_at = cron_iter.get_next(datetime.datetime).astimezone(
-                DEFAULT_TIMEZONE
-            )
+            next_run_at = cron_iter.get_next(datetime.datetime).astimezone(user_tz)
         except Exception as e:
             return ToolResult.error(text=f"Error computing next cron run: {e}")
         schedule_spec = spec_value
@@ -217,7 +215,7 @@ async def schedule_fn(
             interval = parse_interval(spec_value)
         except ValueError as e:
             return ToolResult.error(text=str(e))
-        next_run_at = now + interval
+        next_run_at = (now + interval).astimezone(user_tz)
         schedule_spec = spec_value
 
     schedule_id = save_schedule(
