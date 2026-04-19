@@ -34,9 +34,9 @@ echo "$(date) START clone logseq"
 git clone -o origin git@github.com:aljernon/logseq.git ~/logseq
 echo "$(date) DONE clone logseq"
 
-echo "$(date) START clone yarvis"
-git clone -o origin git@github.com:aljernon/yarvis.git ~/repo
-echo "$(date) DONE clone yarvis"
+echo "$(date) START clone yarvis2"
+git clone -o origin git@github.com:aljernon/yarvis2.git ~/repo
+echo "$(date) DONE clone yarvis2"
 
 echo "$(date) START clone memory"
 git clone -o origin git@github.com:aljernon/memory.git ~/workspace
