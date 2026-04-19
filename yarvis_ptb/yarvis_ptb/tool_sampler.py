@@ -333,6 +333,7 @@ async def process_query(
             job_queue=job_queue,
             max_tokens=config.max_tokens,
             thinking=config.thinking,
+            thinking_first=config.thinking_first,
             enable_token_hint=enable_token_hint,
         )
         # Strip dangling tool_use blocks (generated but not executed due
@@ -491,6 +492,7 @@ async def _process_query_with_tools(
     model_name: str = CLAUDE_MODEL_NAME,
     max_tokens: int = 16000,
     thinking: str = "adaptive",
+    thinking_first: int | None = None,
     enable_token_hint: bool = False,
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo], bool]:
     async_client = get_async_anthropic_client()
@@ -538,11 +540,20 @@ async def _process_query_with_tools(
             ),
             # betas=["token-efficient-tools-2025-02-19"],
         )
-        if thinking != "none" and model_name in ADAPTIVE_THINKING_MODELS:
-            if thinking == "adaptive":
+        if model_name in ADAPTIVE_THINKING_MODELS:
+            is_first_call = not extra_messages
+            if is_first_call and thinking_first is not None:
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": thinking_first,
+                }
+            elif thinking == "adaptive":
                 kwargs["thinking"] = {"type": "adaptive"}
-            else:
-                kwargs["thinking"] = {"type": "enabled", "budget_tokens": int(thinking)}
+            elif thinking != "none":
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": int(thinking),
+                }
 
         count = -2
         num_cached_tokens = -2

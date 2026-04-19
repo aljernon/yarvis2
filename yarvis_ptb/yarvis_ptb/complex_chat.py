@@ -78,6 +78,10 @@ DEFAULT_AGENT_CONFIG = AgentConfig(
         model="opus",
         tool_subset="all",
         output_mode="tool_message",
+        # Anti-sycophancy: force heavy reasoning on the first call of each
+        # tool loop so the model commits to a position before agreeing
+        # reflexively. Subsequent iterations fall back to adaptive.
+        thinking_first=16384,
     ),
 )
 
