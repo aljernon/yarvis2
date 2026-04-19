@@ -15,11 +15,17 @@ Arguments: $ARGUMENTS
 ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -1
 ```
 
-**Otherwise (default):** Find the 6 most recent session JSONL files (by modification time), then **skip the first one** (it's the current `/reflect` session):
+**Otherwise (default):** Find the 6 most recent session JSONL files (by modification time). The first one is usually the current `/reflect` session and should be skipped — but if `/reflect` was invoked mid-session (i.e. that file has substantive pre-`/reflect` content), include it too, since it's the richest source of recent learnings.
 
 ```bash
 ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -6 | tail -5
+# Then decide whether to also include the current session:
+CURRENT=$(ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -1)
+# Count non-/reflect user turns; include the file if >20
+jq -r 'select(.type=="user" and .message.role=="user") | .message.content | if type=="string" then . elif type=="array" then [.[]|select(.type=="text")|.text]|join("\n") else empty end' "$CURRENT" 2>/dev/null | grep -vcE '(^$|<command-name>/reflect|<local-command-caveat|<command-message>|<command-args>)'
 ```
+
+If that count is >20, include `$CURRENT` in the analysis set too (but exclude its `/reflect` invocation itself).
 
 Read each session file. Sessions are very large JSONL with noisy metadata (base64 signatures, tool IDs, etc.). **Always preprocess with jq first** to extract just the useful content:
 

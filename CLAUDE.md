@@ -91,7 +91,7 @@ Frozen archive agents are queryable via `run_subagent(agent="archive/2026-03-04"
 ## Credentials & Environment Variables
 - API credentials (client IDs, secrets) go in `.env` (gitignored) and must also be set on Heroku via `heroku config:set`
 - OAuth token files (e.g. `whoop_token.json`, `nest_token.json`) are shipped to Heroku via `tokens_to_envs.sh`
-- When adding a new integration, always add its env vars to both `.env` and Heroku
+- When adding a new integration, always add its env vars to both `.env` and Heroku — and when reporting completion, explicitly confirm *both* were updated (user shouldn't have to ask "did you push to Heroku too?")
 
 ## Database Safety
 
@@ -109,9 +109,12 @@ pg_dump "$DATABASE_URL" -f /tmp/yarvis_full_backup.sql
 
 ## Deployment
 The project is hosted on Heroku with PostgreSQL database integration.
-- Heroku app name: `claude-telegram-v2` (fork of original `claude-telegram`/yarvis)
-- Both apps share the same Postgres database (`postgresql-shaped-06547`)
+- **Two live Heroku apps, both running against the same Postgres** (`postgresql-shaped-06547`):
+  - `claude-telegram-v2` — deploys from this repo (`yarvis2`). Telegram bot: `@ya42352` ("yarvis"). This is the bot Anton talks to.
+  - `claude-telegram` — deploys from the older `aljernon/yarvis` repo. Different Telegram bot/token, same DB.
+  - Both dynos write restart notifications / schedules / reflections into the shared main chat, so messages from either app can appear in the same `dump_messages` output.
 - **Never push to Heroku directly** (`git push heroku`). Deploys happen automatically after pushing to GitHub.
+- `launch.sh:38` clones `aljernon/yarvis2.git` into `~/repo` as a sidecar for in-container tooling (Yarvis's grep/search over its own source). The sidecar repo must match the slug repo — if they drift, investigator subagents grep stale code.
 - `update_tokens.sh` must be run inside the conda env: `conda run -n clam ./update_tokens.sh`
 
 ## GCP Infrastructure

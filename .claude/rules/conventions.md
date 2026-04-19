@@ -19,3 +19,7 @@
 - When editing workspace files, read the full file first to avoid duplicating existing content
 - Before exploring a subdirectory (dashboard/, signal_accumulator/, etc.), check for a local CLAUDE.md in that directory first
 - For local env vars (API keys, credentials), use `set -a && source .env && set +a` — not `activate.zsh`
+- When writing workspace skills or shared memory files, use generic "the user" and gender-neutral pronouns — skills are reusable, not Anton-specific
+- For post-cutoff Claude models, APIs, or features, `WebFetch` docs.anthropic.com before asking the user for model IDs / pricing
+- Use `dump_messages.py -a <slug>` to inspect an agent's trajectory — don't write ad-hoc SQL scripts for message/agent inspection (see `CLAUDE.md` "Dumping messages")
+- Yarvis only sees `workspace/`, not `.claude/` or root `CLAUDE.md`. If Yarvis itself needs to know a rule/fact, put it in `workspace/` (`TOOLS.md`, a skill, or a memory file)
