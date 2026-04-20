@@ -330,7 +330,7 @@ async def main(
                         job_queue=_DummyJobQueue(),
                         max_tokens=sampling_config.max_tokens,
                         thinking=sampling_config.thinking,
-                        thinking_first=sampling_config.thinking_first,
+                        effort=sampling_config.effort,
                     )
                 except StopOnToolError as e:
                     print(f"\n[stopped on first tool call: {e}]", file=sys.stderr)

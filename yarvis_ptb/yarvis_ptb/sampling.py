@@ -25,14 +25,14 @@ class SamplingConfig(BaseModel):
     thinking: str = "adaptive"
     """Thinking mode: "adaptive", "none", or an int for budget_tokens."""
 
-    thinking_first: Literal["low", "medium", "high", "xhigh", "max"] | None = None
-    """`output_config.effort` override for the FIRST adaptive-thinking call
-    in a tool loop.
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    """`output_config.effort` applied uniformly to every call in the tool loop.
 
-    Anti-sycophancy lever: effort="xhigh" or "max" on Opus 4.7 pushes the
-    model to reason deeply on the initial reply before committing, rather
-    than agreeing reflexively. Subsequent calls fall back to default
-    adaptive effort (= high). None = disabled.
+    On Opus 4.7 in adaptive thinking mode, effort="xhigh" pushes the model
+    to reason deeply every turn — the anti-sycophancy lever. Applied to
+    ALL calls (not first-only) so the request shape stays stable across
+    the loop; varying `output_config` between calls invalidates the prompt
+    cache. None = omit output_config (default adaptive behavior).
     """
 
     output_mode: Literal["text", "tool_message"] = "text"

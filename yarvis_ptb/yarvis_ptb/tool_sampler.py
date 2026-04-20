@@ -333,7 +333,7 @@ async def process_query(
             job_queue=job_queue,
             max_tokens=config.max_tokens,
             thinking=config.thinking,
-            thinking_first=config.thinking_first,
+            effort=config.effort,
             enable_token_hint=enable_token_hint,
         )
         # Strip dangling tool_use blocks (generated but not executed due
@@ -492,7 +492,7 @@ async def _process_query_with_tools(
     model_name: str = CLAUDE_MODEL_NAME,
     max_tokens: int = 16000,
     thinking: str = "adaptive",
-    thinking_first: Literal["low", "medium", "high", "xhigh", "max"] | None = None,
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None,
     enable_token_hint: bool = False,
 ) -> tuple[list[MessageParam], list[ClaudeCallInfo], bool]:
     async_client = get_async_anthropic_client()
@@ -541,7 +541,6 @@ async def _process_query_with_tools(
             # betas=["token-efficient-tools-2025-02-19"],
         )
         if model_name in ADAPTIVE_THINKING_MODELS:
-            is_first_call = not extra_messages
             if thinking == "adaptive":
                 # `display: "summarized"` restores visible thinking text on
                 # Opus 4.7 (default became "omitted" in the Apr 18 rollout).
@@ -549,9 +548,11 @@ async def _process_query_with_tools(
                     "type": "adaptive",
                     "display": "summarized",
                 }
-                if is_first_call and thinking_first is not None:
-                    # Anti-sycophancy: force heavier effort on the first call.
-                    kwargs["output_config"] = {"effort": thinking_first}
+                if effort is not None:
+                    # Applied uniformly to every call in the loop so the
+                    # request shape stays stable — varying output_config
+                    # between calls invalidates the prompt cache.
+                    kwargs["output_config"] = {"effort": effort}
             elif thinking != "none":
                 # Manual-budget path; deprecated and 400s on Opus 4.7.
                 kwargs["thinking"] = {
