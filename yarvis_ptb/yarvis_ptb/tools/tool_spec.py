@@ -98,6 +98,13 @@ class ToolSpec:
 
 
 class LocalTool(abc.ABC):
+    execution_timeout_sec: int | None = None
+    """Per-tool execution timeout override. None = use the tool-loop default.
+
+    Set to a larger value on tools that legitimately run long (e.g.
+    subagent tools that internally run their own Claude + tool loop).
+    """
+
     @property
     def name(self) -> str:
         return self.spec().name

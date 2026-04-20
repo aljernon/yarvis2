@@ -82,6 +82,11 @@ def _validate_model(model: str | None) -> tuple[str, ToolResult | None]:
 class _SubagentBase(LocalTool):
     """Shared logic for all subagent tools."""
 
+    # Subagents run their own Claude + tool loop (can have many iterations
+    # and long per-tool waits of their own), so the default 610s cap is too
+    # tight. 30 minutes is generous but still bounded.
+    execution_timeout_sec = 1800
+
     def __init__(self, curr, chat_id: int, bot):
         self._curr = curr
         self._chat_id = chat_id

@@ -790,14 +790,17 @@ async def _process_query_with_tools(
 
                 # Execute tool call
                 if tool_name in all_local_tool_objects:
+                    tool_obj = all_local_tool_objects[tool_name]
+                    tool_timeout = (
+                        tool_obj.execution_timeout_sec or TOOL_EXECUTION_TIMEOUT_SEC
+                    )
                     try:
                         result = await asyncio.wait_for(
-                            all_local_tool_objects[tool_name](**tool_args),
-                            timeout=TOOL_EXECUTION_TIMEOUT_SEC,
+                            tool_obj(**tool_args), timeout=tool_timeout
                         )
                     except asyncio.TimeoutError:
                         result = ToolResult.error(
-                            f"Tool {tool_name} timed out after {TOOL_EXECUTION_TIMEOUT_SEC}s"
+                            f"Tool {tool_name} timed out after {tool_timeout}s"
                         )
                 else:
                     result = ToolResult.error(f"Unknown tool: {tool_name}")
