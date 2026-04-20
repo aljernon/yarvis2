@@ -304,8 +304,13 @@ def _format_notification(
         for msg in msgs:
             ts_str = msg["ts"].astimezone(tz).strftime("%H:%M:%S")
             text = msg["text"][:500] + "..." if len(msg["text"]) > 500 else msg["text"]
+            partner = msg["partner"]
+            is_group = msg.get("is_group", False)
             if msg["direction"] == "outgoing":
-                who = f"Anton → {msg['partner']}"
+                who = f"Anton → {partner}"
+            elif is_group:
+                # Group chat: sender → group name (not Anton).
+                who = f"{msg['from']} → {partner}"
             else:
                 who = f"{msg['from']} → Anton"
             lines.append(f"  [{ts_str}] {who}: {text}")
