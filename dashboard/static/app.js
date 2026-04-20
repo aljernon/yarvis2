@@ -212,13 +212,22 @@ function renderSubagentGroup(group) {
     }
     if (turnBody) {
       const roleLabel = firstRole;
-      bodyHtml += `<div class="turn-card"><div class="turn-header"><span class="sender ${sc}">${escapeHtml(roleLabel)}</span></div><div class="turn-body">${turnBody}</div></div>`;
+      const turnUsage = findUsageForRange(group.turn_usages || [], startIdx, endIdx);
+      const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
+      bodyHtml += `<div class="turn-card"><div class="turn-header"><span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${turnBody}</div></div>`;
     }
     si = endIdx;
   }
 
+  // Aggregate group-level cost: sum estimated_cost_usd across all turn_usages.
+  const groupCost = (group.turn_usages || []).reduce(
+    (s, tu) => s + (tu.usage && tu.usage.estimated_cost_usd ? tu.usage.estimated_cost_usd : 0),
+    0,
+  );
+  const groupCostStr = groupCost > 0 ? ` <span class="block-size">$${groupCost.toFixed(4)}</span>` : "";
+
   const slugLink = `<a href="/agent?agent_id=${group.agent_id}" class="badge agent" onclick="event.stopPropagation()">${slug}</a>`;
-  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> ${slugLink} <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span></div><div class="collapsible-content open" id="${collapseId}">${bodyHtml}</div></div>`;
+  return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> ${slugLink} <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span>${groupCostStr}</div><div class="collapsible-content open" id="${collapseId}">${bodyHtml}</div></div>`;
 }
 
 function shortModelName(model) {

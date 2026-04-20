@@ -123,6 +123,7 @@ def _load_subagent_groups(chat_id: int, min_time, max_time) -> list[dict]:
                 "num_messages": len(api_msgs),
                 "num_db_turns": len(db_msgs),
                 "history": api_msgs,
+                "turn_usages": extract_turn_usages(db_msgs),
             }
         )
     return groups
