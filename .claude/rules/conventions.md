@@ -23,3 +23,4 @@
 - For post-cutoff Claude models, APIs, or features, `WebFetch` docs.anthropic.com before asking the user for model IDs / pricing
 - Use `dump_messages.py -a <slug>` to inspect an agent's trajectory — don't write ad-hoc SQL scripts for message/agent inspection (see `CLAUDE.md` "Dumping messages")
 - Yarvis only sees `workspace/`, not `.claude/` or root `CLAUDE.md`. If Yarvis itself needs to know a rule/fact, put it in `workspace/` (`TOOLS.md`, a skill, or a memory file)
+- Prompt caching: request-level params like `output_config` are part of the cache key. Don't vary them mid-tool-loop — flipping `output_config.effort` on only the first call invalidated the 135k-token cached prefix on call 2 and cost ~$0.85/turn. Apply such params uniformly across the loop, or not at all.
