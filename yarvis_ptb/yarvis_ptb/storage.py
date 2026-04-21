@@ -629,9 +629,9 @@ def test_messages():
                 ),
             )
 
-            convert_db_messages_to_claude_messages(
+            convert_db_messages_to_claude_messages(  # just verify it runs
                 get_messages(curr, chat_id=test_chat_id)
-            )
+            )  # returns (messages, annotations); discard both
 
         finally:
             # Delete everything

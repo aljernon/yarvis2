@@ -79,7 +79,7 @@ async def _run_schedule_reflect_inner(
     if main_reply_msg is None:
         main_reply_rendered = "(main agent did not reply to the subagent)"
     else:
-        reply_params = convert_db_messages_to_claude_messages([main_reply_msg])
+        reply_params, _ = convert_db_messages_to_claude_messages([main_reply_msg])
         reply_lines: list[str] = []
         for mp in reply_params:
             reply_lines.extend(render_mesage_param_exact(mp))

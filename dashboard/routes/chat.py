@@ -79,7 +79,7 @@ async def _run_ephemeral_chat(
             scheduled_invocations = get_schedules(cur, chat_id)
 
             invocation = Invocation(invocation_type="reply")
-            system, message_params = build_claude_input(
+            system, message_params, _ = build_claude_input(
                 db_messages,
                 rendering_config,
                 invocation=invocation,

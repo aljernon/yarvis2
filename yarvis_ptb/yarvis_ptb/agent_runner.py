@@ -156,7 +156,7 @@ async def run_as_agent(
 
     # 2. Build prompt from agent's history
     db_msgs = get_messages(curr, chat_id, agent_id=agent_id)
-    system, messages = build_claude_input(
+    system, messages, _ = build_claude_input(
         db_msgs,
         agent_config.rendering,
         agent_slug=agent_slug,

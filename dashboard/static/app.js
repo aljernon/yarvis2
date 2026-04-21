@@ -190,7 +190,7 @@ function renderSubagentGroup(group) {
         if (msg.role === "user") {
           const content = msg.content;
           const isToolResult = Array.isArray(content) && content.length > 0 &&
-            content.every(b => b.type === "tool_result");
+            content.some(b => b.type === "tool_result");
           if (isToolResult) { endIdx++; continue; }
         }
         if (msg.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }
@@ -766,10 +766,11 @@ async function loadAgentView() {
         while (endIdx < data.history.length) {
           const msg = data.history[endIdx];
           if (msg.role === "user") {
-            // Check if it's a tool_result (part of the same exchange)
+            // Check if it contains a tool_result (part of the same exchange)
+            // Use some() not every() — system hints (text blocks) may accompany tool_results
             const content = msg.content;
             const isToolResult = Array.isArray(content) && content.length > 0 &&
-              content.every(b => b.type === "tool_result");
+              content.some(b => b.type === "tool_result");
             if (isToolResult) { endIdx++; continue; }
           }
           if (msg.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }
@@ -842,7 +843,10 @@ async function loadAgentView() {
         }
         const turnUsage = findUsageForRange(data.turn_usages, startIdx, endIdx);
         const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
-        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${roleLabelHtml}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
+        const povTurnId = "pov-" + uid();
+        const rawSlice = data.history.slice(startIdx, endIdx);
+        const rawJson = escapeHtml(JSON.stringify(rawSlice, null, 2));
+        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${roleLabelHtml}</span>${usageBadge}<button class="view-toggle" onclick="toggleTurnView('${povTurnId}')">rendered</button></div><div class="turn-body" id="${povTurnId}-rendered">${bodyHtml}</div><div class="turn-body turn-raw" id="${povTurnId}-raw" style="display:none"><pre>${rawJson}</pre></div></div>`;
       }
       i = endIdx;
     }
@@ -930,7 +934,7 @@ async function loadSubagentView(agentId) {
           if (msg.role === "user") {
             const content = msg.content;
             const isToolResult = Array.isArray(content) && content.length > 0 &&
-              content.every(b => b.type === "tool_result");
+              content.some(b => b.type === "tool_result");
             if (isToolResult) { endIdx++; continue; }
           }
           if (msg.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }
@@ -1101,7 +1105,7 @@ async function sendAgentChat() {
             const m = msgs[endIdx];
             if (m.role === "user") {
               const c = m.content;
-              const isToolResult = Array.isArray(c) && c.length > 0 && c.every(b => b.type === "tool_result");
+              const isToolResult = Array.isArray(c) && c.length > 0 && c.some(b => b.type === "tool_result");
               if (isToolResult) { endIdx++; continue; }
             }
             if (m.role === "assistant" && endIdx > startIdx + 1) { endIdx++; continue; }

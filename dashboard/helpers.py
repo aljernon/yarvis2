@@ -46,7 +46,7 @@ def turn_to_api_messages(row: dict) -> list[dict]:
         message_id=row["id"],
         marked_for_archive=row["marked_for_archive"],
     )
-    api_msgs = convert_db_messages_to_claude_messages([db_msg])
+    api_msgs, _ = convert_db_messages_to_claude_messages([db_msg])
     truncate_base64_images(api_msgs)
     return api_msgs
 

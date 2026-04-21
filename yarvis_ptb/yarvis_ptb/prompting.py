@@ -163,7 +163,7 @@ def convert_db_messages_to_claude_messages(
     tool_result_truncation_after_n_turns: int | None = None,
     *,
     skip_forget_above: bool = False,
-) -> list[MessageParam]:
+) -> tuple[list[MessageParam], list[ApiMsgAnnotation]]:
     all_role_messages: list[MessageParam] = []
     api_msg_annotations: list[ApiMsgAnnotation] = []
 
@@ -185,7 +185,7 @@ def convert_db_messages_to_claude_messages(
             truncation_after_n_turns=tool_result_truncation_after_n_turns,
         )
 
-    return all_role_messages
+    return all_role_messages, api_msg_annotations
 
 
 def _get_tool_result_content_size(content) -> int:
@@ -295,7 +295,7 @@ def build_claude_input(
     forced_now_date: datetime.datetime | None = None,
     agent_slug: str | None = None,
     skip_forget_above: bool = False,
-) -> tuple[str, list[MessageParam]]:
+) -> tuple[str, list[MessageParam], list[ApiMsgAnnotation]]:
     """Build system prompt and message history for a Claude API call.
 
     Context is always appended at the end of messages.
@@ -319,12 +319,12 @@ def build_claude_input(
     )
     messages = [m for m in messages if not m.is_hidden_auto_message] + [context_message]
 
-    history = convert_db_messages_to_claude_messages(
+    history, annotations = convert_db_messages_to_claude_messages(
         messages,
         tool_result_truncation_after_n_turns=rendering_config.tool_result_truncation_after_n_turns,
         skip_forget_above=skip_forget_above,
     )
-    return system, history
+    return system, history, annotations
 
 
 def render_mesage_param_exact(rec: MessageParam) -> list[str]:

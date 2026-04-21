@@ -217,7 +217,7 @@ async def handler_show_prompt(update: Update, context: CallbackContext):
         scheduled_invocations = get_schedules(curr, ROOT_USER_ID)
 
     agent_config = DEFAULT_AGENT_CONFIG
-    system_prompt, history = build_claude_input(
+    system_prompt, history, _ = build_claude_input(
         messages=messages,
         rendering_config=agent_config.rendering,
         scheduled_invocations=scheduled_invocations,
@@ -241,7 +241,7 @@ async def handler_last(update: Update, context: CallbackContext):
     if not messages:
         return
 
-    message_params = convert_db_messages_to_claude_messages(messages[-1:])
+    message_params, _ = convert_db_messages_to_claude_messages(messages[-1:])
     chunks = []
     for rec in message_params:
         chunks.extend(render_mesage_param_exact(rec))

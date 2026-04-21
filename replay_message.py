@@ -281,7 +281,7 @@ async def _run(
             scheduled_invocations = get_schedules(curr, chat_id)
 
             invocation = Invocation(invocation_type="reply")
-            system, message_params = build_claude_input(
+            system, message_params, _ = build_claude_input(
                 db_messages,
                 rendering_config,
                 invocation=invocation,

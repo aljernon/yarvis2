@@ -437,7 +437,7 @@ async def _process_multi_message_claude_invocation_inner(
     scheduled_invocations = get_schedules(curr, chat_id)
 
     logger.debug("Sending message to Claude")
-    system, message_params = build_claude_input(
+    system, message_params, _ = build_claude_input(
         db_messages,
         rendering_config,
         invocation=invocation,
@@ -686,9 +686,10 @@ def compute_token_counts(
     db_messages: list[DbMessage],
     message_params: list[MessageParam],
 ) -> dict[str, Any]:
+    claude_msgs, _ = convert_db_messages_to_claude_messages(db_messages)
     messages_str = "\n".join(
         line
-        for message_params in convert_db_messages_to_claude_messages(db_messages)
+        for message_params in claude_msgs
         for line in render_mesage_param_exact(message_params)
     )
     sizes = {

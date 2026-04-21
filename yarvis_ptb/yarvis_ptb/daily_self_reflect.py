@@ -194,7 +194,7 @@ async def run_force_reflect(
     curr, chat_id: int, bot, max_turns: int | None = None
 ) -> str:
     messages = get_messages(curr, chat_id, limit=max_turns)
-    claude_messages = convert_db_messages_to_claude_messages(messages)
+    claude_messages, _ = convert_db_messages_to_claude_messages(messages)
 
     # Render conversation to readable text
     rendered_lines = []
@@ -433,7 +433,7 @@ async def run_reflect_core(
     agent_config = DEFAULT_AGENT_CONFIG
     rendering_config = agent_config.rendering
 
-    system, message_params = build_claude_input(
+    system, message_params, _ = build_claude_input(
         history_snapshot,
         rendering_config,
         invocation=Invocation(invocation_type="automatic"),

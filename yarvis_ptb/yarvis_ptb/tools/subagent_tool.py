@@ -59,7 +59,7 @@ def _render_history_for_subagent(
     Large tool results (>=10KB) are truncated using the standard compactification
     logic, with get_tool_output references so the subagent can retrieve them.
     """
-    claude_messages = convert_db_messages_to_claude_messages(
+    claude_messages, _ = convert_db_messages_to_claude_messages(
         db_messages,
         tool_result_truncation_after_n_turns=0,
     )
@@ -129,7 +129,7 @@ class _SubagentBase(LocalTool):
 
         # 4. Build system prompt + conversation history
         db_msgs = get_messages(self._curr, self._chat_id, agent_id=agent_id)
-        system, messages = build_claude_input(
+        system, messages, _ = build_claude_input(
             db_msgs,
             agent_config.rendering,
             agent_slug=agent_slug,

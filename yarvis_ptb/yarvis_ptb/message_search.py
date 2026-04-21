@@ -155,10 +155,8 @@ def _render_for_search(message: DbMessage) -> str:
         convert_db_messages_to_claude_messages,
     )
 
-    return "\n".join(
-        render_mesage_param_for_semantic_search(x)
-        for x in convert_db_messages_to_claude_messages([message])
-    )
+    api_msgs, _ = convert_db_messages_to_claude_messages([message])
+    return "\n".join(render_mesage_param_for_semantic_search(x) for x in api_msgs)
 
 
 @dataclass

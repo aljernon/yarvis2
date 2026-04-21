@@ -268,7 +268,7 @@ async def main(
 
             # Build system prompt + history
             invocation = Invocation(invocation_type="reply")
-            system_prompt, message_params = build_claude_input(
+            system_prompt, message_params, _ = build_claude_input(
                 db_messages,
                 rendering_config,
                 invocation=invocation,

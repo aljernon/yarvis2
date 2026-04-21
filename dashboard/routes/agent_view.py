@@ -7,8 +7,6 @@ import psycopg2.extras
 from flask import Blueprint, jsonify, request
 
 from dashboard.helpers import (
-    extract_api_msg_db_ids,
-    extract_api_msg_db_times,
     extract_turn_usages,
     get_db,
     get_tool_specs_for_agent_config,
@@ -48,7 +46,7 @@ def _load_agent_context(*, skip_forget_above: bool = False):
             messages = get_messages(cur, chat_id, limit=HISTORY_LENGTH_LONG_TURNS)
             scheduled_invocations = get_schedules(cur)
 
-        system_prompt, history = build_claude_input(
+        system_prompt, history, annotations = build_claude_input(
             messages,
             DEFAULT_AGENT_CONFIG.rendering,
             scheduled_invocations=scheduled_invocations,
@@ -56,7 +54,7 @@ def _load_agent_context(*, skip_forget_above: bool = False):
             skip_forget_above=skip_forget_above,
         )
         truncate_base64_images(history)
-        return messages, system_prompt, history
+        return messages, system_prompt, history, annotations
     finally:
         conn.close()
 
@@ -111,7 +109,7 @@ def _load_subagent_groups(chat_id: int, min_time, max_time) -> list[dict]:
     groups = []
     for aid, info in agents.items():
         db_msgs = agent_messages[aid]
-        api_msgs = convert_db_messages_to_claude_messages(db_msgs)
+        api_msgs, _ = convert_db_messages_to_claude_messages(db_msgs)
         truncate_base64_images(api_msgs)
         first_time = db_msgs[0].created_at.isoformat()
         last_time = db_msgs[-1].created_at.isoformat()
@@ -133,12 +131,21 @@ def _load_subagent_groups(chat_id: int, min_time, max_time) -> list[dict]:
 def api_agent_view():
     """Return the full agent view: system prompt + message history as Claude sees it."""
     skip_forget = request.args.get("full") == "1"
-    messages, system_prompt, history = _load_agent_context(
+    messages, system_prompt, history, annotations = _load_agent_context(
         skip_forget_above=skip_forget
     )
 
     tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
     tool_names = [t["name"] for t in tool_specs]
+
+    # Derive db_ids and db_times from annotations (aligned with history)
+    db_ids = [a.db_msg_id for a in annotations]
+    # Build db_msg_id→timestamp map for time lookup
+    id_to_time: dict[int | None, str] = {}
+    for msg in messages:
+        if msg.message_id is not None:
+            id_to_time[msg.message_id] = msg.created_at.isoformat()
+    db_times = [id_to_time.get(a.db_msg_id) for a in annotations]
 
     # Fetch subagent messages in the same time range
     subagent_groups = []
@@ -153,8 +160,8 @@ def api_agent_view():
             "system_prompt": system_prompt,
             "history": history,
             "turn_usages": extract_turn_usages(messages),
-            "db_ids": extract_api_msg_db_ids(messages),
-            "db_times": extract_api_msg_db_times(messages),
+            "db_ids": db_ids,
+            "db_times": db_times,
             "num_messages": len(history),
             "num_db_turns": len(messages),
             "tools": tool_names,
@@ -166,7 +173,7 @@ def api_agent_view():
 @bp.route("/api/agent-view/tokens")
 def api_agent_view_tokens():
     """Count tokens for the full agent input, with per-message breakdown."""
-    messages, system_prompt, history = _load_agent_context()
+    messages, system_prompt, history, _annotations = _load_agent_context()
     tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
 
     def is_countable_boundary(i: int) -> bool:

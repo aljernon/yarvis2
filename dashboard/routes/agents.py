@@ -81,14 +81,14 @@ def api_subagent(agent_id: int):
         skip_forget = request.args.get("full") == "1"
         try:
             agent_config = AgentConfig.model_validate(agent_config_dict)
-            system_prompt, api_messages = build_claude_input(
+            system_prompt, api_messages, _ = build_claude_input(
                 db_messages,
                 agent_config.rendering,
                 skip_forget_above=skip_forget,
             )
         except Exception:
             system_prompt = None
-            api_messages = convert_db_messages_to_claude_messages(
+            api_messages, _ = convert_db_messages_to_claude_messages(
                 db_messages, skip_forget_above=skip_forget
             )
 

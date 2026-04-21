@@ -292,7 +292,7 @@ def render_messages(
     db_messages: list[DbMessage], max_line_length: int, highlight: str | None = None
 ):
     """Render messages to stdout. Optionally highlight search terms."""
-    claude_messages = convert_db_messages_to_claude_messages(db_messages)
+    claude_messages, _ = convert_db_messages_to_claude_messages(db_messages)
 
     for msg in claude_messages:
         lines = render_mesage_param_exact(msg)
