@@ -10,6 +10,7 @@ import psycopg2
 
 from yarvis_ptb.queries import (
     INIT_AGENTS_QUERY,
+    INIT_GEOCODE_CACHE_QUERY,
     INIT_LOCATIONS_QUERY,
     INIT_MEMORY_QUERY,
     INIT_MESSAGES_QUERY,
@@ -865,6 +866,7 @@ def create_all():
         curr.execute(INIT_SCHEDULES_QUERY)
         curr.execute(INIT_AGENTS_QUERY)
         curr.execute(INIT_LOCATIONS_QUERY)
+        curr.execute(INIT_GEOCODE_CACHE_QUERY)
         curr.execute(MIGRATE_MESSAGES_AGENT_ID)
         curr.execute(MIGRATE_SCHEDULES_REASON_TO_TITLE)
         curr.execute(MIGRATE_AGENTS_SLUG)

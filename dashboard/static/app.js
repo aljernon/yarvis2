@@ -505,6 +505,54 @@ async function loadSchedules() {
   container.innerHTML = html;
 }
 
+// ── Locations page ──────────────────────────────────────────────────────────
+
+async function loadLocations() {
+  const resp = await fetch("/api/locations");
+  const data = await resp.json();
+  const container = document.getElementById("locations-container");
+  if (!container) return;
+
+  let html = `<table class="inv-table">
+    <thead><tr>
+      <th>When</th><th>Location</th><th>Coords</th>
+      <th>Acc (m)</th><th>Batt</th><th>Type/tid</th><th></th>
+    </tr></thead><tbody>`;
+
+  for (const l of data.locations) {
+    const acc = l.acc != null ? l.acc.toFixed(0) : "—";
+    const batt = l.batt != null ? l.batt.toFixed(0) + "%" : "—";
+    html += `<tr id="loc-row-${l.id}">
+      <td>${formatTimestamp(l.tst)}<br><span class="relative-time">${relativeTime(l.tst)}</span></td>
+      <td style="white-space:pre-wrap">${escapeHtml(l.formatted || "")}</td>
+      <td>${l.lat.toFixed(6)},<br>${l.lon.toFixed(6)}</td>
+      <td>${acc}</td>
+      <td>${batt}</td>
+      <td>${escapeHtml(l.event_type || "")}/${escapeHtml(l.tid || "")}</td>
+      <td><button class="resolve-btn" onclick="resolveLocation(${l.id})">raw</button></td>
+    </tr>
+    <tr id="loc-detail-${l.id}" style="display:none"><td colspan="7"><pre id="loc-detail-body-${l.id}" style="white-space:pre-wrap;max-height:400px;overflow:auto;margin:0;padding:0.5em;background:#f6f8fa;font-size:11px"></pre></td></tr>`;
+  }
+
+  html += "</tbody></table>";
+  container.innerHTML = html;
+}
+
+async function resolveLocation(locId) {
+  const row = document.getElementById(`loc-detail-${locId}`);
+  const body = document.getElementById(`loc-detail-body-${locId}`);
+  if (!row || !body) return;
+  row.style.display = "";
+  body.textContent = "…";
+  try {
+    const resp = await fetch(`/api/locations/${locId}/resolve`, { method: "POST" });
+    const data = await resp.json();
+    body.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    body.textContent = `⚠ ${e.message}`;
+  }
+}
+
 // ── Collapsible toggle ──────────────────────────────────────────────────────
 
 function toggleTurnView(turnId) {
@@ -1170,6 +1218,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (document.getElementById("schedules-container")) {
     loadSchedules();
+  }
+
+  if (document.getElementById("locations-container")) {
+    loadLocations();
   }
 
   if (document.getElementById("agents-container")) {

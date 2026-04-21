@@ -76,6 +76,7 @@ Each message will be preceded by dynamic context info; it's in <context> tags co
 - <constants>system configuration values</constants>
 - <scheduled_invocations>list of pending scheduled tasks</scheduled_invocations>
 - <todos>your current todo list (if any). Use `todo_read`/`todo_write` tools to manage. Todos are per-agent (not shared between agents) and persist across invocations.</todos>
+- <location>the user's most recent phone location (OwnTracks ping), reverse-geocoded. Includes timestamp, entity name if known (e.g. hotel/business), street address, neighborhood/city, and raw coords with accuracy. Absent if no ping has arrived yet. May be hours or days old — always read the timestamp before relying on it.</location>
 
 ## Todo List
 Your todo list is NOT just a passive record. **You must proactively act on pending todos:**

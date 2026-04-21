@@ -19,6 +19,7 @@ from anthropic.types import (
 )
 from typing_extensions import Required
 
+from yarvis_ptb.geocoding import format_location_message
 from yarvis_ptb.on_disk_memory import render_skill_listing, resolve_memory_preload
 from yarvis_ptb.prompt_consts import SYSTEM_PROMPTS
 from yarvis_ptb.rendering_config import RenderingConfig
@@ -32,6 +33,7 @@ from yarvis_ptb.storage import (
     DbSchedule,
     Invocation,
     MemoryType,
+    connect,
 )
 from yarvis_ptb.timezones import get_timezone
 from yarvis_ptb.tools.todo_tools import read_todos
@@ -154,6 +156,22 @@ def build_context_info(
             priority = t.get("priority", "medium")
             todos_lines.append(f"- [{status}] (p:{priority}) {t.get('content', '')}")
         system_parts.append(f"<todos>\n" + "\n".join(todos_lines) + "\n</todos>")
+
+    # Latest known phone location (reverse-geocoded, cached). Best-effort —
+    # if the table isn't there or the geocoder fails, we skip the block.
+    try:
+        with connect() as loc_conn, loc_conn.cursor() as loc_cur:
+            loc_cur.execute(
+                "SELECT lat, lon, tst, acc FROM locations ORDER BY tst DESC LIMIT 1"
+            )
+            row = loc_cur.fetchone()
+            if row:
+                lat, lon, tst, acc = row
+                loc_str = format_location_message(loc_cur, lat, lon, tst, acc)
+                if loc_str:
+                    system_parts.append(f"<location>\n{loc_str}\n</location>")
+    except Exception:
+        logger.warning("Failed to build location context", exc_info=True)
 
     return "<context>\n%s\n</context>" % "\n".join(system_parts)
 

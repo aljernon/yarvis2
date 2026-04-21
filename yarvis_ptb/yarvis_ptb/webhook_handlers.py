@@ -11,6 +11,7 @@ import psycopg2.extras
 import pytz
 import tornado.web
 
+from yarvis_ptb.geocoding import get_cached_or_fetch
 from yarvis_ptb.message_search import save_message_and_update_index
 from yarvis_ptb.settings import ROOT_USER_ID, SYSTEM_USER_ID
 from yarvis_ptb.storage import DbMessage
@@ -205,6 +206,13 @@ class OwntracksHandler(tornado.web.RequestHandler):
                         ),
                     ),
                 )
+
+            # Pre-warm the geocode cache so the next context build doesn't
+            # have to wait on Google. Best-effort.
+            try:
+                get_cached_or_fetch(curr, lat, lon)
+            except Exception as e:
+                logger.warning("OwnTracks geocode prewarm failed: %s", e)
 
         logger.info(
             f"OwnTracks stored {event_type} lat={lat:.5f} lon={lon:.5f} tid={tid}"

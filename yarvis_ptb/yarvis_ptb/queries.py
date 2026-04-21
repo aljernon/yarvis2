@@ -114,3 +114,13 @@ CREATE TABLE IF NOT EXISTS locations (
 
 CREATE INDEX IF NOT EXISTS idx_locations_tst ON locations (tst DESC);
 """
+
+INIT_GEOCODE_CACHE_QUERY = """
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    lat_key DOUBLE PRECISION NOT NULL,
+    lon_key DOUBLE PRECISION NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    raw JSONB NOT NULL,
+    PRIMARY KEY (lat_key, lon_key)
+);
+"""
