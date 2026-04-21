@@ -21,6 +21,11 @@ SIGNAL_CONFIG = os.environ.get("SIGNAL_CLI_CONFIG", "/home/.local/share/signal-c
 RECEIVE_TIMEOUT = int(os.environ.get("SIGNAL_RECEIVE_TIMEOUT", "10"))
 SIGNAL_ACCOUNT = os.environ.get("SIGNAL_ACCOUNT", "")
 LOCK_PATH = os.environ.get("SIGNAL_LOCK_PATH", "/tmp/signal_capture.lock")
+VIEW_ONCE_ECHO_SENDERS = [
+    s.strip()
+    for s in os.environ.get("VIEW_ONCE_ECHO_SENDERS", "").split(",")
+    if s.strip()
+]
 
 
 def init_db():
@@ -66,6 +71,71 @@ def release_lock():
         os.unlink(LOCK_PATH)
     except FileNotFoundError:
         pass
+
+
+def _echo_view_once(envelope_json: str) -> None:
+    """If this is a view-once DM from an echo-enabled sender, send attachments back."""
+    if not VIEW_ONCE_ECHO_SENDERS:
+        return
+
+    raw = json.loads(envelope_json)
+    envelope = raw.get("envelope", {})
+
+    # Check both incoming (dataMessage) and self-sent sync (syncMessage.sentMessage)
+    dm = envelope.get("dataMessage")
+    sync_sent = (envelope.get("syncMessage") or {}).get("sentMessage")
+
+    if dm and dm.get("viewOnce"):
+        msg_obj = dm
+        # Identify sender by UUID (preferred) or phone number
+        sender_id = envelope.get("sourceUuid") or envelope.get("sourceNumber") or ""
+    elif sync_sent and sync_sent.get("viewOnce"):
+        msg_obj = sync_sent
+        sender_id = SIGNAL_ACCOUNT  # self-sent
+    else:
+        return
+
+    # Skip if chat has self-destruct timer
+    if msg_obj.get("expiresInSeconds", 0) > 0:
+        return
+
+    # Only echo for configured senders (UUIDs or phone numbers)
+    if sender_id not in VIEW_ONCE_ECHO_SENDERS:
+        return
+
+    # Skip group messages
+    if msg_obj.get("groupInfo") or msg_obj.get("groupV2"):
+        return
+
+    attachments = msg_obj.get("attachments", [])
+    if not attachments:
+        return
+
+    for att in attachments:
+        att_id = att.get("id")
+        if not att_id:
+            continue
+        att_path = os.path.join(SIGNAL_CONFIG, "attachments", att_id)
+        if not os.path.isfile(att_path):
+            print(f"View-once attachment not found: {att_path}")
+            continue
+
+        print(f"Echoing view-once {att.get('contentType', '?')} from {sender_id}")
+        sys.stdout.flush()
+
+        cmd = [SIGNAL_CLI, "--config", SIGNAL_CONFIG]
+        if SIGNAL_ACCOUNT:
+            cmd += ["-a", SIGNAL_ACCOUNT]
+        cmd += ["send", "-m", "", "--attachment", att_path, sender_id]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            print(f"View-once echo sent to {sender_id}")
+        else:
+            print(
+                f"View-once echo failed (rc={result.returncode}): {result.stderr[:300]}"
+            )
+        sys.stdout.flush()
 
 
 def capture():
@@ -115,6 +185,15 @@ def capture():
         except json.JSONDecodeError:
             print(f"Skipping non-JSON line: {line[:100]}")
             continue
+
+        # Echo view-once messages before storing
+        if VIEW_ONCE_ECHO_SENDERS:
+            try:
+                _echo_view_once(line)
+            except Exception as e:
+                print(f"View-once echo error: {e}")
+                sys.stdout.flush()
+
         conn.execute(
             "INSERT INTO raw_envelopes (captured_at, envelope_json) VALUES (?, ?)",
             (now, line),

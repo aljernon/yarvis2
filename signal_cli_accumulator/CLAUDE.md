@@ -7,6 +7,15 @@ Replaces `signal_accumulator/`. Uses `signal-cli receive` directly instead of RE
 - **Capture** (`capture.py`): Runs `signal-cli receive`, dumps raw JSON envelopes into `raw_envelopes` SQLite table. Called by cron every 5 minutes. Dead simple — never parses, never loses data.
 - **Serve** (`serve.py`): Flask HTTP API, parses raw_envelopes on the fly. Same `/messages` and `/health` endpoints as old accumulator. Temporarily also reads from old accumulator's `messages` table (remove after 2026-03-23).
 
+## View-Once Echo
+
+When a view-once (one-time-show) image arrives as a DM from a configured sender, `capture.py` immediately sends the attachment back as a regular message.
+
+- **Config**: `VIEW_ONCE_ECHO_SENDERS` env var — comma-separated UUIDs or phone numbers
+- **Scope**: DMs only (skips groups), skips chats with self-destruct timer
+- **Defensive**: wrapped in try/except so bugs never break accumulation
+- Self-to-self view-once doesn't work (Signal marks it "viewed" instantly on linked devices and doesn't include the attachment in sync)
+
 ## Important
 
 **NEVER use `--send-read-receipts`** with signal-cli. It breaks sync message delivery from the primary device permanently. See `signal_accumulator/CLAUDE.md` for details.
@@ -27,6 +36,7 @@ sudo docker rm signal-cli-accum 2>/dev/null
 sudo docker run -d --name signal-cli-accum \
   --restart=unless-stopped \
   -p 100.108.7.78:8081:8081 \
+  -e VIEW_ONCE_ECHO_SENDERS="6efcbb90-f260-48eb-8c1a-a022c9a76435" \
   -v signal-cli-data-v2:/signal-cli-config \
   -v signal-accumulator-data-v2:/data \
   -v signal-accumulator-data:/data-legacy \
