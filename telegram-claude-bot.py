@@ -211,7 +211,7 @@ def main():
                 r".*",
                 [
                     ("/api/timezone", TimezoneHandler, {"conn": conn}),
-                    ("/api/owntracks", OwntracksHandler, {"conn": conn}),
+                    (r"/api/owntracks/?", OwntracksHandler, {"conn": conn}),
                 ],
             )
             logger.info("Registered custom webhook handlers")
