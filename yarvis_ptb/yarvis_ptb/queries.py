@@ -94,3 +94,23 @@ MIGRATE_AGENTS_SLUG = """
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS slug TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_slug ON agents (slug) WHERE slug IS NOT NULL;
 """
+
+INIT_LOCATIONS_QUERY = """
+CREATE TABLE IF NOT EXISTS locations (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    tst TIMESTAMPTZ NOT NULL,
+    lat DOUBLE PRECISION NOT NULL,
+    lon DOUBLE PRECISION NOT NULL,
+    acc REAL,
+    alt REAL,
+    vel REAL,
+    batt REAL,
+    tid TEXT,
+    topic TEXT,
+    event_type TEXT NOT NULL,
+    meta JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_locations_tst ON locations (tst DESC);
+"""

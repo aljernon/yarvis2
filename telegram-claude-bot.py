@@ -36,7 +36,7 @@ from yarvis_ptb.yarvis_ptb.settings import (
 )
 from yarvis_ptb.yarvis_ptb.storage import connect
 from yarvis_ptb.yarvis_ptb.util import ensure
-from yarvis_ptb.yarvis_ptb.webhook_handlers import TimezoneHandler
+from yarvis_ptb.yarvis_ptb.webhook_handlers import OwntracksHandler, TimezoneHandler
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,10 @@ def main():
             tornado_app = httpd._http_server.request_callback  # type: ignore[union-attr]
             tornado_app.add_handlers(
                 r".*",
-                [("/api/timezone", TimezoneHandler, {"conn": conn})],
+                [
+                    ("/api/timezone", TimezoneHandler, {"conn": conn}),
+                    ("/api/owntracks", OwntracksHandler, {"conn": conn}),
+                ],
             )
             logger.info("Registered custom webhook handlers")
 
