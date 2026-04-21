@@ -6,6 +6,11 @@
 set -e
 set -u
 
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 to_env|from_env"
+    exit 1
+fi
+
 # List of filenames
 files=(
     "service_account.json"
@@ -14,8 +19,9 @@ files=(
     "gmail_token.json"
     "session_name2.session"
     "whoop_config.json"
-    "nest_config.json"
-    "nest_token.json"
+    # nest_config.json and nest_token.json: already on Heroku,
+    # local files lost — re-run nest_auth.py to recreate
+
 )
 
 # Loop through each file
