@@ -299,6 +299,7 @@ def _format_notification(
     for source in MONITORED_SOURCES:
         msgs = by_source.get(source, [])
         if not msgs:
+            lines.append(f"\n{source.upper()}: None")
             continue
         lines.append(f"\n{source.upper()}:")
         for msg in msgs:
