@@ -244,25 +244,33 @@ async def _fetch_telegram(
 def _fetch_gmail(since: datetime.datetime, until: datetime.datetime) -> list[dict]:
     gmail = Gmail(client_secret_file=str(PROJECT_ROOT / "credentials.json"))
     epoch = int(since.timestamp())
-    query = f"after:{epoch} in:inbox"
-    messages = gmail.get_messages(query=query)
 
     results = []
-    for msg in messages:
-        ts = _parse_ts(str(msg.date)) if msg.date else None
-        if ts is None or not (since < ts <= until):
-            continue
-        results.append(
-            {
-                "source": "gmail",
-                "ts": ts,
-                "from": str(msg.sender),
-                "direction": "incoming",
-                "partner": str(msg.sender),
-                "is_group": False,
-                "text": f"Subject: {msg.subject}",
-            }
-        )
+    for query, direction in [
+        (f"after:{epoch} in:inbox", "incoming"),
+        (f"after:{epoch} in:sent", "outgoing"),
+    ]:
+        for msg in gmail.get_messages(query=query):
+            ts = _parse_ts(str(msg.date)) if msg.date else None
+            if ts is None or not (since < ts <= until):
+                continue
+            if direction == "outgoing":
+                partner = str(msg.recipient) if msg.recipient else "?"
+                sender = "Anton"
+            else:
+                partner = str(msg.sender)
+                sender = partner
+            results.append(
+                {
+                    "source": "gmail",
+                    "ts": ts,
+                    "from": sender,
+                    "direction": direction,
+                    "partner": partner,
+                    "is_group": False,
+                    "text": f"Subject: {msg.subject}",
+                }
+            )
     return results
 
 
@@ -299,22 +307,40 @@ def _format_notification(
     for source in MONITORED_SOURCES:
         msgs = by_source.get(source, [])
         if not msgs:
-            lines.append(f"\n{source.upper()}: None")
             continue
         lines.append(f"\n{source.upper()}:")
+
+        if source == "gmail":
+            for msg in msgs:
+                ts_str = msg["ts"].astimezone(tz).strftime("%H:%M:%S")
+                text = (
+                    msg["text"][:500] + "..." if len(msg["text"]) > 500 else msg["text"]
+                )
+                if msg["direction"] == "outgoing":
+                    lines.append(f"  [{ts_str}] Anton → {msg['partner']}: {text}")
+                else:
+                    lines.append(f"  [{ts_str}] {msg['from']} → Anton: {text}")
+            continue
+
+        # Messenger sources: group by chat
+        by_chat: dict[str, list[dict]] = {}
         for msg in msgs:
-            ts_str = msg["ts"].astimezone(tz).strftime("%H:%M:%S")
-            text = msg["text"][:500] + "..." if len(msg["text"]) > 500 else msg["text"]
-            partner = msg["partner"]
-            is_group = msg.get("is_group", False)
-            if msg["direction"] == "outgoing":
-                who = f"Anton → {partner}"
-            elif is_group:
-                # Group chat: sender → group name (not Anton).
-                who = f"{msg['from']} → {partner}"
-            else:
-                who = f"{msg['from']} → Anton"
-            lines.append(f"  [{ts_str}] {who}: {text}")
+            by_chat.setdefault(msg["partner"], []).append(msg)
+        for partner, chat_msgs in by_chat.items():
+            is_group = any(m.get("is_group") for m in chat_msgs)
+            chat_type = "group" if is_group else "1on1"
+            lines.append(f"  {partner} ({chat_type}):")
+            for msg in chat_msgs:
+                ts_str = msg["ts"].astimezone(tz).strftime("%H:%M:%S")
+                text = (
+                    msg["text"][:500] + "..." if len(msg["text"]) > 500 else msg["text"]
+                )
+                if is_group:
+                    lines.append(f"    [{ts_str}] {msg['from']}: {text}")
+                elif msg["direction"] == "outgoing":
+                    lines.append(f"    [{ts_str}] out: {text}")
+                else:
+                    lines.append(f"    [{ts_str}] in: {text}")
 
     return "\n".join(lines)
 
