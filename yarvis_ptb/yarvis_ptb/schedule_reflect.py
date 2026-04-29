@@ -13,7 +13,7 @@ import datetime
 import logging
 import traceback
 
-from yarvis_ptb.agent_config import AgentMeta
+from yarvis_ptb.agent_config import AgentConfig, AgentMeta
 from yarvis_ptb.agent_slugs import schedule_reflect_slug
 from yarvis_ptb.complex_chat import COMPLEX_CHAT_LOCK, DEFAULT_AGENT_CONFIG
 from yarvis_ptb.daily_self_reflect import get_reflect_lock, run_reflect_core
@@ -26,6 +26,7 @@ from yarvis_ptb.settings import BOT_USER_ID, DEFAULT_TIMEZONE, SYSTEM_USER_ID
 from yarvis_ptb.storage import (
     DbMessage,
     connect,
+    get_agent_meta,
     get_messages,
     get_schedules,
 )
@@ -66,6 +67,14 @@ async def _run_schedule_reflect_inner(
         subagent_messages = get_messages(curr, chat_id=chat_id, agent_id=subagent_id)
         main_messages = get_messages(curr, chat_id=chat_id, limit=20)
         scheduled_invocations = get_schedules(curr, chat_id)
+        raw_meta = get_agent_meta(curr, subagent_id)
+
+    # Use the subagent's agent_config so the Anthropic prompt cache
+    # (system prompt + effort + tool defs) is shared with the preceding run.
+    subagent_agent_config: AgentConfig | None = None
+    if raw_meta:
+        sub_meta = AgentMeta.model_validate(raw_meta)
+        subagent_agent_config = sub_meta.agent_config
 
     # The main-agent reply = the first BotTurn saved after the subagent finished.
     main_reply_msg = next(
@@ -109,6 +118,7 @@ async def _run_schedule_reflect_inner(
         notification_meta={"is_reflection": True, "reflected_agent_id": subagent_id},
         application=application,
         bot=bot,
+        agent_config=subagent_agent_config,
     )
 
 

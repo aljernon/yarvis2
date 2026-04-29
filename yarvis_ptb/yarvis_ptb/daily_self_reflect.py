@@ -421,6 +421,7 @@ async def run_reflect_core(
     notification_meta: dict[str, object],
     application,
     bot,
+    agent_config: AgentConfig | None = None,
 ) -> None:
     """Shared reflect pipeline for auto-reflect and schedule-reflect.
 
@@ -429,8 +430,12 @@ async def run_reflect_core(
     history_snapshot. This helper runs the Claude loop without the lock
     (so user messages can be answered concurrently) and re-acquires the
     lock only for the DB writes at the end.
+
+    For schedule-reflect, pass the subagent's agent_config so the
+    Anthropic prompt cache is shared with the preceding subagent run.
     """
-    agent_config = DEFAULT_AGENT_CONFIG
+    if agent_config is None:
+        agent_config = DEFAULT_AGENT_CONFIG
     rendering_config = agent_config.rendering
 
     system, message_params, _ = build_claude_input(
