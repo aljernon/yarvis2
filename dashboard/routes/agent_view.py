@@ -7,6 +7,7 @@ import psycopg2.extras
 from flask import Blueprint, jsonify, request
 
 from dashboard.helpers import (
+    compute_full_turns_diff,
     extract_turn_usages,
     get_db,
     get_tool_specs_for_agent_config,
@@ -135,6 +136,15 @@ def api_agent_view():
         skip_forget_above=skip_forget
     )
 
+    full_turns: dict[str, list] = {}
+    if not skip_forget:
+        _, _, full_history, full_annotations = _load_agent_context(
+            skip_forget_above=True
+        )
+        full_turns = compute_full_turns_diff(
+            history, annotations, full_history, full_annotations
+        )
+
     tool_specs = get_tool_specs_for_agent_config(DEFAULT_AGENT_CONFIG)
     tool_names = [t["name"] for t in tool_specs]
 
@@ -166,6 +176,7 @@ def api_agent_view():
             "num_db_turns": len(messages),
             "tools": tool_names,
             "subagent_groups": subagent_groups,
+            "full_turns": full_turns,
         }
     )
 

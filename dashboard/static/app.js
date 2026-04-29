@@ -558,16 +558,68 @@ async function resolveLocation(locId) {
 function toggleTurnView(turnId) {
   const rendered = document.getElementById(turnId + "-rendered");
   const raw = document.getElementById(turnId + "-raw");
-  const btn = rendered.parentElement.querySelector(".view-toggle");
+  const full = document.getElementById(turnId + "-full");
+  const card = rendered.parentElement;
+  const btn = card.querySelector(".view-toggle:not(.full-toggle)");
+  const fullBtn = card.querySelector(".full-toggle");
   if (raw.style.display === "none") {
     raw.style.display = "";
     rendered.style.display = "none";
+    if (full) full.style.display = "none";
     btn.textContent = "json";
+    if (fullBtn) fullBtn.textContent = "show full";
   } else {
     raw.style.display = "none";
     rendered.style.display = "";
+    if (full) full.style.display = "none";
     btn.textContent = "rendered";
+    if (fullBtn) fullBtn.textContent = "show full";
   }
+}
+
+function toggleTurnFull(turnId) {
+  const filtered = document.getElementById(turnId + "-rendered");
+  const full = document.getElementById(turnId + "-full");
+  const raw = document.getElementById(turnId + "-raw");
+  if (!filtered || !full) return;
+  const card = filtered.parentElement;
+  const btn = card.querySelector(".full-toggle");
+  const viewBtn = card.querySelector(".view-toggle:not(.full-toggle)");
+  const showingFull = full.style.display !== "none";
+  if (showingFull) {
+    full.style.display = "none";
+    filtered.style.display = "";
+    if (raw) raw.style.display = "none";
+    if (btn) btn.textContent = "show full";
+    if (viewBtn) viewBtn.textContent = "rendered";
+  } else {
+    full.style.display = "";
+    filtered.style.display = "none";
+    if (raw) raw.style.display = "none";
+    if (btn) btn.textContent = "show filtered";
+    if (viewBtn) viewBtn.textContent = "rendered";
+  }
+}
+
+function renderApiMessagesBody(messages, dbId) {
+  let bodyHtml = "";
+  for (const msg of messages) {
+    let msgBody = "";
+    if (typeof msg.content === "string") {
+      const id = "txt-" + uid();
+      const bytes = new Blob([msg.content]).size;
+      msgBody = `<div class="text-block"><div class="text-block-header" onclick="toggleCollapsible('${id}')"><span class="toggle-arrow open" id="arrow-${id}">&#9654;</span> <strong>Text</strong> <span class="block-size">(${bytes} bytes)</span></div><div class="collapsible-content open" id="${id}">${escapeHtml(msg.content)}</div></div>`;
+    } else if (Array.isArray(msg.content)) {
+      msgBody = renderContentBlocks(msg.content, dbId);
+      if (!msgBody && msg.content.length === 0) {
+        msgBody = `<div class="text-block"><em>(empty content)</em></div>`;
+      }
+    }
+    if (msgBody) {
+      bodyHtml += `<div class="api-message">${msgBody}</div>`;
+    }
+  }
+  return bodyHtml;
 }
 
 function toggleCollapsible(id) {
@@ -894,7 +946,27 @@ async function loadAgentView() {
         const povTurnId = "pov-" + uid();
         const rawSlice = data.history.slice(startIdx, endIdx);
         const rawJson = escapeHtml(JSON.stringify(rawSlice, null, 2));
-        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${roleLabelHtml}</span>${usageBadge}<button class="view-toggle" onclick="toggleTurnView('${povTurnId}')">rendered</button></div><div class="turn-body" id="${povTurnId}-rendered">${bodyHtml}</div><div class="turn-body turn-raw" id="${povTurnId}-raw" style="display:none"><pre>${rawJson}</pre></div></div>`;
+
+        // Detect a forget_above-affected BotTurn in this card and prebuild the full body.
+        let fullBodyHtml = "";
+        let fullToggleHtml = "";
+        if (data.full_turns && data.db_ids) {
+          const seen = new Set();
+          for (let j = startIdx; j < endIdx && j < data.db_ids.length; j++) {
+            const id = data.db_ids[j];
+            if (id == null || seen.has(id)) continue;
+            seen.add(id);
+            const fullMsgs = data.full_turns[String(id)];
+            if (fullMsgs) {
+              fullBodyHtml = renderApiMessagesBody(fullMsgs, id);
+              fullToggleHtml = `<button class="view-toggle full-toggle" onclick="toggleTurnFull('${povTurnId}')">show full</button>`;
+              break;
+            }
+          }
+        }
+
+        const fullBodyDiv = fullBodyHtml ? `<div class="turn-body" id="${povTurnId}-full" style="display:none">${fullBodyHtml}</div>` : "";
+        html += `<div class="turn-card" data-agent-idx="${startIdx}" data-agent-end="${endIdx}"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${roleLabelHtml}</span>${usageBadge}${fullToggleHtml}<button class="view-toggle" onclick="toggleTurnView('${povTurnId}')">rendered</button></div><div class="turn-body" id="${povTurnId}-rendered">${bodyHtml}</div>${fullBodyDiv}<div class="turn-body turn-raw" id="${povTurnId}-raw" style="display:none"><pre>${rawJson}</pre></div></div>`;
       }
       i = endIdx;
     }
@@ -1029,7 +1101,30 @@ async function loadSubagentView(agentId) {
         const roleLabel = isSystemMsg ? "system" : firstRole;
         const turnUsage = findUsageForRange(data.turn_usages, startIdx, endIdx);
         const usageBadge = turnUsage ? renderUsageBadge({usage: turnUsage}) : "";
-        html += `<div class="turn-card"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}</div><div class="turn-body">${bodyHtml}</div></div>`;
+
+        let fullBodyHtml = "";
+        let fullToggleHtml = "";
+        let fullBodyDiv = "";
+        let renderedId = "";
+        if (data.full_turns && data.db_ids) {
+          const seen = new Set();
+          for (let j = startIdx; j < endIdx && j < data.db_ids.length; j++) {
+            const id = data.db_ids[j];
+            if (id == null || seen.has(id)) continue;
+            seen.add(id);
+            const fullMsgs = data.full_turns[String(id)];
+            if (fullMsgs) {
+              const povTurnId = "sub-" + uid();
+              fullBodyHtml = renderApiMessagesBody(fullMsgs, id);
+              fullToggleHtml = `<button class="view-toggle full-toggle" onclick="toggleTurnFull('${povTurnId}')">show full</button>`;
+              fullBodyDiv = `<div class="turn-body" id="${povTurnId}-full" style="display:none">${fullBodyHtml}</div>`;
+              renderedId = ` id="${povTurnId}-rendered"`;
+              break;
+            }
+          }
+        }
+
+        html += `<div class="turn-card"><div class="turn-header"><span class="msg-id">${rangeLabel}</span>${dbIdLabel ? `<span class="msg-id">${dbIdLabel}</span>` : ""}<span class="sender ${sc}">${escapeHtml(roleLabel)}</span>${usageBadge}${fullToggleHtml}</div><div class="turn-body"${renderedId}>${bodyHtml}</div>${fullBodyDiv}</div>`;
       }
       i = endIdx;
     }

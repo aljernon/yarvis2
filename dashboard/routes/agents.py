@@ -4,6 +4,7 @@ import psycopg2.extras
 from flask import Blueprint, jsonify, request
 
 from dashboard.helpers import (
+    compute_full_turns_diff,
     extract_api_msg_db_ids,
     extract_turn_usages,
     get_db,
@@ -79,20 +80,31 @@ def api_subagent(agent_id: int):
 
         agent_config_dict = agent_meta.get("agent_config", {})
         skip_forget = request.args.get("full") == "1"
-        try:
-            agent_config = AgentConfig.model_validate(agent_config_dict)
-            system_prompt, api_messages, _ = build_claude_input(
-                db_messages,
-                agent_config.rendering,
-                skip_forget_above=skip_forget,
-            )
-        except Exception:
-            system_prompt = None
-            api_messages, _ = convert_db_messages_to_claude_messages(
-                db_messages, skip_forget_above=skip_forget
-            )
 
-        truncate_base64_images(api_messages)
+        def _render(skip: bool):
+            try:
+                agent_config = AgentConfig.model_validate(agent_config_dict)
+                sp, msgs, anns = build_claude_input(
+                    db_messages,
+                    agent_config.rendering,
+                    skip_forget_above=skip,
+                )
+            except Exception:
+                sp = None
+                msgs, anns = convert_db_messages_to_claude_messages(
+                    db_messages, skip_forget_above=skip
+                )
+            truncate_base64_images(msgs)
+            return sp, msgs, anns
+
+        system_prompt, api_messages, annotations = _render(skip_forget)
+
+        full_turns: dict[str, list] = {}
+        if not skip_forget:
+            _, full_history, full_annotations = _render(True)
+            full_turns = compute_full_turns_diff(
+                api_messages, annotations, full_history, full_annotations
+            )
 
         return jsonify(
             {
@@ -110,6 +122,7 @@ def api_subagent(agent_id: int):
                 "db_ids": extract_api_msg_db_ids(db_messages),
                 "num_messages": len(api_messages),
                 "num_db_turns": len(db_messages),
+                "full_turns": full_turns,
             }
         )
     finally:

@@ -110,6 +110,30 @@ def extract_api_msg_db_times(db_messages: list[DbMessage]) -> list[str | None]:
     return db_times
 
 
+def compute_full_turns_diff(
+    filtered_history: list[dict],
+    filtered_annotations: list,
+    full_history: list[dict],
+    full_annotations: list,
+) -> dict[str, list[dict]]:
+    """Group both renderings by db_msg_id; return {db_id_str: full_msgs} for ids that differ."""
+    from collections import defaultdict
+
+    f: dict[int, list] = defaultdict(list)
+    for ann, msg in zip(filtered_annotations, filtered_history):
+        if ann.db_msg_id is not None:
+            f[ann.db_msg_id].append(msg)
+    g: dict[int, list] = defaultdict(list)
+    for ann, msg in zip(full_annotations, full_history):
+        if ann.db_msg_id is not None:
+            g[ann.db_msg_id].append(msg)
+    out: dict[str, list[dict]] = {}
+    for db_id, full_msgs in g.items():
+        if f.get(db_id, []) != full_msgs:
+            out[str(db_id)] = full_msgs
+    return out
+
+
 def extract_turn_usages(db_messages: list[DbMessage]) -> list[dict]:
     """Extract usage data from bot DB messages with their API message index ranges."""
     usages = []
