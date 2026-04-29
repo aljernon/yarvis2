@@ -15,7 +15,7 @@ import tenacity
 from simplegmail import Gmail
 
 from yarvis_ptb.settings import DEFAULT_TIMEZONE, PROJECT_ROOT, SYSTEM_USER_ID
-from yarvis_ptb.storage import DbMessage, VariablesForChat, save_message
+from yarvis_ptb.storage import DbMessage, VariablesForChat, get_messages, save_message
 from yarvis_ptb.telegram_client import get_recent_messages, telegram_session
 from yarvis_ptb.timezones import get_complex_chat_timezone_str
 from yarvis_ptb.turns import system_turn_meta
@@ -373,8 +373,43 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
         return None
 
     all_messages.sort(key=lambda m: m["ts"])
-    notification = _format_notification(all_messages, since, now, errors=errors)
 
+    # Compact consecutive unseen notifications: if the last message(s) in the
+    # main chat are message-event notifications with no user/bot messages after
+    # them, hide them and merge their messages into this notification.
+    recent = get_messages(curr, chat_id, limit=10)
+    compacted_messages: list[dict] = []
+    earliest_since = since
+    for msg in reversed(recent):  # most recent first
+        meta = msg.meta
+        if (
+            msg.user_id == SYSTEM_USER_ID
+            and meta
+            and meta.get("turn_type") == "notification"
+            and meta.get("message_event_data")
+        ):
+            curr.execute(
+                "UPDATE messages SET is_visible = false WHERE id = %s",
+                (msg.message_id,),
+            )
+            for m in meta["message_event_data"]:
+                m["ts"] = datetime.datetime.fromisoformat(m["ts"])
+                compacted_messages.append(m)
+            earliest_since = min(earliest_since, msg.created_at)
+            logger.info(
+                "Compacted old message-event notification db:%s", msg.message_id
+            )
+        else:
+            break
+
+    all_messages = compacted_messages + all_messages
+    all_messages.sort(key=lambda m: m["ts"])
+    notification = _format_notification(
+        all_messages, earliest_since, now, errors=errors
+    )
+
+    # Serialize messages for compaction by future runs
+    serializable = [{**m, "ts": m["ts"].isoformat()} for m in all_messages]
     save_message(
         curr,
         DbMessage(
@@ -382,7 +417,10 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
             created_at=now,
             user_id=SYSTEM_USER_ID,
             message=notification,
-            meta=system_turn_meta("notification"),
+            meta={
+                **system_turn_meta("notification"),
+                "message_event_data": serializable,
+            },
         ),
     )
 
