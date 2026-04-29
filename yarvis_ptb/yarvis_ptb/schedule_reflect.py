@@ -34,11 +34,20 @@ from yarvis_ptb.storage import (
 logger = logging.getLogger(__name__)
 
 SCHEDULE_REFLECT_PROMPT = """\
-You are running as a sub-agent for automatic self-reflection after a scheduled invocation you just finished. Please read the auto-reflect skill using read_skill tool (name: "auto-reflect") and follow its instructions.
+You are reviewing a scheduled subagent run that just finished. Your job is narrow: evaluate execution quality and improve the schedule for next time. Do NOT update workspace files — the subagent already handled that.
 
-Additionally, consider:
-- Could you have executed the task better, or sent your result back in a more useful form?
-- Is the schedule context you received clear enough for next time? If not, call `update_schedule` to tighten it.
+Review the subagent's work above and the main agent's reply below.
+
+What to look for:
+- Did the subagent misunderstand the task or produce low-quality output?
+- Did it waste tokens on unnecessary work or miss something obvious?
+- Did the main agent have to correct or redo anything?
+
+How to fix — you have two levers:
+- **Schedule context**: call `update_schedule` to tighten the context — add specifics, remove ambiguity, capture lessons from what went well or poorly.
+- **Skill**: if the schedule references a skill, read it and update it if the instructions are unclear or missing something.
+
+If you made changes, use `send_message` to tell the main agent what you updated. If nothing to improve, don't call send_message — the caller will just see that reflection ran.
 
 <main_agent_reply>
 {main_reply}
