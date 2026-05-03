@@ -83,7 +83,7 @@ NUDGES: list[Nudge] = [
             "this topic. I MUST run read_skill brave-search followed by python_repl "
             "to search the web. This is not optional — finding scattered mentions "
             "in step 3 does not make up for lacking a dedicated knowledge page.\n\n"
-            "Also available: run_subagent with archive/ agents for past conversations.\n"
+            "Also available: message_subagent with archive/ agents for past conversations.\n"
             "If nothing named, do nothing. NEVER send_message. "
             "Do not continue or finish any interrupted messages — only do research."
         ),
@@ -181,6 +181,7 @@ async def run_nudges(
                 job_queue=application.job_queue,  # type: ignore[arg-type]
                 max_tokens=agent_config.sampling.max_tokens,
                 thinking=agent_config.sampling.thinking,
+                effort=agent_config.sampling.effort,
             )
 
         if not result_params:
