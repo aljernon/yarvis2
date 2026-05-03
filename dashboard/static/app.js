@@ -345,18 +345,20 @@ async function loadMessages(page) {
 
   for (const msg of data.messages) {
     const card = document.createElement("div");
-    card.className = msg.is_hidden_auto_message ? "turn-card ghost-msg" : (msg.agent_id ? "turn-card subagent" : "turn-card");
+    const isGhost = msg.is_hidden_auto_message || msg.is_visible === false;
+    card.className = isGhost ? "turn-card ghost-msg" : (msg.agent_id ? "turn-card subagent" : "turn-card");
 
     let badges = "";
     if (msg.agent_id) badges += `<a href="/agent?agent_id=${msg.agent_id}" class="badge agent" title="View agent config & history">${msg.agent_slug || 'Agent #' + msg.agent_id}</a>`;
     if (msg.has_image) badges += `<span class="badge image">Image</span>`;
     if (msg.marked_for_archive) badges += `<span class="badge archived">Archived</span>`;
+    if (msg.is_visible === false) badges += `<span class="badge archived" title="is_visible=false: not shown to Yarvis">Hidden</span>`;
     badges += renderUsageBadge(msg.meta);
 
     const sc = senderClass(msg);
     const turnTypeEmoji = {"notification": "\uD83D\uDD35", "schedule": "\uD83D\uDCC5", "reflection": "\uD83D\uDD04"};
     let senderLabel = msg.sender;
-    if (msg.is_hidden_auto_message) {
+    if (isGhost) {
       senderLabel = "\uD83D\uDC7B " + senderLabel;
     }
     if (msg.user_id === -2 && msg.meta?.turn_type) {

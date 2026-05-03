@@ -396,6 +396,7 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
     all_messages = [m for m in all_messages if _should_keep(m)]
 
     if not all_messages and not errors:
+        chat_vars.put(LAST_CHECK_VAR, now)
         return None
 
     all_messages.sort(key=lambda m: m["ts"])
