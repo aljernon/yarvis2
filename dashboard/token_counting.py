@@ -6,8 +6,10 @@ import os
 
 import anthropic
 
+from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
+
 anthropic_client = anthropic.Anthropic()
-TOKEN_COUNT_MODEL = "claude-sonnet-4-20250514"
+TOKEN_COUNT_MODEL = DEFAULT_AGENT_CONFIG.sampling.resolve_model_name()
 
 TOKEN_CACHE_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".token_cache"
@@ -37,7 +39,12 @@ def count_tokens_cached(
 ) -> int:
     """Count tokens with on-disk caching keyed by content hash."""
     cache_data = json.dumps(
-        {"system": system, "messages": messages, "tools": tools},
+        {
+            "model": TOKEN_COUNT_MODEL,
+            "system": system,
+            "messages": messages,
+            "tools": tools,
+        },
         sort_keys=True,
         default=str,
     )
