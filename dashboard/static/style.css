@@ -11,38 +11,52 @@ body {
 }
 
 nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 12px 24px;
-  background: #fff;
-  border-bottom: 2px solid #d4b5c4;
+  gap: 28px;
+  padding: 10px 24px;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: rgba(255, 255, 255, 0.80);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid rgba(58, 48, 64, 0.08);
 }
 
 .nav-brand {
-  font-weight: bold;
-  font-size: 1.1em;
-  color: #e05068;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #d04058;
 }
 
-.nav-links { display: flex; gap: 16px; }
+.nav-links { display: flex; gap: 4px; }
 
 .nav-links a {
-  color: #7a6880;
+  color: #5a4860;
   text-decoration: none;
-  padding: 4px 12px;
-  border-radius: 4px;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.nav-links a.active, .nav-links a:hover {
-  color: #3a3040;
-  background: #ece4ea;
+.nav-links a:hover { color: #2d2336; background: #fbf6f8; }
+
+.nav-links a.active {
+  color: #2d2336;
+  background: #fbf6f8;
+  box-shadow: inset 0 -2px 0 #d04058;
 }
 
 .nav-stats {
   margin-left: auto;
-  font-size: 0.85em;
-  color: #7a6880;
+  font-size: 11px;
+  color: #8c7d92;
+  font-variant-numeric: tabular-nums;
 }
 
 main { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
