@@ -805,7 +805,8 @@ async def _run_schedule_in_subagent(
             created_at=datetime.datetime.now(DEFAULT_TIMEZONE),
             user_id=SYSTEM_USER_ID,
             message=(
-                f"A schedule invoked a subagent `{slug}`. "
+                f"Schedule (scheduled_id={sched.schedule_id}) "
+                f"invoked a subagent `{slug}`. "
                 f"It's currently running in background and may send "
                 f"a message back with the results. "
                 f"Below are details of invocation that were sent to "
