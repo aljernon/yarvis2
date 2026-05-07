@@ -36,7 +36,11 @@ def get_tool_specs_for_agent_config(agent_config):
 
 
 def turn_to_api_messages(row: dict) -> list[dict]:
-    """Convert a single DB row to Claude API MessageParam list using the real codepath."""
+    """Convert a single DB row to Claude API MessageParam list using the real codepath.
+
+    Returns raw messages exactly as the bot would send them (no mutations) — display
+    callers should apply ``truncate_base64_images`` themselves before serializing.
+    """
     db_msg = DbMessage(
         created_at=row["created_at"].astimezone(DEFAULT_TIMEZONE),
         chat_id=row["chat_id"],
@@ -47,7 +51,6 @@ def turn_to_api_messages(row: dict) -> list[dict]:
         marked_for_archive=row["marked_for_archive"],
     )
     api_msgs, _ = convert_db_messages_to_claude_messages([db_msg])
-    truncate_base64_images(api_msgs)
     return api_msgs
 
 

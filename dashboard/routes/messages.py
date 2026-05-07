@@ -10,12 +10,12 @@ from dashboard.helpers import (
     PER_PAGE,
     get_db,
     get_sender_name,
+    truncate_base64_images,
     turn_to_api_messages,
 )
 from dashboard.token_counting import (
     count_tokens_cached,
     has_tool_use,
-    strip_thinking_blocks,
 )
 from yarvis_ptb.settings import ROOT_USER_ID
 
@@ -103,6 +103,7 @@ def api_messages():
         for row in rows:
             meta = row["meta"] or {}
             api_msgs = turn_to_api_messages(row)
+            truncate_base64_images(api_msgs)
             messages.append(
                 {
                     "id": row["id"],
@@ -207,8 +208,7 @@ def api_turn_tokens(turn_id: int):
             if not is_countable_boundary(i):
                 continue
 
-            conversation = strip_thinking_blocks(api_msgs[: i + 1])
-            total = count_tokens_cached(messages=conversation)
+            total = count_tokens_cached(messages=api_msgs[: i + 1])
             segment_tokens = total - prev_total
             is_pair = i > 0 and has_tool_use(api_msgs[i - 1])
             results[i] = {

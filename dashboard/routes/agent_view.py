@@ -17,7 +17,6 @@ from dashboard.token_counting import (
     count_tokens_cached,
     has_tool_use,
     msg_to_text,
-    strip_thinking_blocks,
 )
 from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
 from yarvis_ptb.prompting import (
@@ -39,7 +38,11 @@ def _get_default_chat_id():
 
 
 def _load_agent_context(*, skip_forget_above: bool = False):
-    """Shared logic: load messages, build system prompt + history."""
+    """Shared logic: load messages, build system prompt + history.
+
+    Returns the raw history exactly as the bot would send it to the API. Display
+    callers must apply ``truncate_base64_images`` themselves before serializing.
+    """
     chat_id = _get_default_chat_id()
     conn = get_db()
     try:
@@ -54,7 +57,6 @@ def _load_agent_context(*, skip_forget_above: bool = False):
             agent_slug=ROOT_AGENT_SLUG,
             skip_forget_above=skip_forget_above,
         )
-        truncate_base64_images(history)
         return messages, system_prompt, history, annotations
     finally:
         conn.close()
@@ -111,7 +113,6 @@ def _load_subagent_groups(chat_id: int, min_time, max_time) -> list[dict]:
     for aid, info in agents.items():
         db_msgs = agent_messages[aid]
         api_msgs, _ = convert_db_messages_to_claude_messages(db_msgs)
-        truncate_base64_images(api_msgs)
         first_time = db_msgs[0].created_at.isoformat()
         last_time = db_msgs[-1].created_at.isoformat()
         groups.append(
@@ -164,6 +165,15 @@ def api_agent_view():
         min_time = messages[0].created_at
         max_time = messages[-1].created_at
         subagent_groups = _load_subagent_groups(chat_id, min_time, max_time)
+
+    # Display-only mutation: shrink base64 images so we don't ship hundreds of KB
+    # to the browser. Done after the diff against full_history (which used the
+    # un-truncated data) so structural comparison stays correct.
+    truncate_base64_images(history)
+    for grp in subagent_groups:
+        truncate_base64_images(grp["history"])
+    for full_msgs in full_turns.values():
+        truncate_base64_images(full_msgs)
 
     return jsonify(
         {
@@ -233,9 +243,8 @@ def api_agent_view_tokens():
         if not is_countable_boundary(i):
             continue
 
-        conversation = strip_thinking_blocks(history[: i + 1])
         total = count_tokens_cached(
-            system=system_prompt, messages=conversation, tools=tool_specs
+            system=system_prompt, messages=history[: i + 1], tools=tool_specs
         )
         segment_tokens = total - prev_total
         is_pair = i > 0 and has_tool_use(history[i - 1])

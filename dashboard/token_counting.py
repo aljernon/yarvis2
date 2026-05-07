@@ -62,32 +62,6 @@ def count_tokens_cached(
     return resp.input_tokens
 
 
-def strip_thinking_blocks(messages: list[dict]) -> list[dict]:
-    """Remove thinking/redacted_thinking blocks and empty text blocks from messages."""
-    cleaned = []
-    for msg in messages:
-        content = msg.get("content")
-        if isinstance(content, list):
-            filtered = [
-                b
-                for b in content
-                if not (
-                    isinstance(b, dict)
-                    and (
-                        b.get("type") in ("thinking", "redacted_thinking")
-                        or (b.get("type") == "text" and not b.get("text", "").strip())
-                    )
-                )
-            ]
-            if filtered:
-                cleaned.append({**msg, "content": filtered})
-        elif isinstance(content, str) and not content.strip():
-            continue
-        else:
-            cleaned.append(msg)
-    return cleaned
-
-
 def has_tool_use(msg: dict) -> bool:
     content = msg.get("content", [])
     if isinstance(content, str):
