@@ -27,6 +27,17 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Build /agent?... href. Prefer slug when available so URLs are human-readable
+// and survive id renumbering. Slugs may contain '/' (e.g. archive/YYYY-MM-DD);
+// we keep slashes raw for prettier URLs and only encode the segment payloads.
+function agentHref(slug, agentId) {
+  if (slug) {
+    const encoded = String(slug).split("/").map(encodeURIComponent).join("/");
+    return `/agent?slug=${encoded}`;
+  }
+  return `/agent?agent_id=${agentId}`;
+}
+
 function formatTimestamp(isoStr) {
   if (!isoStr) return "";
   const d = new Date(isoStr);
@@ -226,7 +237,7 @@ function renderSubagentGroup(group) {
   );
   const groupCostStr = groupCost > 0 ? ` <span class="block-size">$${groupCost.toFixed(4)}</span>` : "";
 
-  const slugLink = `<a href="/agent?agent_id=${group.agent_id}" class="badge agent" onclick="event.stopPropagation()">${slug}</a>`;
+  const slugLink = `<a href="${agentHref(group.agent_slug, group.agent_id)}" class="badge agent" onclick="event.stopPropagation()">${slug}</a>`;
   return `<div class="subagent-group"><div class="subagent-group-header" onclick="toggleCollapsible('${collapseId}')"><span class="toggle-arrow open" id="arrow-${collapseId}">&#9654;</span> ${slugLink} <span class="subagent-time">${timeRange}</span> <span class="block-size">(${group.num_db_turns} DB turns, ${group.num_messages} API msgs)</span>${groupCostStr}</div><div class="collapsible-content open" id="${collapseId}">${bodyHtml}</div></div>`;
 }
 
@@ -349,7 +360,7 @@ async function loadMessages(page) {
     card.className = isGhost ? "turn-card ghost-msg" : (msg.agent_id ? "turn-card subagent" : "turn-card");
 
     let badges = "";
-    if (msg.agent_id) badges += `<a href="/agent?agent_id=${msg.agent_id}" class="badge agent" title="View agent config & history">${msg.agent_slug || 'Agent #' + msg.agent_id}</a>`;
+    if (msg.agent_id) badges += `<a href="${agentHref(msg.agent_slug, msg.agent_id)}" class="badge agent" title="View agent config & history">${msg.agent_slug || 'Agent #' + msg.agent_id}</a>`;
     if (msg.has_image) badges += `<span class="badge image">Image</span>`;
     if (msg.marked_for_archive) badges += `<span class="badge archived">Archived</span>`;
     if (msg.is_visible === false) badges += `<span class="badge archived" title="is_visible=false: not shown to Yarvis">Hidden</span>`;
@@ -751,21 +762,21 @@ async function fetchAgentTokens() {
 }
 
 let agentViewFull = false;
-let currentSubagentId = null;
+let currentSubagentRef = null;  // numeric id (as string) or slug
 
 function toggleFullHistory() {
   agentViewFull = !agentViewFull;
   const btn = document.getElementById("agent-full-btn");
   if (btn) btn.textContent = agentViewFull ? "show with forget_above" : "show full history";
-  if (currentSubagentId != null) {
-    loadSubagentView(currentSubagentId);
+  if (currentSubagentRef != null) {
+    loadSubagentView(currentSubagentRef);
   } else {
     loadAgentView();
   }
 }
 
 async function loadAgentView() {
-  currentSubagentId = null;
+  currentSubagentRef = null;
   const container = document.getElementById("agent-container");
   const loading = document.getElementById("agent-loading");
   const btn = document.getElementById("load-agent-btn");
@@ -937,7 +948,7 @@ async function loadAgentView() {
           const groups = data.subagent_groups || [];
           function agentBadge(slug) {
             const g = groups.find(g => g.agent_slug === slug);
-            if (g) return `<a href="/agent?agent_id=${g.agent_id}" class="badge agent">${escapeHtml(slug)}</a>`;
+            if (g) return `<a href="${agentHref(g.agent_slug, g.agent_id)}" class="badge agent">${escapeHtml(slug)}</a>`;
             return `<span class="badge agent">${escapeHtml(slug)}</span>`;
           }
           roleLabelHtml = agentBadge(senderSlug);
@@ -987,21 +998,24 @@ async function loadAgentView() {
 
 // ── Subagent view ────────────────────────────────────────────────────────────
 
-async function loadSubagentView(agentId) {
-  currentSubagentId = agentId;
+async function loadSubagentView(agentRef) {
+  // agentRef may be a numeric id or a slug (slug may include '/' for archives).
+  currentSubagentRef = agentRef;
   const container = document.getElementById("agent-container");
   const loading = document.getElementById("agent-loading");
   const subtitle = document.getElementById("agent-subtitle");
   const tokenBtn = document.getElementById("agent-token-btn");
   if (!container) return;
 
-  if (subtitle) subtitle.textContent = `Loading agent #${agentId}...`;
+  if (subtitle) subtitle.textContent = `Loading agent ${agentRef}...`;
   if (tokenBtn) tokenBtn.style.display = "none";
   if (loading) loading.style.display = "";
 
   try {
     const fullParam = agentViewFull ? "?full=1" : "";
-    const resp = await fetch(`/api/subagent/${agentId}${fullParam}`);
+    // Slugs may contain '/' — pass them as path segments (Flask <path:> handles them).
+    const refPath = String(agentRef).split("/").map(encodeURIComponent).join("/");
+    const resp = await fetch(`/api/subagent/${refPath}${fullParam}`);
     if (!resp.ok) {
       const err = await resp.json();
       if (loading) loading.textContent = `Error: ${err.error || resp.statusText}`;
@@ -1166,7 +1180,7 @@ async function loadAgents() {
         : "";
       const typeLabel = a.type || "—";
       const slugLink = a.slug
-        ? `<a href="/agent?agent_id=${a.id}" class="badge agent">${escapeHtml(a.slug)}</a>`
+        ? `<a href="${agentHref(a.slug, a.id)}" class="badge agent">${escapeHtml(a.slug)}</a>`
         : "—";
 
       html += `<tr>
@@ -1198,9 +1212,9 @@ async function sendAgentChat() {
   const message = input.value.trim();
   if (!message) return;
 
-  // Get agent_id from URL if present
+  // Pull agent ref from URL: prefer slug, fall back to agent_id.
   const params = new URLSearchParams(window.location.search);
-  const agentId = params.get("agent_id");
+  const agentRef = params.get("slug") || params.get("agent_id");
 
   btn.disabled = true;
   btn.textContent = "...";
@@ -1209,7 +1223,7 @@ async function sendAgentChat() {
 
   try {
     const body = { message };
-    if (agentId) body.agent_id = parseInt(agentId);
+    if (agentRef) body.agent_ref = agentRef;
     const model = document.getElementById("chat-model")?.value;
     if (model) body.model = model;
 
@@ -1327,9 +1341,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (document.getElementById("agent-container")) {
     const params = new URLSearchParams(window.location.search);
+    const slug = params.get("slug");
     const agentId = params.get("agent_id");
-    if (agentId) {
-      loadSubagentView(parseInt(agentId));
+    if (slug) {
+      loadSubagentView(slug);
+    } else if (agentId) {
+      loadSubagentView(agentId);
     } else {
       loadAgentView();
     }

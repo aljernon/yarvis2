@@ -35,6 +35,17 @@ def get_tool_specs_for_agent_config(agent_config):
     return [t.spec().to_claude_tool() for t in tools]
 
 
+def lookup_agent_by_ref(
+    dict_cur, ref: str, *, columns: str = "id, meta"
+) -> dict | None:
+    """Resolve an agent by numeric id or slug. Returns the row dict or None."""
+    if ref.isdigit():
+        dict_cur.execute(f"SELECT {columns} FROM agents WHERE id = %s", (int(ref),))
+    else:
+        dict_cur.execute(f"SELECT {columns} FROM agents WHERE slug = %s", (ref,))
+    return dict_cur.fetchone()
+
+
 def turn_to_api_messages(row: dict) -> list[dict]:
     """Convert a single DB row to Claude API MessageParam list using the real codepath.
 

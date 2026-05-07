@@ -8,6 +8,7 @@ from dashboard.helpers import (
     extract_api_msg_db_ids,
     extract_turn_usages,
     get_db,
+    lookup_agent_by_ref,
     truncate_base64_images,
 )
 from yarvis_ptb.agent_config import AgentConfig
@@ -59,20 +60,23 @@ def api_agents():
         conn.close()
 
 
-@bp.route("/api/subagent/<int:agent_id>")
-def api_subagent(agent_id: int):
-    """Return a subagent's config and message history."""
+@bp.route("/api/subagent/<path:agent_ref>")
+def api_subagent(agent_ref: str):
+    """Return a subagent's config and message history.
+
+    `agent_ref` is either a numeric agent id or a slug (slugs may contain '/',
+    e.g. ``archive/2026-05-05``).
+    """
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as dict_cur:
-            dict_cur.execute(
-                "SELECT id, chat_id, created_at, meta, slug FROM agents WHERE id = %s",
-                (agent_id,),
+            agent_row = lookup_agent_by_ref(
+                dict_cur, agent_ref, columns="id, chat_id, created_at, meta, slug"
             )
-            agent_row = dict_cur.fetchone()
             if not agent_row:
                 return jsonify({"error": "Agent not found"}), 404
 
+            agent_id = agent_row["id"]
             agent_meta = agent_row["meta"] or {}
 
         with conn.cursor() as cur:

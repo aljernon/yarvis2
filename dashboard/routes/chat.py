@@ -7,7 +7,7 @@ from contextlib import AsyncExitStack
 
 from flask import Blueprint, jsonify, request
 
-from dashboard.helpers import get_db
+from dashboard.helpers import get_db, lookup_agent_by_ref
 from yarvis_ptb import tool_sampler
 from yarvis_ptb.agent_config import AgentMeta
 from yarvis_ptb.complex_chat import DEFAULT_AGENT_CONFIG
@@ -29,28 +29,30 @@ bp = Blueprint("chat", __name__)
 
 
 async def _run_ephemeral_chat(
-    prompt: str, agent_id: int | None = None, model: str | None = None
+    prompt: str, agent_ref: str | None = None, model: str | None = None
 ) -> dict:
-    """Run a single Claude exchange ephemerally (no DB save), like cli_prompt.py."""
+    """Run a single Claude exchange ephemerally (no DB save), like cli_prompt.py.
+
+    `agent_ref` is a numeric id or slug; ``None`` means run as the main agent.
+    """
     chat_id = ROOT_USER_ID
     now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    agent_id: int | None = None
 
     conn = get_db()
     try:
         with conn.cursor() as cur:
             # Resolve agent config
-            if agent_id is not None:
+            if agent_ref is not None:
                 import psycopg2.extras
 
                 with conn.cursor(
                     cursor_factory=psycopg2.extras.RealDictCursor
                 ) as dict_cur:
-                    dict_cur.execute(
-                        "SELECT meta FROM agents WHERE id = %s", (agent_id,)
-                    )
-                    row = dict_cur.fetchone()
+                    row = lookup_agent_by_ref(dict_cur, agent_ref)
                 if not row:
-                    return {"error": f"Agent #{agent_id} not found"}
+                    return {"error": f"Agent {agent_ref!r} not found"}
+                agent_id = row["id"]
                 agent_meta = AgentMeta.model_validate(row["meta"] or {})
                 agent_config = agent_meta.agent_config
             else:
@@ -177,11 +179,15 @@ def api_agent_chat():
         return jsonify({"error": "message is required"}), 400
 
     prompt = data["message"].strip()
-    agent_id = data.get("agent_id")
+    # `agent_ref` is the id-or-slug we use going forward; `agent_id` accepted as
+    # legacy alias from older clients.
+    agent_ref = data.get("agent_ref")
+    if agent_ref is None and data.get("agent_id") is not None:
+        agent_ref = str(data["agent_id"])
     model = data.get("model")
 
     try:
-        result = asyncio.run(_run_ephemeral_chat(prompt, agent_id, model))
+        result = asyncio.run(_run_ephemeral_chat(prompt, agent_ref, model))
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
