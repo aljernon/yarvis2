@@ -47,7 +47,7 @@ from yarvis_ptb.tool_sampler import (
     get_tools_for_agent_config,
     process_query,
 )
-from yarvis_ptb.tools.collect_message_tool import NoOpSendMessageTool
+from yarvis_ptb.tools.collect_message_tool import CollectMessageTool
 
 logger = logging.getLogger(__name__)
 
@@ -447,11 +447,8 @@ async def run_reflect_core(
     )
 
     scope = InterruptionScope(chat_id=chat_id, message_id=None)
-    # Real send_message spec (no Telegram side effect) so the tools array matches
-    # the main chat's — using a different spec here forces full cache_creation
-    # on every reflect run.
     all_tools = [
-        NoOpSendMessageTool(t.spec()) if t.name == "send_message" else t
+        CollectMessageTool() if t.name == "send_message" else t
         for t in get_tools_for_agent_config(agent_config, curr, chat_id, bot)
     ]
     result = await process_query(
