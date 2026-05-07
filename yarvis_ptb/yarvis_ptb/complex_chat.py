@@ -602,10 +602,16 @@ async def _process_multi_message_claude_invocation_inner(
         bot_meta: dict = {"message_params": message_params}
         if claude_calls:
             pricing = tool_sampler.MODEL_PRICING.get(model_name)
+            if pricing is None:
+                logger.warning(
+                    f"No MODEL_PRICING entry for {model_name!r}; "
+                    f"saving usage with cost=0 for {len(claude_calls)} calls"
+                )
             subagent_total_cost = sum(
                 u.get("estimated_cost_usd", 0) or 0 for u in result.subagent_usages
             )
             bot_meta["usage"] = {
+                "model": model_name,
                 "calls": [c.to_usage_dict(pricing) for c in claude_calls],
                 "estimated_cost_usd": (cost or 0) + subagent_total_cost,
                 "cost_breakdown_usd": tool_sampler.cost_breakdown(

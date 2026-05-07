@@ -197,10 +197,19 @@ async def run_nudges(
             bot_meta: dict = {"message_params": result_params}
             if nudge_claude_calls:
                 pricing = tool_sampler.MODEL_PRICING.get(model_name)
+                if pricing is None:
+                    logger.warning(
+                        f"No MODEL_PRICING entry for {model_name!r}; "
+                        f"saving nudge usage with cost=0 for {len(nudge_claude_calls)} calls"
+                    )
                 nudge_cost = tool_sampler.estimate_cost(nudge_claude_calls, model_name)
                 bot_meta["usage"] = {
+                    "model": model_name,
                     "calls": [c.to_usage_dict(pricing) for c in nudge_claude_calls],
                     "estimated_cost_usd": nudge_cost,
+                    "cost_breakdown_usd": tool_sampler.cost_breakdown(
+                        nudge_claude_calls, model_name
+                    ),
                 }
             bot_msg = DbMessage(
                 chat_id=chat_id,
