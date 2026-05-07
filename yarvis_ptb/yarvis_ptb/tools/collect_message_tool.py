@@ -1,38 +1,20 @@
 """Non-Telegram send_message variants.
 
-CollectMessageTool — for subagents: own spec with "return info to caller" wording.
-NoOpSendMessageTool — for CLI/dashboard replay: keeps the real send_message spec
-but doesn't send to Telegram.
+Both share the canonical send_message spec (see message_tool.py) so the
+Claude-visible tool array is identical to the main chat's — that's what lets
+subagents reuse the main chat's prompt cache. The wrappers differ only in
+their _execute side effects.
 """
 
-from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
+from yarvis_ptb.tools.message_tool import build_send_message_spec
+from yarvis_ptb.tools.tool_spec import LocalTool, ToolResult, ToolSpec
 
 
 class CollectMessageTool(LocalTool):
     """send_message variant that collects messages without sending to Telegram."""
 
     def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="send_message",
-            description=(
-                "Return information to the caller. Use this to send your response. "
-                "You can call this multiple times to return multiple pieces of information."
-            ),
-            args=[
-                ArgSpec(
-                    name="message",
-                    type=str,
-                    description="The message text to return",
-                    is_required=True,
-                ),
-                ArgSpec(
-                    name="final",
-                    type=bool,
-                    description="Set final=true if this is your last action and you have nothing more to do.",
-                    is_required=False,
-                ),
-            ],
-        )
+        return build_send_message_spec()
 
     async def _execute(self, **kwargs) -> ToolResult:
         return ToolResult.success(

@@ -10,6 +10,44 @@ from yarvis_ptb.tools.tool_spec import ArgSpec, LocalTool, ToolResult, ToolSpec
 logger = logging.getLogger(__name__)
 
 
+# Shared spec across SendMessageTool / CollectMessageTool / NoOpSendMessageTool.
+# Keeping the Claude-visible spec identical lets subagents (auto_reflect, etc.)
+# share the main chat's prompt cache — different tool specs are different cache
+# keys, so any drift here forces full cache_creation on every subagent run.
+SEND_MESSAGE_DESCRIPTION = textwrap.dedent("""
+    Send a message to the caller. The main (ROOT) agent sends the message directly to the user; subagents send the message back to the caller agent.
+
+    IMPORTANT: This is the only way for messages to leave this agent's turn — the caller does NOT see your thinking or intermediate text by default.
+
+    You can call this multiple times in a single turn to send multiple messages.
+
+    Use the scheduling tool if you need to follow up later.
+""").strip()
+
+SEND_MESSAGE_ARGS = [
+    ArgSpec(
+        name="message",
+        type=str,
+        description="The message text to send to the caller",
+        is_required=True,
+    ),
+    ArgSpec(
+        name="final",
+        type=bool,
+        description="Set final=true if this is your last action and you have nothing more to do. This saves token cost so please use it.",
+        is_required=False,
+    ),
+]
+
+
+def build_send_message_spec() -> ToolSpec:
+    return ToolSpec(
+        name="send_message",
+        description=SEND_MESSAGE_DESCRIPTION,
+        args=list(SEND_MESSAGE_ARGS),
+    )
+
+
 class SendMessageTool(LocalTool):
     """Tool to send a message to the user."""
 
@@ -19,32 +57,7 @@ class SendMessageTool(LocalTool):
         self.curr = curr
 
     def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="send_message",
-            description=textwrap.dedent("""
-            Sends a message to the user through the Telegram chat.
-
-            IMPORTANT: This is the only way to send messages to the user. The user does NOT see messages within the Assistant's thinking by default.
-
-            You can send multiple messages in the same turn using this tool multiple times.
-
-            Use scheduling tool if you need to follow up.
-            """),
-            args=[
-                ArgSpec(
-                    name="message",
-                    type=str,
-                    description="The message text to send to the user",
-                    is_required=True,
-                ),
-                ArgSpec(
-                    name="final",
-                    type=bool,
-                    description="Set final=true if this is your last action and you have nothing more to do. This saves token cost so please use it..",
-                    is_required=False,
-                ),
-            ],
-        )
+        return build_send_message_spec()
 
     async def _execute(self, **kwargs) -> ToolResult:
         message = kwargs["message"]
