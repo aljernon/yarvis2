@@ -28,6 +28,7 @@ from yarvis_ptb.settings import (
     HISTORY_LENGTH_LONG_TOKENS,
     SYSTEM_USER_ID,
 )
+from yarvis_ptb.settings.main import ROOT_AGENT_SLUG
 from yarvis_ptb.storage import (
     DbMessage,
     DbSchedule,
@@ -103,6 +104,10 @@ def build_context_info(
     system_parts.append(
         f"<datetime>{now.isoformat()} ({day_name} {tz_name})</datetime>"
     )
+    if agent_slug is not None:
+        is_main = "true" if agent_slug == ROOT_AGENT_SLUG else "false"
+        system_parts.append(f"<agent_name>{agent_slug}</agent_name>")
+        system_parts.append(f"<is_main_agent>{is_main}</is_main_agent>")
     if invocation is not None:
         invocation_dict = dict(invocation_type=invocation.invocation_type)
         if invocation.db_invocation is not None:

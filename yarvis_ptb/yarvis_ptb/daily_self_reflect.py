@@ -444,6 +444,7 @@ async def run_reflect_core(
         invocation=Invocation(invocation_type="automatic"),
         scheduled_invocations=scheduled_invocations,
         forced_now_date=now,
+        agent_slug=slug,
     )
 
     scope = InterruptionScope(chat_id=chat_id, message_id=None)
