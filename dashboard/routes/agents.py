@@ -88,11 +88,12 @@ def api_subagent(agent_id: int):
                     db_messages,
                     agent_config.rendering,
                     skip_forget_above=skip,
+                    keep_thinking=True,
                 )
             except Exception:
                 sp = None
                 msgs, anns = convert_db_messages_to_claude_messages(
-                    db_messages, skip_forget_above=skip
+                    db_messages, skip_forget_above=skip, keep_thinking=True
                 )
             truncate_base64_images(msgs)
             return sp, msgs, anns

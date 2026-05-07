@@ -181,6 +181,7 @@ def convert_db_messages_to_claude_messages(
     tool_result_truncation_after_n_turns: int | None = None,
     *,
     skip_forget_above: bool = False,
+    keep_thinking: bool = False,
 ) -> tuple[list[MessageParam], list[ApiMsgAnnotation]]:
     all_role_messages: list[MessageParam] = []
     api_msg_annotations: list[ApiMsgAnnotation] = []
@@ -195,6 +196,9 @@ def convert_db_messages_to_claude_messages(
             )
         all_role_messages.extend(role_messages)
 
+    if not keep_thinking:
+        _strip_thinking_blocks(all_role_messages)
+
     if tool_result_truncation_after_n_turns is not None:
         apply_tool_call_compactification(
             all_role_messages,
@@ -204,6 +208,31 @@ def convert_db_messages_to_claude_messages(
         )
 
     return all_role_messages, api_msg_annotations
+
+
+def _strip_thinking_blocks(role_messages: list[MessageParam]) -> None:
+    """Drop thinking/redacted_thinking blocks from rendered assistant messages.
+
+    Saved bot turns are always "complete" — their thinking blocks served the
+    in-memory tool loop at the time and aren't required by the API once the turn
+    is over (Anthropic docs: "you can omit thinking blocks from prior assistant
+    role turns"). Stripping them at render time saves ~40% of context on
+    Yarvis's typical history.
+    """
+    for msg in role_messages:
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        msg["content"] = [
+            b
+            for b in content
+            if not (
+                isinstance(b, dict)
+                and b.get("type") in ("thinking", "redacted_thinking")
+            )
+        ]
 
 
 def _get_tool_result_content_size(content) -> int:
@@ -313,6 +342,7 @@ def build_claude_input(
     forced_now_date: datetime.datetime | None = None,
     agent_slug: str | None = None,
     skip_forget_above: bool = False,
+    keep_thinking: bool = False,
 ) -> tuple[str, list[MessageParam], list[ApiMsgAnnotation]]:
     """Build system prompt and message history for a Claude API call.
 
@@ -341,6 +371,7 @@ def build_claude_input(
         messages,
         tool_result_truncation_after_n_turns=rendering_config.tool_result_truncation_after_n_turns,
         skip_forget_above=skip_forget_above,
+        keep_thinking=keep_thinking,
     )
     return system, history, annotations
 
