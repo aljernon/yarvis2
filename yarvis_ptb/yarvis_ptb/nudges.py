@@ -59,11 +59,15 @@ NUDGES: list[Nudge] = [
     Nudge(
         name="forgot-send",
         prompt=(
-            "Self-check: I didn't call send_message this turn. "
-            "The caller (human or agent) can't see any messages unless send_message is used. "
-            "Was that intentional, or did I forget? "
-            "If I forgot, let's call send_message now. "
-            "Do not continue or finish any interrupted messages — only check if send_message was missed."
+            "Verification: the last assistant turn contained ZERO send_message "
+            "tool_use blocks — this is checked against the actual message_params, "
+            "not my recollection. Anything I wrote as plain `text` was NOT "
+            "delivered to the user. Do not reason about whether the user already "
+            "saw it; by construction they did not. "
+            "If I intended to reply, call send_message now. If I genuinely meant "
+            "to stay silent (e.g. notification I chose not to act on), do nothing. "
+            "Do not continue or finish any interrupted messages — only check if "
+            "send_message was missed."
         ),
         should_run=lambda tools: "send_message" not in tools,
         should_persist=lambda nudge_tools: "send_message" in nudge_tools,
