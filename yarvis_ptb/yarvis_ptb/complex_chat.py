@@ -78,7 +78,7 @@ DEFAULT_AGENT_CONFIG = AgentConfig(
         model="opus",
         tool_subset="all",
         output_mode="tool_message",
-        effort="xhigh",  # anti-sycophancy
+        effort="high",  # anti-sycophancy (Opus 4.6 max; was "xhigh" on 4.7)
     ),
 )
 
