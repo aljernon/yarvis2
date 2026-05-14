@@ -46,6 +46,7 @@ FILTER_CONFIG = {
         "blacklisted_contacts": [
             "ya42352",  # bot chat
             "clam",  # dev/test chats
+            "yolo_notify",  # test bot
         ],
     },
     "gmail": {
