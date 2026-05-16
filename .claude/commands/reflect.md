@@ -27,19 +27,14 @@ jq -r 'select(.type=="user" and .message.role=="user") | .message.content | if t
 
 If that count is >20, include `$CURRENT` in the analysis set too (but exclude its `/reflect` invocation itself).
 
-Read each session file. Sessions are very large JSONL with noisy metadata (base64 signatures, tool IDs, etc.). **Always preprocess with jq first** to extract just the useful content:
+Read each session file. Sessions are very large JSONL with noisy metadata (base64 signatures, tool IDs, etc.). **Always preprocess with jq first** to extract just the useful content, then **filter out frame noise** (system reminders, command sentinels, request-interrupted markers, task-notification blocks):
 
 ```bash
-# Extract user messages, assistant text, and tool calls from a session JSONL
-jq -r '
-  select(.type == "user" and .message.role == "user") |
-    .message.content |
-    if type == "string" then "USER: " + .
-    elif type == "array" then
-      [.[] | select(.type == "text") | .text] | join("\n") | "USER: " + .
-    else empty end
-' "$SESSION_FILE"
+# Extract user messages, drop frame noise. Run per session.
+jq -r 'select(.type=="user" and .message.role=="user") | .message.content | if type=="string" then . elif type=="array" then [.[]|select(.type=="text")|.text]|join("\n") else empty end' "$SESSION_FILE" \
+  | grep -vE '^(\[Request|<command-|<local-command|<system-reminder|<task-notification|<task-id|<tool-use-id|<output-file|<status|<summary|</task-notification|$)'
 
+# Extract assistant text + tool calls
 jq -r '
   select(.type == "assistant") |
     .message.content[]? |
@@ -49,7 +44,17 @@ jq -r '
 ' "$SESSION_FILE"
 ```
 
-Combine both outputs and read the result. For very long sessions, pipe through `head -500` and `tail -500`.
+**Before reading, check per-file size** so you can decide whether to read inline or delegate:
+
+```bash
+for f in $(ls -t ~/.claude/projects/-Users-anton-projects-yarvis2/*.jsonl | head -6); do
+  chars=$(jq -r 'select(.type=="user" and .message.role=="user") | .message.content | if type=="string" then . elif type=="array" then [.[]|select(.type=="text")|.text]|join("\n") else empty end' "$f" 2>/dev/null \
+    | grep -vcE '^(\[Request|<command-|<local-command|<system-reminder|<task-notification|<task-id|<tool-use-id|<output-file|<status|<summary|</task-notification|$)' )
+  echo "$(basename $f): $chars filtered lines"
+done
+```
+
+If any file exceeds ~20KB of filtered user content (≈ a long session like a379e690 in this project's history), **delegate that file's analysis to an Explore subagent** rather than reading it inline — otherwise you flood your context with low-signal text and produce a thin reflection table. Read smaller sessions directly. For inline reads of the current session, use `head -500` and `tail -500` only as a last resort; the negative-grep filter is usually enough.
 
 ## Step 2: Analyze sessions for improvement signals
 
