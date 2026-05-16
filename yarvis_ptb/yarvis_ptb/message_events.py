@@ -86,6 +86,12 @@ def _socks5_proxy() -> str | None:
     return os.environ.get("TAILSCALE_SOCKS5_PROXY")
 
 
+def _describe_error(exc: Exception) -> str:
+    msg = str(exc).strip()
+    name = type(exc).__name__
+    return f"{name}: {msg}" if msg else name
+
+
 def _parse_ts(s: str) -> datetime.datetime | None:
     if not s:
         return None
@@ -288,16 +294,14 @@ def _format_notification(
 ) -> str:
     tz_name = get_complex_chat_timezone_str()
     tz = pytz.timezone(tz_name)
-    fmt = "%H:%M:%S %Z"
+    fmt = "%H:%M %Z"
     since_str = since.astimezone(tz).strftime(fmt)
     until_str = until.astimezone(tz).strftime(fmt)
 
-    lines = [
-        f"New messages in monitored sources {MONITORED_SOURCES} ({since_str} – {until_str}):"
-    ]
+    lines = [f"New messages {since_str} – {until_str}:"]
 
     if errors:
-        lines.append("\nFETCH ERRORS (data may be incomplete):")
+        lines.append("\nFetch errors:")
         for err in errors:
             lines.append(f"  - {err}")
 
@@ -329,19 +333,14 @@ def _format_notification(
             by_chat.setdefault(msg["partner"], []).append(msg)
         for partner, chat_msgs in by_chat.items():
             is_group = any(m.get("is_group") for m in chat_msgs)
-            chat_type = "group" if is_group else "1on1"
-            lines.append(f"  {partner} ({chat_type}):")
+            header = f"Group chat {partner}" if is_group else f"DMs with {partner}"
+            lines.append(f"  {header}:")
             for msg in chat_msgs:
                 ts_str = msg["ts"].astimezone(tz).strftime("%H:%M:%S")
                 text = (
                     msg["text"][:500] + "..." if len(msg["text"]) > 500 else msg["text"]
                 )
-                if is_group:
-                    lines.append(f"    [{ts_str}] {msg['from']}: {text}")
-                elif msg["direction"] == "outgoing":
-                    lines.append(f"    [{ts_str}] out: {text}")
-                else:
-                    lines.append(f"    [{ts_str}] in: {text}")
+                lines.append(f"    [{ts_str}] {msg['from']}: {text}")
 
     return "\n".join(lines)
 
@@ -384,15 +383,15 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
         try:
             all_messages.extend(await retry_policy(fetch_fn)())
         except Exception as e:
-            logger.warning(f"{label} fetch failed: {e}")
-            errors.append(f"{label}: {e}")
+            logger.warning(f"{label} fetch failed: {e!r}")
+            errors.append(f"{label}: {_describe_error(e)}")
 
     # Gmail uses sync simplegmail library
     try:
         all_messages.extend(retry_policy(_fetch_gmail)(since, now))
     except Exception as e:
-        logger.warning(f"Gmail fetch failed: {e}")
-        errors.append(f"Gmail: {e}")
+        logger.warning(f"Gmail fetch failed: {e!r}")
+        errors.append(f"Gmail: {_describe_error(e)}")
 
     all_messages = [m for m in all_messages if _should_keep(m)]
 
