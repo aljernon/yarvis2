@@ -92,6 +92,27 @@ def _describe_error(exc: Exception) -> str:
     return f"{name}: {msg}" if msg else name
 
 
+def _merge_incomplete_windows(windows: list[dict]) -> list[dict]:
+    """Collapse consecutive windows with identical error sets into a single
+    span. Without this, a sustained Signal outage would produce one entry per
+    5-min check instead of one combined "13:00 – 13:30 may be incomplete".
+    """
+    merged: list[dict] = []
+    for w in windows:
+        if (
+            merged
+            and sorted(merged[-1]["errors"]) == sorted(w["errors"])
+            and merged[-1]["end"] == w["start"]
+        ):
+            merged[-1] = {
+                **merged[-1],
+                "end": w["end"],
+            }
+        else:
+            merged.append(dict(w))
+    return merged
+
+
 def _parse_ts(s: str) -> datetime.datetime | None:
     if not s:
         return None
@@ -290,7 +311,7 @@ def _format_notification(
     messages: list[dict],
     since: datetime.datetime,
     until: datetime.datetime,
-    errors: list[str] | None = None,
+    incomplete_windows: list[dict] | None = None,
 ) -> str:
     tz_name = get_complex_chat_timezone_str()
     tz = pytz.timezone(tz_name)
@@ -300,10 +321,22 @@ def _format_notification(
 
     lines = [f"New messages {since_str} – {until_str}:"]
 
-    if errors:
-        lines.append("\nFetch errors:")
-        for err in errors:
-            lines.append(f"  - {err}")
+    if incomplete_windows:
+        # Each entry: {"start": iso, "end": iso, "errors": [str]}. These windows
+        # had fetch failures and are permanently un-refetchable (the cursor
+        # advanced past them); the annotation tells Yarvis which slices may be
+        # missing data so it doesn't conflate them with the surrounding
+        # successfully-fetched messages.
+        for w in incomplete_windows:
+            w_start = datetime.datetime.fromisoformat(w["start"])
+            w_end = datetime.datetime.fromisoformat(w["end"])
+            w_since_str = w_start.astimezone(tz).strftime(fmt)
+            w_until_str = w_end.astimezone(tz).strftime(fmt)
+            lines.append(
+                f"\nFetch errors ({w_since_str} – {w_until_str} may be incomplete):"
+            )
+            for err in w["errors"]:
+                lines.append(f"  - {err}")
 
     by_source: dict[str, list[dict]] = {}
     for msg in messages:
@@ -401,11 +434,13 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
 
     all_messages.sort(key=lambda m: m["ts"])
 
-    # Compact consecutive unseen notifications: if the last message(s) in the
-    # main chat are message-event notifications with no user/bot messages after
-    # them, hide them and merge their messages into this notification.
+    # Compact consecutive unseen message-event notifications: if the last
+    # message(s) in the main chat are message-event notifications with no
+    # user/bot messages after them, hide them and merge their messages
+    # (and inherit their incomplete_windows) into this notification.
     recent = get_messages(curr, chat_id, limit=10)
     compacted_messages: list[dict] = []
+    inherited_incomplete: list[dict] = []
     earliest_since = since
     for msg in reversed(recent):  # most recent first
         meta = msg.meta
@@ -413,7 +448,7 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
             msg.user_id == SYSTEM_USER_ID
             and meta
             and meta.get("turn_type") == "notification"
-            and meta.get("message_event_data")
+            and meta.get("message_event_data") is not None
         ):
             curr.execute(
                 "UPDATE messages SET is_visible = false WHERE id = %s",
@@ -422,6 +457,11 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
             for m in meta["message_event_data"]:
                 m["ts"] = datetime.datetime.fromisoformat(m["ts"])
                 compacted_messages.append(m)
+            # Inherit prior incomplete-window annotations so the agent keeps
+            # seeing "13:05–13:10 may be incomplete" until the compaction
+            # chain breaks (user/bot replies).
+            prior = meta.get("incomplete_windows") or []
+            inherited_incomplete = prior + inherited_incomplete
             earliest_since = min(earliest_since, msg.created_at)
             logger.info(
                 "Compacted old message-event notification db:%s", msg.message_id
@@ -431,11 +471,26 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
 
     all_messages = compacted_messages + all_messages
     all_messages.sort(key=lambda m: m["ts"])
+
+    # Build incomplete-windows list. Append the current check's failed window
+    # (if any) as the last entry, then merge adjacent windows with identical
+    # error sets.
+    incomplete_windows = list(inherited_incomplete)
+    if errors:
+        incomplete_windows.append(
+            {
+                "start": since.isoformat(),
+                "end": now.isoformat(),
+                "errors": list(errors),
+            }
+        )
+    incomplete_windows = _merge_incomplete_windows(incomplete_windows)
+
     notification = _format_notification(
-        all_messages, earliest_since, now, errors=errors
+        all_messages, earliest_since, now, incomplete_windows=incomplete_windows
     )
 
-    # Serialize messages for compaction by future runs
+    # Serialize for compaction by future runs.
     serializable = [{**m, "ts": m["ts"].isoformat()} for m in all_messages]
     save_message(
         curr,
@@ -447,6 +502,7 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
             meta={
                 **system_turn_meta("notification"),
                 "message_event_data": serializable,
+                "incomplete_windows": incomplete_windows,
             },
         ),
     )
