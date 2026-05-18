@@ -8,6 +8,7 @@ import datetime
 import logging
 import math
 import os
+import time
 
 import httpx
 import pytz
@@ -90,6 +91,84 @@ def _describe_error(exc: Exception) -> str:
     msg = str(exc).strip()
     name = type(exc).__name__
     return f"{name}: {msg}" if msg else name
+
+
+class _FetchStats:
+    """Per-fetch timing state. Tracks each attempt for diagnostic output —
+    so a failed fetch can report e.g. `ReadTimeout after 10.0s (3 attempts,
+    32.5s total)` instead of just `ReadTimeout`, distinguishing slow-server
+    from fail-fast network errors.
+    """
+
+    def __init__(self):
+        self.attempts: int = 0
+        self.last_elapsed: float = 0.0
+        self.total_started: float = 0.0
+
+    def start_run(self):
+        self.total_started = time.monotonic()
+
+    def total_elapsed(self) -> float:
+        return time.monotonic() - self.total_started
+
+
+async def _timed_fetch_async(label: str, fetch_fn, stats: _FetchStats):
+    stats.attempts += 1
+    start = time.monotonic()
+    try:
+        result = await fetch_fn()
+        stats.last_elapsed = time.monotonic() - start
+        logger.info(
+            "%s fetch attempt %d: ok in %.2fs (%d messages)",
+            label,
+            stats.attempts,
+            stats.last_elapsed,
+            len(result),
+        )
+        return result
+    except Exception as e:
+        stats.last_elapsed = time.monotonic() - start
+        logger.warning(
+            "%s fetch attempt %d: %s after %.2fs",
+            label,
+            stats.attempts,
+            type(e).__name__,
+            stats.last_elapsed,
+        )
+        raise
+
+
+def _timed_fetch_sync(label: str, fetch_fn, stats: _FetchStats, *args):
+    stats.attempts += 1
+    start = time.monotonic()
+    try:
+        result = fetch_fn(*args)
+        stats.last_elapsed = time.monotonic() - start
+        logger.info(
+            "%s fetch attempt %d: ok in %.2fs (%d messages)",
+            label,
+            stats.attempts,
+            stats.last_elapsed,
+            len(result),
+        )
+        return result
+    except Exception as e:
+        stats.last_elapsed = time.monotonic() - start
+        logger.warning(
+            "%s fetch attempt %d: %s after %.2fs",
+            label,
+            stats.attempts,
+            type(e).__name__,
+            stats.last_elapsed,
+        )
+        raise
+
+
+def _format_fetch_error(label: str, exc: Exception, stats: _FetchStats) -> str:
+    suffix = f" after {stats.last_elapsed:.1f}s"
+    if stats.attempts > 1:
+        suffix += f" ({stats.attempts} attempts, {stats.total_elapsed():.1f}s total)"
+    return f"{label}: {_describe_error(exc)}{suffix}"
 
 
 def _merge_incomplete_windows(windows: list[dict]) -> list[dict]:
@@ -413,18 +492,30 @@ async def check_new_messages(curr, chat_id: int) -> str | None:
         ("SMS", lambda: _fetch_sms(since, now)),
         ("Telegram", lambda: _fetch_telegram(since, now)),
     ]:
+        stats = _FetchStats()
+        stats.start_run()
+        # Default-arg captures so each loop iteration's closure is independent.
+        timed = lambda fn=fetch_fn, lab=label, s=stats: _timed_fetch_async(lab, fn, s)
         try:
-            all_messages.extend(await retry_policy(fetch_fn)())
+            all_messages.extend(await retry_policy(timed)())
         except Exception as e:
             logger.warning(f"{label} fetch failed: {e!r}")
-            errors.append(f"{label}: {_describe_error(e)}")
+            errors.append(_format_fetch_error(label, e, stats))
 
     # Gmail uses sync simplegmail library
+    gmail_stats = _FetchStats()
+    gmail_stats.start_run()
     try:
-        all_messages.extend(retry_policy(_fetch_gmail)(since, now))
+        all_messages.extend(
+            retry_policy(
+                lambda: _timed_fetch_sync(
+                    "Gmail", _fetch_gmail, gmail_stats, since, now
+                )
+            )()
+        )
     except Exception as e:
         logger.warning(f"Gmail fetch failed: {e!r}")
-        errors.append(f"Gmail: {_describe_error(e)}")
+        errors.append(_format_fetch_error("Gmail", e, gmail_stats))
 
     all_messages = [m for m in all_messages if _should_keep(m)]
 
