@@ -37,7 +37,6 @@ from yarvis_ptb.storage import (
     connect,
 )
 from yarvis_ptb.timezones import get_timezone
-from yarvis_ptb.tools.todo_tools import read_todos
 from yarvis_ptb.turns import db_message_to_turn
 
 logger = logging.getLogger(__name__)
@@ -152,15 +151,6 @@ def build_context_info(
         system_parts.append(
             f"<scheduled_invocations>\n{scheduled_invocations_str}\n</scheduled_invocations>"
         )
-
-    # Include persistent todos if agent_slug is provided
-    if agent_slug and (todos := read_todos(agent_slug)):
-        todos_lines = []
-        for t in todos:
-            status = t.get("status", "pending")
-            priority = t.get("priority", "medium")
-            todos_lines.append(f"- [{status}] (p:{priority}) {t.get('content', '')}")
-        system_parts.append(f"<todos>\n" + "\n".join(todos_lines) + "\n</todos>")
 
     # Latest known phone location (reverse-geocoded, cached). Best-effort —
     # if the table isn't there or the geocoder fails, we skip the block.

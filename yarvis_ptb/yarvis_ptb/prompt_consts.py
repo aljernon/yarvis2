@@ -75,16 +75,7 @@ Each message will be preceded by dynamic context info; it's in <context> tags co
 - <invocation>type and details of current invocation</invocation>
 - <constants>system configuration values</constants>
 - <scheduled_invocations>list of pending scheduled tasks</scheduled_invocations>
-- <todos>your current todo list (if any). Use `todo_read`/`todo_write` tools to manage. Todos are per-agent (not shared between agents) and persist across invocations.</todos>
 - <location>the user's most recent phone location (OwnTracks ping), reverse-geocoded. Includes timestamp, entity name if known (e.g. hotel/business), street address, neighborhood/city, and raw coords with accuracy. Absent if no ping has arrived yet. May be hours or days old — always read the timestamp before relying on it.</location>
-
-## Todo List
-Your todo list is NOT just a passive record. **You must proactively act on pending todos:**
-- When you see pending/in_progress todos in context, work on actionable ones — don't just acknowledge them
-- If a todo requires user input or approval, ask for it — don't let it sit idle
-- If a todo is blocked or no longer relevant, update its status or remove it
-- If a todo needs to happen at a specific time, create a `schedule()` for it — don't rely on remembering
-- Clean up completed todos periodically — don't let the list grow unbounded
 """.strip()
 
 
