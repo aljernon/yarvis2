@@ -213,7 +213,7 @@ async def _fetch_signal(
     since: datetime.datetime, until: datetime.datetime
 ) -> list[dict]:
     hours = max(math.ceil((until - since).total_seconds() / 3600), 1)
-    async with httpx.AsyncClient(proxy=_socks5_proxy(), timeout=10) as client:
+    async with httpx.AsyncClient(proxy=_socks5_proxy(), timeout=30) as client:
         resp = await client.get(
             "http://100.108.7.78:8081/messages",
             params={"hours": hours, "limit": 200},
@@ -274,7 +274,7 @@ async def _fetch_signal(
 
 async def _fetch_sms(since: datetime.datetime, until: datetime.datetime) -> list[dict]:
     hours = max(math.ceil((until - since).total_seconds() / 3600), 1)
-    async with httpx.AsyncClient(proxy=_socks5_proxy(), timeout=10) as client:
+    async with httpx.AsyncClient(proxy=_socks5_proxy(), timeout=30) as client:
         resp = await client.get(
             "http://100.108.7.78:8082/messages",
             params={"hours": hours, "limit": 200},
